@@ -5,13 +5,13 @@ from ta import add_all_ta_features
 import ssl
 import requests
 import urllib3
+from yahoo_fin import stock_info as si
+from datetime import datetime, timedelta, date
 
 
-# --- SOLUCIÓN PARA ENTORNOS CORPORATIVOS ---
-# 1. Desactiva advertencias de certificados inseguros
+
+#1. Desactiva advertencias de certifs
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# 2. Crea un contexto SSL que no verifique certificados
 try:
     _create_unverified_https_context = ssl._create_unverified_context
 except AttributeError:
@@ -22,6 +22,30 @@ else:
 
 session = requests.Session()
 session.verify = False
+
+
+def tabla_div(tickers, start, end_date):
+
+    cont= 0
+    for ticker in tickers:
+        try:
+            one_day = timedelta(days=600)
+            first_day_of_the_month = date.today().replace(day=1)
+            fecha_de_inicio = first_day_of_the_month - one_day
+            aux_div = si.get_dividends(ticker, start_date=fecha_de_inicio)
+
+            df2 = pd.DataFrame(index=aux_div.index.astype(str).to_list(), data=aux_div['dividend'].tolist(),
+                              columns=[ticker])
+            df= pd.concat([df2,df],axis=0)
+            df = df.sort_index(ascending=False)
+            cont = cont +1
+
+        except Exception as error:
+            print(str(error))
+            print(ticker)
+            continue
+    df.to_csv('resultados_dividendos.csv', index = True)
+
 
 def generar_dataset_hibrido(tickers, start_date, end_date):
     """
@@ -36,11 +60,9 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
         df = yf.download(ticker, start=start_date, end=end_date)
         
 
-        # --- CORRECCIÓN PARA MULTIINDEX ---
+        #CORRECCIÓN PARA MULTIINDEX ---
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        
-        # Validar si el DataFrame está vacío
         if df.empty:
             print(f"¡ERROR! No hay datos para {ticker} en esas fechas.")
             continue
@@ -81,7 +103,8 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
     
     return dataset_norm, precios_originales
 
-# Ejemplo de uso:
-universo = ['IVV', 'BND', 'IBIT']
+
+universo = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
+tabla_div(universo, "2024-02-01", "2026-01-01")
 df_features, df_precios = generar_dataset_hibrido(universo, "2024-02-01", "2026-01-01")
 print(df_features.head())
