@@ -102,6 +102,7 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
     return dataset_norm, precios_originales
 
 
+
 universo = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
 tabla_div(universo, "2024-02-01", "2026-01-01")
 df_features, df_precios = generar_dataset_hibrido(universo, "2024-02-01", "2026-01-01")
