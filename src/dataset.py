@@ -84,6 +84,7 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
             'trend_cci'
         ]
 
+
         df_cols = df[['Close'] + features_interes].copy()
         df_cols.columns = [f"{ticker}_{c}" for c in df_cols.columns]
 
