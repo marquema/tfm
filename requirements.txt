@@ -8,3 +8,9 @@ stable-baselines3>=2.1.0
 tensorboard
 shimmy>=1.1.0
 yahoo_fin
+fastapi
+pydantic
+uvicorn
+stable-baselines3
+setuptools
+streamlit

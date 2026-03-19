@@ -2,17 +2,22 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 from ta import add_all_ta_features
+#import requests
+from curl_cffi.requests import Session
 
-def tabla_div(tickers, start, end_date):
-    df = pd.DataFrame()
-
+def get_table_div(tickers, start, end_date):
+    # Crear una sesión que ignore el SSL
+    session = Session(impersonate="chrome")
+    session.verify = False 
+    
+    df = pd.DataFrame()    
     start = pd.to_datetime(start)
     end_date = pd.to_datetime(end_date)
 
     for ticker in tickers:
         try:
             print(f"Buscando dividendos de {ticker}...")
-            tk = yf.Ticker(ticker)
+            tk = yf.Ticker(ticker, session=session)
             divs = tk.dividends
 
             if divs.empty:
@@ -116,13 +121,13 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
     return dataset_norm, precios_originales
 
 
-universo = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
+#universo = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
 
-tabla_div(universo, "2014-01-01", "2026-03-01")
+#get_table_div(universo, "2024-02-01", "2026-01-01")
 
-df_features, df_precios = generar_dataset_hibrido(universo, "2014-01-01", "2026-03-01")
+#df_features, df_precios = get_dataset_hybrid(universo, "2024-02-01", "2026-01-01")
 
-df_features.to_csv("features_normalizadas.csv", index=True, encoding="utf-8-sig")
-df_precios.to_csv("precios_originales.csv", index=True, encoding="utf-8-sig")
+#df_features.to_csv("features_normalizadas.csv", index=True, encoding="utf-8-sig")
+#df_precios.to_csv("precios_originales.csv", index=True, encoding="utf-8-sig")
 
-print(df_features.head())
+#print(df_features.head())

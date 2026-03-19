@@ -1,5 +1,6 @@
 .venv/
 *.pyc
 .vscode/
-
+backup/
+logs/
 .idea
