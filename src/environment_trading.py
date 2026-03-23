@@ -88,7 +88,7 @@ class PortfolioEnv(gym.Env):
             valor_antes_movimiento = max(self.portfolio_value, 1e-6)
 
             #2. Normalizar pesos (deben sumar 1)
-            new_weights = action / (np.sum(action) + 1e-6)            
+            new_weights = action / (np.sum(action) + 1e-6)#panico en el mercado? Not for me
             #3. Costes - comisiones
             diff_weights = np.abs(new_weights - self.weights)
             cost = np.sum(diff_weights) * self.portfolio_value * self.commission
