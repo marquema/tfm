@@ -8,25 +8,24 @@ def entrenar_modelo(total_timesteps=100000):
     print("--- Iniciando Entrenamiento de la IA ---")
     
     # 1. Crear el entorno
-    env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv')
-    
-    # DEBUG: Verificar si hay NaNs antes de empezar
+    env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv')    
+    #Verificar si hay NaNs antes de empezar
     if env.df_features.isnull().values.any():
-        print("❌ ERROR: ¡Todavía hay NaNs en las features!")
+        print("ERROR: ¡Todavía hay NaNs en las features!")
         return    
     
-    # 2. Configurar el algoritmo PPO
-    # MlpPolicy: Red neuronal estándar (Multi-layer Perceptron)
+    #2. Configurar el algoritmo PPO
+    #MlpPolicy: Red neuronal estándar (Multi-layer Perceptron): barandilla de seguridad
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/")
     
-    # 3. Aprender
+    #3. Aprender
     print(f"Entrenando por {total_timesteps} pasos...")
     model.learn(total_timesteps=total_timesteps)
     
-    # 4. Guardar el "cerebro"
+    #4. Guardar el "cerebro"
     os.makedirs('models', exist_ok=True)
     model.save("models/ppo_portfolio_manager_50000")
-    print("✅ Modelo guardado en models/ppo_portfolio_manager_50000.zip")
+    print("Modelo guardado en models/ppo_portfolio_manager_50000.zip")
     
     return "Entrenamiento completado"
 

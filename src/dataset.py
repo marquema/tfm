@@ -21,11 +21,8 @@ def tabla_div(tickers, start, end_date):
 
             # Quitar timezone del índice
             if getattr(divs.index, "tz", None) is not None:
-                divs.index = divs.index.tz_localize(None)
-
-            # Filtrar por fechas
+                divs.index = divs.index.tz_localize(None)            
             divs = divs[(divs.index >= start) & (divs.index <= end_date)]
-
             if divs.empty:
                 print(f"{ticker}: sin dividendos en ese rango")
                 continue
@@ -57,12 +54,11 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
     for ticker in tickers:
         print(f"Descargando {ticker}...")
         df = yf.download(ticker, start=start_date, end=end_date)
-
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
 
         if df.empty:
-            print(f"¡ERROR! No hay datos para {ticker} en esas fechas.")
+            print(f"No hay datos para {ticker} en esas fechas.")
             continue
 
         df[f'retorno_{ticker}'] = np.log(df['Close'] / df['Close'].shift(1))
@@ -76,7 +72,6 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
             volume="Volume",
             fillna=True
         )
-
         features_interes = [
             'momentum_rsi',
             'trend_macd_diff',
@@ -93,19 +88,14 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
 
     if not datos_lista:
         raise ValueError("No se pudo descargar ningún ticker correctamente.")
-
-    # 1. Unimos todos los datos (IBIT tendrá NaNs desde 2014 hasta 2024)
+    
     dataset = pd.concat(datos_lista, axis=1)
 
-    # 2. Rellenamos hacia atrás (Backfill) para los activos que empezaron tarde
-    # Esto copia el primer precio/valor válido de 2024 hacia todos los años anteriores
+    #2. Rellenamos hacia atrás (Backfill) para los activos que empezaron tarde
     dataset = dataset.bfill()
-
-    # 3. Rellenamos hacia adelante (Forward fill) por si algún activo dejó de cotizar
-    # o faltan datos al final de la serie
-    dataset = dataset.ffill()
-
-    # 4. Finalmente, si queda alguna fila con NaNs (que no debería), la quitamos
+    #Rellenamos hacia adelante (Forward fill) si algún activo dejó de cotizar
+    #o faltan datos al final de la serie
+    dataset = dataset.ffill()    
     dataset = dataset.dropna()
 
 

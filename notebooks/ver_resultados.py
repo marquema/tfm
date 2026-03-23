@@ -4,14 +4,13 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 import glob
 import os
 
-def plot_training_progress(log_dir):
-    # 1. Buscar el archivo de logs (tfevents)
+def plot_training_progress(log_dir):    
     files = glob.glob(os.path.join(log_dir, "**/*tfevents*"), recursive=True)
     if not files:
         print("No se han encontrado archivos de log en ./logs/")
         return
 
-    # 2. Cargar el último archivo generado
+    #carga ultimo archivo
     latest_file = max(files, key=os.path.getctime)
     event_acc = EventAccumulator(latest_file)
     event_acc.Reload()
@@ -19,7 +18,7 @@ def plot_training_progress(log_dir):
     # 3. Extraer la métrica de recompensa media
     # Stable Baselines 3 usa 'rollout/ep_rew_mean'
     if 'rollout/ep_rew_mean' in event_acc.Tags()['scalars']:
-        w_times, step_nums, vals = zip(*event_acc.Scalars('rollout/ep_rew_mean'))
+        _, step_nums, vals = zip(*event_acc.Scalars('rollout/ep_rew_mean'))
         
         plt.figure(figsize=(10, 5))
         plt.plot(step_nums, vals, label='Recompensa Media (Train)')
@@ -30,7 +29,7 @@ def plot_training_progress(log_dir):
         plt.legend()
         plt.show()
     else:
-        print("Aún no hay suficientes datos de 'rollout/ep_rew_mean'. ¡Espera un poco más!")
+        print("No hay suficientes datos de 'rollout/ep_rew_mean'. Espera un poco más!")
 
 if __name__ == "__main__":
     plot_training_progress("../logs/")

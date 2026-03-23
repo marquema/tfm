@@ -6,7 +6,7 @@ from ta import add_all_ta_features
 from curl_cffi.requests import Session
 
 def get_table_div(tickers, start, end_date):
-    # Crear una sesión que ignore el SSL
+    #sesión que ignore el SSL
     session = Session(impersonate="chrome")
     session.verify = False 
     
