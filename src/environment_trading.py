@@ -83,6 +83,81 @@ class PortfolioEnv(gym.Env):
         return obs.astype(np.float32), {}
 
     def step(self, action):
+        """
+            agente minimiza el Maximum Drawdown y optimiza el Sharpe
+            $$R_t = r_p(t) - \phi \cdot \text{Drawdown}(t)$$        
+        """
+        # todo: personalizar el factor $\phi$ para que sea dinámico según la correlación detectada en el mercado
+        # 1. Precios y estado previo
+        precios_hoy = self.df_precios.iloc[self.current_step].values
+        # Referencia de valor para calcular el retorno del paso
+        valor_base_paso = max(self.portfolio_value, 1e-6)
+
+        # 2. Normalizar pesos (sumatoria = 1)
+        #"Panic? Not for me"
+        new_weights = action / (np.sum(action) + 1e-6)
+        
+        # 3. Gestión de Costes:coste de mover dinero, lo que evita rebalanceos erráticos por ruido
+        diff_weights = np.abs(new_weights - self.weights)
+        cost = np.sum(diff_weights) * self.portfolio_value * self.commission
+        self.portfolio_value -= cost
+        
+        # 4. Progresión Temporal
+        if self.current_step >= len(self.df_features) - 1:
+            done = True
+            obs = self.df_features.iloc[self.current_step].values
+            return obs.astype(np.float32), 0.0, done, False, {"value": self.portfolio_value, "drawdown": 0}
+
+        self.current_step += 1
+        done = self.current_step >= len(self.df_features) - 1
+        
+        # 5. Evolución del Mercado (Impacto de los precios de mañana)
+        precios_manana = self.df_precios.iloc[self.current_step].values
+        retornos_activos = precios_manana / precios_hoy
+        self.portfolio_value = np.sum((self.portfolio_value * new_weights) * retornos_activos)
+        self.portfolio_value = max(self.portfolio_value, 1e-6) # Protección contra valores negativos
+        
+        self.weights = new_weights 
+
+        # --- REWARD SHAPING: EL CORAZÓN DE LA ESTRATEGIA ---
+        
+        # A. Retorno Logarítmico (La base del beneficio)
+        log_return = float(np.log(self.portfolio_value / valor_base_paso + 1e-8))
+
+        # B. Cálculo de la "Marca de Agua" y Drawdown (Gestión de Riesgo Extremo)
+        # Necesitas inicializar self.max_portfolio_value en el método reset()
+        if not hasattr(self, 'max_portfolio_value'): 
+            self.max_portfolio_value = self.initial_balance
+            
+        self.max_portfolio_value = max(self.max_portfolio_value, self.portfolio_value)
+        current_drawdown = (self.max_portfolio_value - self.portfolio_value) / self.max_portfolio_value
+
+        # C. Penalización por Riesgo (Factor de sensibilidad al Drawdown)
+        # Un phi=0.5 es un equilibrio agresivo/conservador.
+        phi = 0.5 
+        risk_penalty = phi * current_drawdown
+
+        # Recompensa Final: $$R_t = \text{log\_return} - \text{risk\_penalty}$$
+        reward = log_return - risk_penalty
+
+        # 7. Condición de quiebra (Game Over)
+        if self.portfolio_value < (self.initial_balance * 0.1):
+            done = True
+            reward = -10.0 # Penalización masiva por colapso de cartera
+        
+        obs = self.df_features.iloc[self.current_step].values
+        
+        # Enviamos el drawdown en la info para monitorizarlo en Tensorboard
+        info = {
+            "value": self.portfolio_value,
+            "drawdown": current_drawdown,
+            "weights": self.weights
+        }
+        
+        return obs.astype(np.float32), float(reward), done, False, info
+
+
+    def step_2(self, action):
             #1. Precios y estado previo
             precios_hoy = self.df_precios.iloc[self.current_step].values
             valor_antes_movimiento = max(self.portfolio_value, 1e-6)
@@ -125,7 +200,7 @@ class PortfolioEnv(gym.Env):
             obs = self.df_features.iloc[self.current_step].values
             return obs.astype(np.float32), reward, done, False, {"value": self.portfolio_value}
 
-    def step2(self, action):
+    def step_simplex(self, action):
         # 1. Normalizar pesos (deben sumar 1)
         new_weights = action / (np.sum(action) + 1e-6)
         

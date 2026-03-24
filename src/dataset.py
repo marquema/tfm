@@ -47,6 +47,25 @@ def tabla_div(tickers, start, end_date):
         print("No hay datos para guardar")
 
 
+def extract_advanced_features(df_prices, window=20):
+    features = pd.DataFrame(index=df_prices.index)
+    
+    for col in df_prices.columns:
+        returns = df_prices[col].pct_change()
+        
+        # 1. Momentos Estadísticos (Captura de Riesgos Extremos)
+        features[f'{col}_skew'] = returns.rolling(window).skew()
+        features[f'{col}_kurt'] = returns.rolling(window).kurt()
+        
+        # 2. Volatilidad de Memoria Larga (Desviación estándar móvil)
+        features[f'{col}_vol'] = returns.rolling(window).std()
+        
+    # 3. Correlaciones Dinámicas (Sinergia entre activos)
+    # Ejemplo: Correlación IBIT vs SPY (Renta Variable)
+    features['corr_ibit_spy'] = returns['IBIT'].rolling(window).corr(returns['SPY'])
+    
+    return features.dropna()
+
 def generar_dataset_hibrido(tickers, start_date, end_date):
     datos_lista = []
     tickers_validos = []

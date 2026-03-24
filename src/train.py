@@ -58,7 +58,16 @@ def entrenar_con_validacion(total_timesteps=100000, split_pct=0.8):
     )
 
     # 5. Inicializar PPO
-    model = PPO("MlpPolicy", train_env, verbose=1, tensorboard_log="./logs/")
+    #model = PPO("MlpPolicy", train_env, verbose=1, tensorboard_log="./logs/")
+    # teoria de schulman
+    model = PPO(
+        "MlpPolicy", 
+        train_env, 
+        clip_range=0.2,  #Aquí
+        learning_rate=3e-4, #todo: anadir una visualización (gráfica de TensorBoard) que demuestre cómo el 'value loss' se estabiliza gracias a este recorte
+        verbose=1, 
+        tensorboard_log="./logs/"
+    )
     
     # 6. ¡Lanzar los 100.000 pasos!
     print(f"Iniciando entrenamiento de {total_timesteps} pasos...")
@@ -66,4 +75,4 @@ def entrenar_con_validacion(total_timesteps=100000, split_pct=0.8):
     
     # 7. Guardar el modelo final (aunque el 'best_model' suele ser el mejor)
     model.save("models/ppo_final_100k")
-    print("✅ Entrenamiento finalizado.")
+    print("Entrenamiento finalizado.")

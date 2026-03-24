@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-from src.downloader_dataset import get_table_div
+from src.downloader_dataset import get_table_div, generar_dataset_hibrido
 from src.environment_trading import PortfolioEnv
 import os
 import pandas as pd
@@ -30,6 +30,7 @@ async def preparar_datos(config: DownloadConfig):
     """Ejecuta la descarga y creación de features."""
     #config = DownloadConfig()
     resultado = get_table_div(config.tickers, config.start, config.end)
+    generar_dataset_hibrido(config.tickers, config.start, config.end)
     return resultado
 
 @app.post("/fase2/inicializar-entorno")
