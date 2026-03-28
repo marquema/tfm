@@ -1,3 +1,4 @@
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -321,9 +322,10 @@ def generar_dataset_completo(tickers, start_date, end_date):
     # Normalización Z-Score global (sobre features completas, sin precios absolutos)
     dataset_norm = (dataset - dataset.mean()) / dataset.std()
 
-    # Guardar (orden descendente para legibilidad humana)
-    precios_originales.sort_index(ascending=False).to_csv("precios_originales.csv", encoding="utf-8-sig")
-    dataset_norm.sort_index(ascending=False).to_csv("features_normalizadas.csv", encoding="utf-8-sig")
+    # Guardar en data/ (ruta que usan environment_trading.py y train.py)
+    os.makedirs("data", exist_ok=True)
+    precios_originales.sort_index(ascending=False).to_csv("data/precios_originales.csv", encoding="utf-8-sig")
+    dataset_norm.sort_index(ascending=False).to_csv("data/features_normalizadas.csv", encoding="utf-8-sig")
 
     n_tech   = len(tickers_validos) * 8 + (1 if 'corr_IBIT_IVV' in dataset.columns else 0)
     n_divs   = len(div_cols) if df_divs is not None else 0

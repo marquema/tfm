@@ -3,14 +3,10 @@ from pydantic import BaseModel
 from typing import List
 from src.downloader_dataset import generar_dataset_completo
 from src.environment_trading import PortfolioEnv
+from src.train import entrenar_con_validacion, entrenar_ablacion
 import os
 import pandas as pd
 import numpy as np
-from stable_baselines3 import PPO
-from src.train import entrenar_modelo, entrenar_con_validacion
-import numpy as np
-# Ejemplo rápido con FastAPI
-from fastapi import FastAPI
 from stable_baselines3 import PPO
 
 app = FastAPI(title="TFM Trading AI API")
@@ -86,10 +82,14 @@ async def ver_estado():
 @app.post("/fase3/entrenar")
 async def iniciar_entrenamiento(background_tasks: BackgroundTasks, steps: int = 100000):
     """Lanza el entrenamiento en segundo plano."""
-    #background_tasks.add_task(entrenar_modelo, total_timesteps=steps)
     background_tasks.add_task(entrenar_con_validacion, total_timesteps=steps)
-    
-    return {"message": f"Entrenamiento iniciado para {steps} pasos. Revisa la consola para el progreso."}
+    return {"message": f"Entrenamiento principal iniciado ({steps} pasos). reward_mode=sharpe_drawdown."}
+
+@app.post("/fase3/ablacion")
+async def iniciar_ablacion(background_tasks: BackgroundTasks, steps: int = 100000):
+    """Lanza el entrenamiento baseline (sin penalización de drawdown) para el ablation study."""
+    background_tasks.add_task(entrenar_ablacion, total_timesteps=steps)
+    return {"message": f"Ablation iniciado ({steps} pasos). reward_mode=log_return."}
 
 @app.get("/fase3/predecir-accion")
 async def predecir_accion():

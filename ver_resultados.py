@@ -1,200 +1,228 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-from glob import glob
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-import pandas as pd
-import matplotlib.pyplot as plt
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-import glob
 import os
-import pandas as pd
+import glob
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
-from src.environment_trading import PortfolioEnv
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from stable_baselines3 import PPO
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 from src.environment_trading import PortfolioEnv
 
-def extraer_datos(log_dir):
-    # Buscamos el archivo de eventos más reciente
-    event_file = glob(f"{log_dir}/**/*.tfevents*", recursive=True)[-1]
-    ea = EventAccumulator(event_file)
-    ea.Reload()
-    
-    # Extraemos la recompensa media (ep_rew_mean)
-    if 'rollout/ep_rew_mean' in ea.Tags()['scalars']:
-        df = pd.DataFrame(ea.Scalars('rollout/ep_rew_mean'))
-        return df
-    return None
 
-def plot_training_progress(log_dir):
-    # 1. Buscar el archivo de logs (tfevents)
-    files = glob.glob(os.path.join(log_dir, "**/*tfevents*"), recursive=True)
-    if not files:
-        print("No se han encontrado archivos de log en ./logs/")
-        return
-
-    # 2. Cargar el último archivo generado
-    latest_file = max(files, key=os.path.getctime)
-    event_acc = EventAccumulator(latest_file)
-    event_acc.Reload()
-
-    # 3. Extraer la métrica de recompensa media
-    # Stable Baselines 3 usa 'rollout/ep_rew_mean'
-    if 'rollout/ep_rew_mean' in event_acc.Tags()['scalars']:
-        # EXTRAER LOS DATOS CORRECTAMENTE
-        events = event_acc.Scalars('rollout/ep_rew_mean')
-        
-        # Extraemos cada atributo de los objetos ScalarEvent
-        step_nums = [e.step for e in events]
-        vals = [e.value for e in events]
-        
-        plt.figure(figsize=(10, 5))
-        plt.plot(step_nums, vals, label='Recompensa Media (Train)', color='#2ca02c', linewidth=2)
-        
-        # Añadimos una media móvil para suavizar la gráfica (opcional pero recomendado)
-        if len(vals) > 10:
-            suavizado = pd.Series(vals).rolling(window=10).mean()
-            plt.plot(step_nums, suavizado, label='Tendencia (Media Móvil)', linestyle='--', color='red')
-
-        plt.title('Progreso del Entrenamiento de la IA (Fase 3)')
-        plt.xlabel('Pasos (Steps)')
-        plt.ylabel('Log-Return Medio')
-        plt.grid(True, alpha=0.3)
-        plt.legend()
-        plt.show()
-    else:
-        print("Aún no hay suficientes datos de 'rollout/ep_rew_mean'. ¡Espera un poco más!")
-
-def ejecutar_backtest():
-    print("--- Iniciando Backtest (Datos no vistos) ---")
-    
-    # 1. Cargar el mejor modelo guardado
-    model_path = "models/best_model/best_model.zip"
-    model = PPO.load(model_path)
-    
-    # 2. Crear el entorno de TEST (el mismo 20% que usamos en validación)
-    df_f = pd.read_csv('data/features_normalizadas.csv')
-    split_idx = int(len(df_f) * 0.8)
-    env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv', start_idx=split_idx)
-    
-    # 3. Ejecutar el episodio de test
-    obs, _ = env.reset()
-    done = False
-    history_ia = []
-    
-    while not done:
-        action, _states = model.predict(obs, deterministic=True)
-        obs, reward, done, truncated, info = env.step(action)
-        history_ia.append(info['value'])
-    
-    # 4. Calcular el Benchmark: "Buy & Hold" (Invertir todo a partes iguales y no tocar)
-    # Usamos los precios originales para el realismo
-    precios_test = env.df_precios
-    retornos_activos = precios_test.pct_change().dropna()
-    # Estrategia: 1/N (reparto equitativo entre todos los activos)
-    retorno_bh = retornos_activos.mean(axis=1) 
-    cum_bh = 10000 * (1 + retorno_bh).cumprod() # Empezando con los mismos 10k
-    
-    # 5. Visualización de Resultados
-    plt.figure(figsize=(12, 6))
-    plt.plot(history_ia, label='IA Portfolio Manager (PPO)', color='blue', linewidth=2)
-    plt.plot(cum_bh.values, label='Estrategia Buy & Hold (1/N)', color='gray', linestyle='--')
-    
-    plt.title('Comparativa Final: IA vs Mercado (Datos de Test 2025-2026)')
-    plt.xlabel('Días de Negociación')
-    plt.ylabel('Valor de la Cartera ($)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.show()
-
-    # Métricas finales
-    print(f"Resultado Final IA: ${history_ia[-1]:.2f}")
-    print(f"Resultado Final B&H: ${cum_bh.values[-1]:.2f}")
+# ---------------------------------------------------------------------------
+# Utilidades
+# ---------------------------------------------------------------------------
 
 def calcular_sharpe(retornos, rf=0.0):
-    """Calcula el Sharpe Ratio anualizado (asumiendo 252 días de trading)"""
-    if len(retornos) < 2: return 0
-    mean_ret = retornos.mean()
-    std_ret = retornos.std()
-    if std_ret == 0: return 0
-    return (mean_ret - rf) / std_ret * np.sqrt(252)
+    """Sharpe Ratio anualizado (252 días de trading)."""
+    if len(retornos) < 2:
+        return 0.0
+    std = retornos.std()
+    if std == 0:
+        return 0.0
+    return (retornos.mean() - rf) / std * np.sqrt(252)
 
-def ejecutar_backtest_pro():
-    print("--- Iniciando Backtest de Alta Precisión ---")
-    
-    # 1. Cargar modelo y entorno de Test (20% final)
-    model = PPO.load("models/best_model/best_model.zip")
-    df_f = pd.read_csv('data/features_normalizadas.csv')
-    split_idx = int(len(df_f) * 0.8)
-    env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv', start_idx=split_idx)
-    
-    # 2. Simulación con la IA
+
+def calcular_max_drawdown(valores):
+    """Max Drawdown como fracción (ej: -0.15 = caída máxima del 15%)."""
+    serie = pd.Series(valores)
+    return (serie / serie.cummax() - 1).min()
+
+
+def _simular(model, env):
+    """Ejecuta un episodio completo con el modelo y devuelve (valores, drawdowns, weights)."""
     obs, _ = env.reset()
     done = False
-    valores_ia = []
-    
+    valores, drawdowns, weights_hist = [], [], []
+
     while not done:
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, done, _, info = env.step(action)
-        valores_ia.append(info['value'])
-    
-    # 3. Datos para el Benchmark (Buy & Hold 1/N)
-    precios_test = env.df_precios
-    retornos_activos = precios_test.pct_change().dropna()
-    retorno_bh = retornos_activos.mean(axis=1)
-    valores_bh = 10000 * (1 + retorno_bh).cumprod().values
+        obs, _, done, _, info = env.step(action)
+        valores.append(info['value'])
+        drawdowns.append(info.get('drawdown', 0.0))
+        weights_hist.append(info.get('weights', np.zeros(env.n_assets)).copy())
 
-    # 4. CÁLCULO DE MÉTRICAS
-    df_res = pd.DataFrame({
-        'IA': valores_ia,
-        'BH': np.insert(valores_bh, 0, 10000)[:len(valores_ia)] # Sincronizar longitudes
-    })
-    
-    rets = df_res.pct_change().dropna()
-    
+    return valores, drawdowns, weights_hist
+
+
+def _benchmark_bh(env):
+    """Buy & Hold 1/N sobre los precios del entorno."""
+    retornos = env.df_precios.pct_change().dropna()
+    retorno_bh = retornos.mean(axis=1)
+    valores_bh = 10000 * (1 + retorno_bh).cumprod().values
+    return np.insert(valores_bh, 0, 10000)
+
+
+def _crear_entorno_test(split_pct=0.8, reward_mode='sharpe_drawdown'):
+    df_f      = pd.read_csv('data/features_normalizadas.csv')
+    split_idx = int(len(df_f) * split_pct)
+    return PortfolioEnv(
+        'data/features_normalizadas.csv', 'data/precios_originales.csv',
+        start_idx=split_idx, reward_mode=reward_mode
+    ), split_idx
+
+
+# ---------------------------------------------------------------------------
+# Backtest principal
+# ---------------------------------------------------------------------------
+
+def ejecutar_backtest_pro(split_pct=0.8):
+    """
+    Backtest del modelo principal (sharpe_drawdown) vs Buy & Hold.
+    Muestra tabla de métricas y gráfica con área de drawdown.
+    """
+    print("--- Backtest principal (sharpe_drawdown) ---")
+    model = PPO.load("models/best_model/best_model.zip")
+    env, _ = _crear_entorno_test(split_pct, reward_mode='sharpe_drawdown')
+
+    valores_ia, drawdowns_ia, _ = _simular(model, env)
+    valores_bh = _benchmark_bh(env)[:len(valores_ia)]
+
+    df_res = pd.DataFrame({'IA': valores_ia, 'BH': valores_bh})
+    rets   = df_res.pct_change().dropna()
+
     sharpe_ia = calcular_sharpe(rets['IA'])
     sharpe_bh = calcular_sharpe(rets['BH'])
-    
-    # Max Drawdown: La mayor caída desde un máximo histórico
-    dd_ia = (df_res['IA'] / df_res['IA'].cummax() - 1).min()
-    dd_bh = (df_res['BH'] / df_res['BH'].cummax() - 1).min()
+    dd_ia     = calcular_max_drawdown(valores_ia)
+    dd_bh     = calcular_max_drawdown(valores_bh)
 
-    # 5. RESULTADOS POR PANTALLA (Para tu tabla del TFM)
-    print("\n" + "="*30)
-    print(f"{'MÉTRICA':<15} | {'IA (PPO)':<10} | {'B&H (1/N)':<10}")
-    print("-" * 30)
-    print(f"{'Final Value':<15} | ${df_res['IA'].iloc[-1]:>8.2f} | ${df_res['BH'].iloc[-1]:>8.2f}")
-    print(f"{'Sharpe Ratio':<15} | {sharpe_ia:>10.2f} | {sharpe_bh:>10.2f}")
-    print(f"{'Max Drawdown':<15} | {dd_ia*100:>9.2f}% | {dd_bh*100:>9.2f}%")
-    print("="*30)
+    print("\n" + "=" * 38)
+    print(f"{'MÉTRICA':<16} | {'IA PPO':>9} | {'B&H 1/N':>9}")
+    print("-" * 38)
+    print(f"{'Valor final':<16} | ${df_res['IA'].iloc[-1]:>8.2f} | ${df_res['BH'].iloc[-1]:>8.2f}")
+    print(f"{'Sharpe Ratio':<16} | {sharpe_ia:>9.2f} | {sharpe_bh:>9.2f}")
+    print(f"{'Max Drawdown':<16} | {dd_ia*100:>8.2f}% | {dd_bh*100:>8.2f}%")
+    print("=" * 38)
 
-    # 6. GRÁFICA PARA LA MEMORIA
     plt.style.use('ggplot')
-    plt.figure(figsize=(12, 6))
-    plt.plot(df_res['IA'], label=f'IA PPO (Sharpe: {sharpe_ia:.2f})', color='#1f77b4', lw=2)
-    plt.plot(df_res['BH'], label=f'Benchmark B&H (Sharpe: {sharpe_bh:.2f})', color='#ff7f0e', linestyle='--')
-    plt.fill_between(range(len(df_res)), df_res['IA'], df_res['IA'].cummax(), color='red', alpha=0.1, label='IA Drawdown Area')
-    
-    plt.title('Validación Ex-Post: IA Portfolio Manager vs Benchmark')
-    plt.legend()
-    plt.show()    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(13, 8), gridspec_kw={'height_ratios': [3, 1]})
 
+    ax1.plot(df_res['IA'], label=f'IA PPO — Sharpe {sharpe_ia:.2f}', color='#1f77b4', lw=2)
+    ax1.plot(df_res['BH'], label=f'B&H 1/N — Sharpe {sharpe_bh:.2f}', color='#ff7f0e', ls='--')
+    ax1.fill_between(range(len(df_res)), df_res['IA'], df_res['IA'].cummax(),
+                     color='#1f77b4', alpha=0.1, label='Drawdown IA')
+    ax1.set_title('Validación Ex-Post: IA Portfolio Manager vs Benchmark')
+    ax1.set_ylabel('Valor de la Cartera ($)')
+    ax1.legend()
 
-ejecutar_backtest()
-plot_training_progress("./logs/")
-ejecutar_backtest_pro()
+    ax2.fill_between(range(len(drawdowns_ia)), [-d * 100 for d in drawdowns_ia],
+                     color='red', alpha=0.4)
+    ax2.set_ylabel('Drawdown (%)')
+    ax2.set_xlabel('Días de Negociación')
 
-df = extraer_datos("./logs/")
-if df is not None:
-    plt.plot(df['step'], df['value'])
-    plt.title("Progreso de la IA (Reward)")
-    plt.xlabel("Pasos")
-    plt.ylabel("Recompensa Media")
+    plt.tight_layout()
+    plt.savefig('backtest_principal.png', dpi=150)
     plt.show()
-else:
-    print("Aún no hay datos suficientes o el tag es distinto.")
+    print("Gráfica guardada: backtest_principal.png")
 
+
+# ---------------------------------------------------------------------------
+# Ablation study
+# ---------------------------------------------------------------------------
+
+def ejecutar_backtest_comparativo(split_pct=0.8):
+    """
+    Compara el modelo principal (sharpe_drawdown) contra el baseline (log_return).
+    Responde: ¿cuánto aporta la penalización por drawdown?
+    Requiere haber entrenado previamente con entrenar_ablacion().
+    """
+    print("--- Ablation study: sharpe_drawdown vs log_return ---")
+
+    model_path_principal = "models/best_model/best_model.zip"
+    model_path_ablacion  = "models/ablation_log_return/best_model.zip"
+
+    if not os.path.exists(model_path_ablacion):
+        print(f"No se encontró {model_path_ablacion}. Ejecuta entrenar_ablacion() primero.")
+        return
+
+    model_sd  = PPO.load(model_path_principal)
+    model_lr  = PPO.load(model_path_ablacion)
+
+    env_sd, _ = _crear_entorno_test(split_pct, reward_mode='sharpe_drawdown')
+    env_lr, _ = _crear_entorno_test(split_pct, reward_mode='log_return')
+
+    valores_sd, dd_sd, _ = _simular(model_sd, env_sd)
+    valores_lr, dd_lr, _ = _simular(model_lr, env_lr)
+    valores_bh            = _benchmark_bh(env_sd)[:len(valores_sd)]
+
+    n = min(len(valores_sd), len(valores_lr), len(valores_bh))
+    df = pd.DataFrame({
+        'IA sharpe_drawdown': valores_sd[:n],
+        'IA log_return':      valores_lr[:n],
+        'B&H 1/N':            valores_bh[:n],
+    })
+    rets = df.pct_change().dropna()
+
+    print("\n" + "=" * 52)
+    print(f"{'MÉTRICA':<16} | {'SD':>9} | {'LR':>9} | {'B&H':>9}")
+    print("-" * 52)
+    for col in df.columns:
+        sharpe = calcular_sharpe(rets[col])
+        dd     = calcular_max_drawdown(df[col].values)
+        label  = col.replace('IA ', '').replace('B&H 1/N', 'B&H')
+        print(f"{'Sharpe ' + label:<16} | {sharpe:>9.2f}")
+        print(f"{'MaxDD  ' + label:<16} | {dd*100:>8.2f}%")
+    print("=" * 52)
+
+    plt.style.use('ggplot')
+    plt.figure(figsize=(13, 6))
+    plt.plot(df['IA sharpe_drawdown'], label='IA sharpe_drawdown', color='#1f77b4', lw=2)
+    plt.plot(df['IA log_return'],      label='IA log_return (baseline)', color='#2ca02c', lw=2, ls='-.')
+    plt.plot(df['B&H 1/N'],            label='B&H 1/N', color='#ff7f0e', ls='--')
+    plt.title('Ablation Study: impacto del risk-shaping (φ·drawdown)')
+    plt.ylabel('Valor de la Cartera ($)')
+    plt.xlabel('Días de Negociación')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('ablation_study.png', dpi=150)
+    plt.show()
+    print("Gráfica guardada: ablation_study.png")
+
+
+# ---------------------------------------------------------------------------
+# Progreso de entrenamiento (TensorBoard)
+# ---------------------------------------------------------------------------
+
+def plot_training_progress(log_dir='./logs/'):
+    """Extrae ep_rew_mean de los logs de TensorBoard y muestra la curva de aprendizaje."""
+    files = glob.glob(os.path.join(log_dir, "**/*tfevents*"), recursive=True)
+    if not files:
+        print(f"No se encontraron logs en {log_dir}")
+        return
+
+    latest_file = max(files, key=os.path.getctime)
+    ea = EventAccumulator(latest_file)
+    ea.Reload()
+
+    tag = 'rollout/ep_rew_mean'
+    if tag not in ea.Tags().get('scalars', []):
+        print(f"Tag '{tag}' no encontrado. Espera a que el entrenamiento avance.")
+        return
+
+    events    = ea.Scalars(tag)
+    steps     = [e.step  for e in events]
+    vals      = [e.value for e in events]
+
+    plt.style.use('ggplot')
+    plt.figure(figsize=(11, 5))
+    plt.plot(steps, vals, label='Recompensa media (train)', color='#2ca02c', lw=1.5, alpha=0.6)
+    if len(vals) > 10:
+        suavizado = pd.Series(vals).rolling(window=10).mean()
+        plt.plot(steps, suavizado, label='Tendencia (media móvil 10)', ls='--', color='red', lw=2)
+    plt.title('Curva de Aprendizaje PPO')
+    plt.xlabel('Pasos')
+    plt.ylabel('Log-Return Medio por Episodio')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('training_progress.png', dpi=150)
+    plt.show()
+    print("Gráfica guardada: training_progress.png")
+
+
+# ---------------------------------------------------------------------------
+# Punto de entrada
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    ejecutar_backtest_pro()
+    plot_training_progress()
+    # ejecutar_backtest_comparativo()  # descomentar tras ejecutar entrenar_ablacion()
