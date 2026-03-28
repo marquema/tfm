@@ -227,6 +227,111 @@ def generar_dataset_hibrido(tickers, start_date, end_date):
     print(f"Dataset generado con {len(dataset_norm.columns)} características.")
     return dataset_norm, precios_originales
 
+def generar_dataset_completo(tickers, start_date, end_date):
+    """
+    Pipeline completo de generación de features:
+    1. Features técnicas + momentos estadísticos (SIN columnas Close → evita data leakage)
+    2. Correlación dinámica IBIT-IVV (régimen cripto: refugio vs riesgo)
+    3. Dividend dynamics integradas (crecimiento, volatilidad, kurtosis, skewness del dividendo)
+
+    Genera 2 CSVs:
+      - features_normalizadas.csv: observaciones del agente (Z-Score, sin precios absolutos)
+      - precios_originales.csv: precios de cierre para calcular P&L en el entorno
+    """
+    datos_lista = []
+    precios_lista = []
+    tickers_validos = []
+
+    for ticker in tickers:
+        print(f"Descargando {ticker}...")
+        df = yf.download(ticker, start=start_date, end=end_date)
+
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        if df.empty:
+            print(f"¡ERROR! No hay datos para {ticker} en esas fechas.")
+            continue
+
+        # Precios de cierre → fichero separado para la mecánica del entorno
+        precios_cols = df[['Close']].copy()
+        precios_cols.columns = [f"{ticker}_Close"]
+        precios_lista.append(precios_cols)
+
+        # Retornos logarítmicos y momentos estadísticos (memoria larga y colas pesadas)
+        df['retornos'] = np.log(df['Close'] / df['Close'].shift(1))
+        window = 20
+        df['skewness']   = df['retornos'].rolling(window=window).skew()
+        df['kurtosis']   = df['retornos'].rolling(window=window).kurt()
+        df['volatilidad'] = df['retornos'].rolling(window=window).std()
+
+        # Indicadores técnicos clásicos
+        df = add_all_ta_features(
+            df, open="Open", high="High", low="Low", close="Close", volume="Volume", fillna=True
+        )
+
+        features_interes = [
+            'momentum_rsi',    # Sobrecompra / sobreventa
+            'trend_macd_diff', # Momentum de tendencia
+            'volatility_atr',  # Volatilidad de precio (rango verdadero)
+            'trend_cci',       # Desviación cíclica del precio
+            'retornos',        # Log-retorno diario
+            'skewness',        # Asimetría (¿más riesgo de caída que de subida?)
+            'kurtosis',        # Colas pesadas (¿alta probabilidad de eventos extremos?)
+            'volatilidad',     # Desviación estándar móvil (memoria larga de la volatilidad)
+        ]
+
+        df_cols = df[features_interes].copy()
+        df_cols.columns = [f"{ticker}_{c}" for c in features_interes]
+
+        datos_lista.append(df_cols)
+        tickers_validos.append(ticker)
+
+    if not datos_lista:
+        raise ValueError("No se pudo descargar ningún ticker correctamente.")
+
+    # Dataset base (features técnicas)
+    dataset = pd.concat(datos_lista, axis=1)
+    precios_originales = pd.concat(precios_lista, axis=1)
+
+    # Correlación dinámica IBIT-IVV: enseña al agente cuándo el Bitcoin actúa como
+    # "activo de refugio" (correlación baja) o "activo de riesgo" (correlación alta con IVV)
+    if 'IBIT_retornos' in dataset.columns and 'IVV_retornos' in dataset.columns:
+        dataset['corr_IBIT_IVV'] = (
+            dataset['IBIT_retornos'].rolling(window=20).corr(dataset['IVV_retornos'])
+        )
+
+    # Limpiar y alinear
+    dataset = dataset.bfill().ffill().dropna()
+    precios_originales = precios_originales.loc[dataset.index].bfill().ffill()
+
+    # Integrar dividend dynamics (solo métricas estadísticas, no importe bruto)
+    df_divs = get_table_div(tickers_validos, start_date, end_date)
+    if df_divs is not None:
+        div_cols = [c for c in df_divs.columns if any(
+            m in c for m in ['div_growth', 'div_volatility', 'div_kurtosis', 'div_skewness']
+        )]
+        df_divs_stats = df_divs[div_cols].copy()
+        df_divs_stats.index = pd.to_datetime(df_divs_stats.index)
+        dataset.index = pd.to_datetime(dataset.index)
+        # Left join: mantenemos todos los días de trading; dividendos ya tienen forward-fill diario
+        dataset = dataset.join(df_divs_stats, how='left').bfill().ffill()
+        print(f"Dividend dynamics integradas: {len(div_cols)} columnas adicionales.")
+
+    # Normalización Z-Score global (sobre features completas, sin precios absolutos)
+    dataset_norm = (dataset - dataset.mean()) / dataset.std()
+
+    # Guardar (orden descendente para legibilidad humana)
+    precios_originales.sort_index(ascending=False).to_csv("precios_originales.csv", encoding="utf-8-sig")
+    dataset_norm.sort_index(ascending=False).to_csv("features_normalizadas.csv", encoding="utf-8-sig")
+
+    n_tech   = len(tickers_validos) * 8 + (1 if 'corr_IBIT_IVV' in dataset.columns else 0)
+    n_divs   = len(div_cols) if df_divs is not None else 0
+    print(f"Dataset completo: {len(dataset_norm.columns)} features "
+          f"({n_tech} técnicas + {n_divs} dividend dynamics), {len(dataset_norm)} días.")
+    return dataset_norm, precios_originales
+
+
 def generar_dataset_hibrido_classic(tickers, start_date, end_date):
     datos_lista = []
     tickers_validos = []

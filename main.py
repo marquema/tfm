@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-from src.downloader_dataset import get_table_div, generar_dataset_hibrido
+from src.downloader_dataset import generar_dataset_completo
 from src.environment_trading import PortfolioEnv
 import os
 import pandas as pd
@@ -20,18 +20,16 @@ model = PPO.load("models/best_model/best_model.zip")
 class DownloadConfig(BaseModel):
     tickers: List[str] = 'IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB'
     start: str = "2014-01-01"
-    end: str = "2026-03-01"
+    end: str = "2026-03-23"
 
 # --- Variables Globales ---
 env = None
 
 @app.post("/fase1/preparar-datos")
 async def preparar_datos(config: DownloadConfig):
-    """Ejecuta la descarga y creación de features."""
-    #config = DownloadConfig()
-    resultado = get_table_div(config.tickers, config.start, config.end)
-    generar_dataset_hibrido(config.tickers, config.start, config.end)
-    return resultado
+    """Ejecuta la descarga y creación de features completas (técnicas + dividend dynamics)."""
+    dataset_norm, _ = generar_dataset_completo(config.tickers, config.start, config.end)
+    return {"features": dataset_norm.shape[1], "dias": len(dataset_norm)}
 
 @app.post("/fase2/inicializar-entorno")
 async def init_env():
