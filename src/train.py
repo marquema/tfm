@@ -3,6 +3,7 @@ import pandas as pd
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from src.environment_trading import PortfolioEnv
+from src.training_analysis import entrenar_academico, walk_forward_validation
 
 def entrenar_modelo(total_timesteps=100000):
     print("--- Iniciando Entrenamiento de la IA ---")

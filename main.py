@@ -1,132 +1,176 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_dataset
-from src.environment_trading import PortfolioEnv
 import os
 import pandas as pd
 import numpy as np
 from stable_baselines3 import PPO
-from src.train import entrenar_modelo, entrenar_con_validacion
-import numpy as np
-# Ejemplo rápido con FastAPI
-from fastapi import FastAPI
-from stable_baselines3 import PPO
+
+from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_dataset
+from src.environment_trading import PortfolioEnv
+from src.training_analysis import entrenar_academico, walk_forward_validation
 
 app = FastAPI(title="TFM Trading AI API")
-model = PPO.load("models/best_model/best_model.zip")
 
 # --- Modelos de Datos ---
 class DownloadConfig(BaseModel):
-    tickers: List[str] = 'IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB'
+    tickers: List[str] = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
     start: str = "2014-01-01"
     end: str = "2026-03-01"
 
 # --- Variables Globales ---
 env = None
 
+
+# ─── FASE 1: Datos ───────────────────────────────────────────────────────────
+
 @app.post("/fase1/preparar-datos")
 async def preparar_datos(config: DownloadConfig):
-    """Ejecuta la descarga y creación de features."""
-    #config = DownloadConfig()
-    resultado = descargar_dividendos(config.tickers, config.start, config.end)
+    """Descarga precios y dividendos, genera features y guarda los CSVs en data/."""
+    descargar_dividendos(config.tickers, config.start, config.end)
     generar_dataset(config.tickers, config.start, config.end)
-    return {"status": "Datos preparados", "dividendos": resultado.to_dict() if resultado is not None else {}}
+    return {"status": "Datos preparados",
+            "features": "data/normalized_features.csv",
+            "precios":  "data/original_prices.csv"}
+
+
+# ─── FASE 2: Entorno ─────────────────────────────────────────────────────────
 
 @app.post("/fase2/inicializar-entorno")
 async def init_env():
-    """Carga los CSVs y prepara el entorno de Gymnasium."""
+    """Carga los CSVs y prepara el entorno Gymnasium completo."""
     global env
     if not os.path.exists('data/normalized_features.csv'):
-        return {"error": "Primero debes ejecutar la Fase 1"}
-    
-    df_f = pd.read_csv("data/normalized_features.csv", index_col=0)
-    df_p = pd.read_csv("data/original_prices.csv", index_col=0)
-    
-    #env = PortfolioEnv(df_f, df_p)
+        return {"error": "Primero ejecuta /fase1/preparar-datos"}
+
     env = PortfolioEnv("data/normalized_features.csv", "data/original_prices.csv")
-    obs, _ = env.reset()
-
-    for _ in range(5):
-        accion_aleatoria = env.action_space.sample() # La IA "tonta"
-        obs, reward, done, _, info = env.step(accion_aleatoria)
-        print(f"Valor cartera: {info['value']:.2f}$ | Reward: {reward:.4f}")
+    env.reset()
+    return {"status": "Entorno listo", "n_assets": env.n_assets,
+            "n_pasos": len(env.df_features), "n_features": env.df_features.shape[1]}
 
 
-    return {"status": "Entorno listo", "assets": env.n_assets, "initial_obs": obs.tolist()}
+# ─── FASE 3: Entrenamiento ───────────────────────────────────────────────────
 
-
-@app.post("/fase2/ejecutar-paso")
-async def ejecutar_paso(pesos: List[float]):
+@app.post("/fase3/entrenar-academico")
+async def iniciar_entrenamiento_academico(
+    background_tasks: BackgroundTasks,
+    steps: int = 500000,
+    patience: int = 8
+):
     """
-    Recibe una lista de pesos (ej: [0.5, 0.5, 0, 0...]) 
-    y devuelve el nuevo estado del mercado.
+    Entrenamiento PPO con validación académica completa:
+      - Early stopping por reward out-of-sample (patience=N evaluaciones sin mejora)
+      - Detección de sobreajuste (gap train/eval)
+      - Diagnóstico de entropía, value loss y explained variance
+
+    Reportes generados:
+      - reports/training_diagnostics.png
+      - reports/overfitting_analysis.png
+      - models/best_model_academic/best_model.zip
     """
-    global env
-    if env is None:
-        return {"error": "El entorno no está inicializado"}
-    
-    action = np.array(pesos, dtype=np.float32)
-    obs, reward, done, truncated, info = env.step(action)
-    
+    background_tasks.add_task(
+        entrenar_academico,
+        total_timesteps=steps,
+        patience=patience
+    )
     return {
-        "valor_cartera": info["value"],
-        "recompensa": reward,
-        "finalizado": done,
-        "proxima_observacion_resumen": obs[:5].tolist() # Solo enviamos 5 para no saturar
-    }    
-    
+        "message": f"Entrenamiento académico iniciado (máx. {steps:,} pasos, patience={patience}).",
+        "reportes": [
+            "reports/training_diagnostics.png",
+            "reports/overfitting_analysis.png",
+            "models/best_model_academic/best_model.zip"
+        ]
+    }
 
-    
+
+@app.post("/fase3/walk-forward")
+async def iniciar_walk_forward(
+    background_tasks: BackgroundTasks,
+    n_ventanas: int = 5,
+    steps_por_ventana: int = 100000
+):
+    """
+    Validación Walk-Forward: equivalente temporal del cross-validation.
+
+    Divide la serie en N ventanas solapadas. Por cada ventana entrena en el
+    70% inicial y evalúa en el 30% final (out-of-sample). Mide si la política
+    generaliza a períodos no vistos y detecta dependencia de régimen.
+
+    Reportes generados:
+      - reports/walk_forward_results.csv
+      - reports/walk_forward_analysis.png
+    """
+    background_tasks.add_task(
+        walk_forward_validation,
+        features_path='data/normalized_features.csv',
+        prices_path='data/original_prices.csv',
+        n_ventanas=n_ventanas,
+        total_timesteps=steps_por_ventana
+    )
+    return {
+        "message": f"Walk-forward iniciado: {n_ventanas} ventanas × {steps_por_ventana:,} pasos c/u.",
+        "reportes": [
+            "reports/walk_forward_results.csv",
+            "reports/walk_forward_analysis.png"
+        ]
+    }
+
+
+# ─── INFERENCIA ──────────────────────────────────────────────────────────────
+
+@app.get("/inferencia/pesos-actuales")
+async def predecir_pesos():
+    """
+    Carga el mejor modelo académico y devuelve los pesos recomendados
+    para el último estado disponible en los datos de test (20% final).
+    """
+    modelo_path = "models/best_model_academic/best_model.zip"
+    if not os.path.exists(modelo_path):
+        return {"error": f"No hay modelo entrenado en {modelo_path}. Ejecuta /fase3/entrenar-academico"}
+
+    df_f      = pd.read_csv('data/normalized_features.csv', index_col=0)
+    split_idx = int(len(df_f) * 0.8)
+
+    # Usar el entorno de test para que el agente opere en datos no vistos
+    env_test = PortfolioEnv(
+        'data/normalized_features.csv',
+        'data/original_prices.csv',
+        start_idx=split_idx
+    )
+    modelo = PPO.load(modelo_path)
+    obs, _ = env_test.reset()
+
+    # Avanzar hasta el último paso disponible
+    done = False
+    while not done:
+        action, _ = modelo.predict(obs, deterministic=True)
+        obs, _, done, _, info = env_test.step(action)
+
+    # Normalizar la última acción
+    weights = np.clip(action, 0, 1)
+    weights = weights / (weights.sum() + 1e-6)
+
+    tickers = pd.read_csv('data/original_prices.csv', index_col=0).columns.tolist()
+    return {
+        "pesos_recomendados": {t: f"{float(w)*100:.2f}%" for t, w in zip(tickers, weights)},
+        "valor_final_test":   f"${info['value']:,.2f}"
+    }
+
+
+# ─── ESTADO ──────────────────────────────────────────────────────────────────
 
 @app.get("/estado")
 async def ver_estado():
-    return {"fase1_completada": os.path.exists('data/normalized_features.csv'),
-            "entorno_activo": env is not None}
-
-
-@app.post("/fase3/entrenar")
-async def iniciar_entrenamiento(background_tasks: BackgroundTasks, steps: int = 100000):
-    """Lanza el entrenamiento en segundo plano."""
-    #background_tasks.add_task(entrenar_modelo, total_timesteps=steps)
-    background_tasks.add_task(entrenar_con_validacion, total_timesteps=steps)
-    
-    return {"message": f"Entrenamiento iniciado para {steps} pasos. Revisa la consola para el progreso."}
-
-@app.get("/fase3/predecir-accion")
-async def predecir_accion():
-    """Carga el modelo guardado y sugiere los pesos para el día actual."""
-    if not os.path.exists("models/ppo_portfolio_manager.zip"):
-        return {"error": "No hay ningún modelo entrenado todavía."}
-    
-    # 1. Cargar el modelo y el entorno
-    model = PPO.load("models/ppo_portfolio_manager")
-    global env
-    if env is None:
-        env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv')
-    
-    # 2. Obtener la observación actual (el "hoy" del mercado)
-    obs, _ = env.reset() # En un caso real, aquí usaríamos los datos más recientes
-    
-    # 3. Pedirle a la IA su decisión
-    action, _states = model.predict(obs, deterministic=True)
-    
-    # 4. Normalizar para que sumen 1 (Portfolio Weights)
-    weights = action / (np.sum(action) + 1e-6)
-    
-    # Asociar pesos con nombres de activos
-    tickers = pd.read_csv('data/original_prices.csv', index_col=0).columns.tolist()
-    resultado = {tickers[i]: f"{float(weights[i])*100:.2f}%" for i in range(len(tickers))}
-    
-    return {"recomendacion_pesos": resultado}
-
-
-
-
-
-@app.post("/predict")
-def predict(data: dict):
-    # Lógica para convertir JSON a array de numpy
-    obs = np.array(data['features'])
-    action, _ = model.predict(obs, deterministic=True)
-    return {"weights": action.tolist()}
+    """Comprueba qué fases están completadas."""
+    return {
+        "fase1_datos":        os.path.exists('data/normalized_features.csv'),
+        "fase3_modelo_std":   os.path.exists('models/best_model/best_model.zip'),
+        "fase3_modelo_acad":  os.path.exists('models/best_model_academic/best_model.zip'),
+        "reportes": {
+            "backtest":      os.path.exists('reports/backtest_principal.png'),
+            "diagnostico":   os.path.exists('reports/training_diagnostics.png'),
+            "overfitting":   os.path.exists('reports/overfitting_analysis.png'),
+            "walk_forward":  os.path.exists('reports/walk_forward_analysis.png'),
+            "regimenes":     os.path.exists('reports/regime_analysis.png'),
+        }
+    }

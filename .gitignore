@@ -5,7 +5,7 @@ backup/
 logs/
 .idea
 *.pyc.*
-data/*.csv
-models/*.zip
+data/
+models/
 reports/
 __pycache__/
