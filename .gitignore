@@ -4,3 +4,4 @@
 backup/
 logs/
 .idea
+*.pyc.*

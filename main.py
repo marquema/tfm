@@ -1,7 +1,7 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-from src.downloader_dataset import get_table_div, generar_dataset_hibrido
+from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_dataset
 from src.environment_trading import PortfolioEnv
 import os
 import pandas as pd
@@ -29,22 +29,22 @@ env = None
 async def preparar_datos(config: DownloadConfig):
     """Ejecuta la descarga y creación de features."""
     #config = DownloadConfig()
-    resultado = get_table_div(config.tickers, config.start, config.end)
-    generar_dataset_hibrido(config.tickers, config.start, config.end)
-    return resultado
+    resultado = descargar_dividendos(config.tickers, config.start, config.end)
+    generar_dataset(config.tickers, config.start, config.end)
+    return {"status": "Datos preparados", "dividendos": resultado.to_dict() if resultado is not None else {}}
 
 @app.post("/fase2/inicializar-entorno")
 async def init_env():
     """Carga los CSVs y prepara el entorno de Gymnasium."""
     global env
-    if not os.path.exists('data/features_normalizadas.csv'):
+    if not os.path.exists('data/normalized_features.csv'):
         return {"error": "Primero debes ejecutar la Fase 1"}
     
-    df_f = pd.read_csv("data/features_normalizadas.csv", index_col=0)
-    df_p = pd.read_csv("data/precios_originales.csv", index_col=0)
+    df_f = pd.read_csv("data/normalized_features.csv", index_col=0)
+    df_p = pd.read_csv("data/original_prices.csv", index_col=0)
     
     #env = PortfolioEnv(df_f, df_p)
-    env = PortfolioEnv("data/features_normalizadas.csv", "data/precios_originales.csv")
+    env = PortfolioEnv("data/normalized_features.csv", "data/original_prices.csv")
     obs, _ = env.reset()
 
     for _ in range(5):
@@ -81,7 +81,7 @@ async def ejecutar_paso(pesos: List[float]):
 
 @app.get("/estado")
 async def ver_estado():
-    return {"fase1_completada": os.path.exists('data/features_normalizadas.csv'),
+    return {"fase1_completada": os.path.exists('data/normalized_features.csv'),
             "entorno_activo": env is not None}
 
 
@@ -103,7 +103,7 @@ async def predecir_accion():
     model = PPO.load("models/ppo_portfolio_manager")
     global env
     if env is None:
-        env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv')
+        env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv')
     
     # 2. Obtener la observación actual (el "hoy" del mercado)
     obs, _ = env.reset() # En un caso real, aquí usaríamos los datos más recientes
@@ -115,7 +115,7 @@ async def predecir_accion():
     weights = action / (np.sum(action) + 1e-6)
     
     # Asociar pesos con nombres de activos
-    tickers = pd.read_csv('data/precios_originales.csv', index_col=0).columns.tolist()
+    tickers = pd.read_csv('data/original_prices.csv', index_col=0).columns.tolist()
     resultado = {tickers[i]: f"{float(weights[i])*100:.2f}%" for i in range(len(tickers))}
     
     return {"recomendacion_pesos": resultado}

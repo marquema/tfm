@@ -1,0 +1,7 @@
+﻿,Estrategia,N días,Retorno Total (%),Volatilidad Anualizada (%),Sharpe Ratio,Sortino Ratio,Max Drawdown (%)
+Baja Volatilidad,IA,63.0,2.44,11.99,0.543,0.739,-3.84
+Alta Volatilidad,IA,553.0,17.35,20.93,0.262,0.379,-13.97
+Baja Volatilidad,BH,63.0,6.28,9.06,2.339,3.355,-4.01
+Alta Volatilidad,BH,553.0,47.61,11.78,1.229,1.808,-6.94
+Baja Volatilidad,EW,63.0,6.18,9.1,2.284,3.268,-4.04
+Alta Volatilidad,EW,553.0,46.96,11.77,1.213,1.777,-7.08

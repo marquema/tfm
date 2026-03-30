@@ -18,8 +18,8 @@ commission = st.sidebar.slider("Comisión por Operación (%)", 0.0, 0.5, 0.1) / 
 # --- CARGAR DATOS ---
 @st.cache_data
 def load_data():
-    df_f = pd.read_csv('data/features_normalizadas.csv')
-    df_p = pd.read_csv('data/precios_originales.csv')
+    df_f = pd.read_csv('data/normalized_features.csv')
+    df_p = pd.read_csv('data/original_prices.csv')
     return df_f, df_p
 
 df_f, df_p = load_data()
@@ -29,7 +29,7 @@ if st.button('Lanzar Simulación en Datos de Test'):
     with st.spinner('La IA está operando en el mercado...'):
         # Inicializar entorno de test (20% final)
         split_idx = int(len(df_f) * 0.8)
-        env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv', 
+        env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv',
                            start_idx=split_idx, commission=commission)
         model = PPO.load(model_path)
         
@@ -62,9 +62,7 @@ if st.button('Lanzar Simulación en Datos de Test'):
 
         last_weights = np.array(weights_history[-1]).flatten()
         
-        # 2. DEBUG (Opcional: puedes borrar esto después de que funcione)
-        st.write(f"Dimensiones de pesos: {last_weights.shape}") 
-        tickers = df_p.columns[-7:]
+        tickers = df_p.columns.tolist()
         
         #print(last_weights)
         #df_aux = df_p[[:,-7]]

@@ -11,6 +11,7 @@ yahoo_fin
 fastapi
 pydantic
 uvicorn
-stable-baselines3
 setuptools
 streamlit
+scipy>=1.11.0
+curl_cffi>=0.5.0
