@@ -1,130 +1,122 @@
 from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
 from typing import List
-from src.downloader_dataset import generar_dataset_completo
-from src.environment_trading import PortfolioEnv
-from src.train import entrenar_con_validacion, entrenar_ablacion
 import os
-import pandas as pd
 import numpy as np
+import pandas as pd
 from stable_baselines3 import PPO
 
-app = FastAPI(title="TFM Trading AI API")
-model = PPO.load("models/best_model/best_model.zip")
+from src.data_pipeline import generar_dataset_completo
+from src.trading_env import PortfolioEnv
+from src.train import (
+    entrenar_con_validacion,
+    entrenar_ablacion,
+    entrenar_multisemilla,
+    walk_forward_validation,
+)
 
-# --- Modelos de Datos ---
+app = FastAPI(title="TFM Trading AI API")
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
 class DownloadConfig(BaseModel):
-    tickers: List[str] = 'IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB'
-    start: str = "2014-01-01"
+    tickers: List[str] = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'AWK', 'CB']
+    start: str = "2000-01-01"
     end: str = "2026-03-23"
 
-# --- Variables Globales ---
-env = None
 
-@app.post("/fase1/preparar-datos")
-async def preparar_datos(config: DownloadConfig):
-    """Ejecuta la descarga y creación de features completas (técnicas + dividend dynamics)."""
+# ---------------------------------------------------------------------------
+# Phase 1 - Data
+# ---------------------------------------------------------------------------
+
+@app.post("/phase1/prepare-data")
+async def prepare_data(config: DownloadConfig):
+    """Download Yahoo Finance data and generate features_normalizadas.csv + precios_originales.csv."""
     dataset_norm, _ = generar_dataset_completo(config.tickers, config.start, config.end)
-    return {"features": dataset_norm.shape[1], "dias": len(dataset_norm)}
-
-@app.post("/fase2/inicializar-entorno")
-async def init_env():
-    """Carga los CSVs y prepara el entorno de Gymnasium."""
-    global env
-    if not os.path.exists('data/features_normalizadas.csv'):
-        return {"error": "Primero debes ejecutar la Fase 1"}
-    
-    df_f = pd.read_csv("data/features_normalizadas.csv", index_col=0)
-    df_p = pd.read_csv("data/precios_originales.csv", index_col=0)
-    
-    #env = PortfolioEnv(df_f, df_p)
-    env = PortfolioEnv("data/features_normalizadas.csv", "data/precios_originales.csv")
-    obs, _ = env.reset()
-
-    for _ in range(5):
-        accion_aleatoria = env.action_space.sample() # La IA "tonta"
-        obs, reward, done, _, info = env.step(accion_aleatoria)
-        print(f"Valor cartera: {info['value']:.2f}$ | Reward: {reward:.4f}")
+    return {"features": dataset_norm.shape[1], "days": len(dataset_norm)}
 
 
-    return {"status": "Entorno listo", "assets": env.n_assets, "initial_obs": obs.tolist()}
+# ---------------------------------------------------------------------------
+# Phase 2 - Status
+# ---------------------------------------------------------------------------
 
-
-@app.post("/fase2/ejecutar-paso")
-async def ejecutar_paso(pesos: List[float]):
-    """
-    Recibe una lista de pesos (ej: [0.5, 0.5, 0, 0...]) 
-    y devuelve el nuevo estado del mercado.
-    """
-    global env
-    if env is None:
-        return {"error": "El entorno no está inicializado"}
-    
-    action = np.array(pesos, dtype=np.float32)
-    obs, reward, done, truncated, info = env.step(action)
-    
+@app.get("/status")
+async def get_status():
+    """Check which pipeline stages have been completed."""
     return {
-        "valor_cartera": info["value"],
-        "recompensa": reward,
-        "finalizado": done,
-        "proxima_observacion_resumen": obs[:5].tolist() # Solo enviamos 5 para no saturar
-    }    
-    
-
-    
-
-@app.get("/estado")
-async def ver_estado():
-    return {"fase1_completada": os.path.exists('data/features_normalizadas.csv'),
-            "entorno_activo": env is not None}
+        "phase1_done":    os.path.exists('data/features_normalizadas.csv'),
+        "model_trained":  os.path.exists('models/best_model/best_model.zip'),
+        "ablation_done":  os.path.exists('models/ablation_log_return/best_model.zip'),
+        "multiseed_done": os.path.exists('models/multisemilla.csv'),
+        "wfv_done":       os.path.exists('models/wfv_resultados.csv'),
+    }
 
 
-@app.post("/fase3/entrenar")
-async def iniciar_entrenamiento(background_tasks: BackgroundTasks, steps: int = 100000):
-    """Lanza el entrenamiento en segundo plano."""
+# ---------------------------------------------------------------------------
+# Phase 3 - Training
+# ---------------------------------------------------------------------------
+
+@app.post("/phase3/train")
+async def start_training(background_tasks: BackgroundTasks, steps: int = 300000):
+    """Main PPO training (reward_mode=sharpe_drawdown). Saves best model to models/best_model/."""
     background_tasks.add_task(entrenar_con_validacion, total_timesteps=steps)
-    return {"message": f"Entrenamiento principal iniciado ({steps} pasos). reward_mode=sharpe_drawdown."}
+    return {"message": f"Main training started ({steps} steps)."}
 
-@app.post("/fase3/ablacion")
-async def iniciar_ablacion(background_tasks: BackgroundTasks, steps: int = 100000):
-    """Lanza el entrenamiento baseline (sin penalización de drawdown) para el ablation study."""
+
+@app.post("/phase3/ablation")
+async def start_ablation(background_tasks: BackgroundTasks, steps: int = 300000):
+    """Ablation baseline (reward_mode=log_return, no drawdown penalty)."""
     background_tasks.add_task(entrenar_ablacion, total_timesteps=steps)
-    return {"message": f"Ablation iniciado ({steps} pasos). reward_mode=log_return."}
-
-@app.get("/fase3/predecir-accion")
-async def predecir_accion():
-    """Carga el modelo guardado y sugiere los pesos para el día actual."""
-    if not os.path.exists("models/ppo_portfolio_manager.zip"):
-        return {"error": "No hay ningún modelo entrenado todavía."}
-    
-    # 1. Cargar el modelo y el entorno
-    model = PPO.load("models/ppo_portfolio_manager")
-    global env
-    if env is None:
-        env = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv')
-    
-    # 2. Obtener la observación actual (el "hoy" del mercado)
-    obs, _ = env.reset() # En un caso real, aquí usaríamos los datos más recientes
-    
-    # 3. Pedirle a la IA su decisión
-    action, _states = model.predict(obs, deterministic=True)
-    
-    # 4. Normalizar para que sumen 1 (Portfolio Weights)
-    weights = action / (np.sum(action) + 1e-6)
-    
-    # Asociar pesos con nombres de activos
-    tickers = pd.read_csv('data/precios_originales.csv', index_col=0).columns.tolist()
-    resultado = {tickers[i]: f"{float(weights[i])*100:.2f}%" for i in range(len(tickers))}
-    
-    return {"recomendacion_pesos": resultado}
+    return {"message": f"Ablation study started ({steps} steps)."}
 
 
+@app.post("/phase3/multiseed")
+async def start_multiseed(background_tasks: BackgroundTasks, steps: int = 300000):
+    """Train with 3 different seeds. Saves Sharpe mean +/- std to models/multisemilla.csv."""
+    background_tasks.add_task(entrenar_multisemilla, total_timesteps=steps)
+    return {"message": f"Multi-seed training started ({steps} steps x 3 seeds)."}
 
 
+@app.post("/phase3/walk-forward")
+async def start_walk_forward(background_tasks: BackgroundTasks, steps: int = 100000):
+    """Walk-forward validation with 3 chronological windows. Saves to models/wfv_resultados.csv."""
+    background_tasks.add_task(walk_forward_validation, total_timesteps=steps)
+    return {"message": f"Walk-forward validation started ({steps} steps x 3 windows)."}
 
-@app.post("/predict")
-def predict(data: dict):
-    # Lógica para convertir JSON a array de numpy
-    obs = np.array(data['features'])
+
+# ---------------------------------------------------------------------------
+# Phase 4 - Inference
+# ---------------------------------------------------------------------------
+
+@app.get("/predict")
+async def predict_action():
+    """Load best model and return recommended portfolio weights for today."""
+    model_path = "models/best_model/best_model.zip"
+    if not os.path.exists(model_path):
+        return {"error": "No trained model found. Run /phase3/train first."}
+    if not os.path.exists('data/features_normalizadas.csv'):
+        return {"error": "No data found. Run /phase1/prepare-data first."}
+
+    model = PPO.load(model_path)
+    env   = PortfolioEnv('data/features_normalizadas.csv', 'data/precios_originales.csv')
+    obs, _ = env.reset()
     action, _ = model.predict(obs, deterministic=True)
-    return {"weights": action.tolist()}
+
+    # Normalise to portfolio weights (same logic as trading_env)
+    action_sum = float(np.sum(action))
+    if action_sum > 1e-6:
+        risky_fraction = min(action_sum, 1.0)
+        weights = (action / action_sum) * risky_fraction
+    else:
+        weights = np.zeros(len(action))
+    cash_pct = max(1.0 - float(np.sum(weights)), 0.0)
+
+    tickers = pd.read_csv('data/precios_originales.csv', index_col=0).columns.tolist()
+    tickers = [t.replace("_Close", "") for t in tickers]
+
+    result = {tickers[i]: f"{float(weights[i])*100:.2f}%" for i in range(len(tickers))}
+    result["CASH"] = f"{cash_pct*100:.2f}%"
+
+    return {"recommended_weights": result}

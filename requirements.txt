@@ -14,3 +14,6 @@ uvicorn
 stable-baselines3
 setuptools
 streamlit
+#plotly>=5.18.0
+#curl_cffi
+#scipy>=1.11.0

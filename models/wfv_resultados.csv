@@ -1,0 +1,4 @@
+ventana,descripcion,train_dias,test_dias,sharpe,max_drawdown
+1,Train 2000–2012 → Test 2012–2017,3233,1055,0.4588,-0.1256
+2,Train 2000–2017 → Test 2017–2021,4288,1122,-0.11,-0.2628
+3,Train 2000–2021 → Test 2021–2026,5410,1188,0.4613,-0.1333

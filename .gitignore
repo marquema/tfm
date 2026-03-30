@@ -5,3 +5,4 @@ backup/
 logs/
 .idea
 *.png
+*.pyc.*
