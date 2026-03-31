@@ -83,7 +83,7 @@ class AcademicMonitorCallback(BaseCallback):
         self.metricas['approx_kl'].append(vals.get('train/approx_kl', np.nan))
         self.metricas['clip_fraction'].append(vals.get('train/clip_fraction', np.nan))
 
-    def guardar_reporte(self, ruta: str = 'reports/training_diagnostics.png') -> None:
+    def guardar_reporte(self, ruta: str = 'src/reports/training_diagnostics.png') -> None:
         """Genera el panel de diagnóstico académico del entrenamiento."""
         os.makedirs(os.path.dirname(ruta), exist_ok=True)
         steps = self.metricas['timesteps']
@@ -182,54 +182,68 @@ class AcademicMonitorCallback(BaseCallback):
 
 def walk_forward_validation(features_path: str,
                              prices_path: str,
-                             n_ventanas: int = 5,
-                             total_timesteps: int = 100000,
-                             split_train: float = 0.7) -> pd.DataFrame:
+                             dias_train: int = 504,
+                             dias_test: int  = 252,
+                             total_timesteps: int = 100000) -> pd.DataFrame:
     """
-    Validación Walk-Forward: equivalente temporal del cross-validation.
+    Validación Walk-Forward con ventanas de tamaño fijo.
 
-    Divide la serie histórica en N ventanas solapadas y en cada una:
-      - Entrena el agente PPO en el 70% inicial de la ventana
-      - Evalúa en el 30% final (out-of-sample para esa ventana)
-      - Registra Sharpe, Sortino, MDD y retorno total
+    El número de ventanas lo determina el propio dataset — no es un parámetro.
+    Avanza un periodo de test cada vez (rolling de 1 año).
 
-    Este procedimiento replica cómo operaría un gestor real:
-    reentrenando periódicamente con datos históricos y evaluando en el siguiente período.
+    Criterios de tamaño de ventana:
+      - dias_train = 504 (2 años): mínimo para que PPO vea suficientes episodios completos
+      - dias_test  = 252 (1 año): mínimo para que el Sharpe anualizado sea estadísticamente fiable
+        (con < 252 días el factor sqrt(252) distorsiona la métrica)
+
+    Con el dataset actual (2018-2026, 8.2 años) genera 6 ventanas automáticamente.
+    Si se amplía el rango histórico, el número de ventanas crece sin cambiar el código.
 
     Permite detectar:
-      - Si el Sharpe medio > 0 en TODAS las ventanas → política generalmente rentable
-      - Alta varianza entre ventanas → política inestable, dependiente del régimen
-      - Degradación monotónica de Sharpe en ventanas más recientes → overfitting a datos viejos
-
-    Parámetros
-    ----------
-    n_ventanas      : número de ventanas de validación (recomendado: 4–6)
-    total_timesteps : pasos de entrenamiento por ventana (reducido respecto al entrenamiento final)
-    split_train     : fracción de cada ventana usada para entrenamiento
+      - Sharpe medio > 0 en todas las ventanas: política generalmente rentable
+      - Alta varianza entre ventanas: política inestable, dependiente del régimen
+      - Degradación monotónica en ventanas recientes: overfitting a datos viejos
 
     Referencia
     ----------
-    López de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
+    Lopez de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
     """
-    df_f = pd.read_csv(features_path, index_col=0)
+    df_f    = pd.read_csv(features_path, index_col=0)
     n_total = len(df_f)
 
-    # Tamaño de ventana: solapada, avanza 1/N del total en cada paso
-    paso      = n_total // (n_ventanas + 1)
-    resultados = []
+    # Calcular ventanas con tamaño fijo: el número surge del dato, no del parámetro
+    ventanas = []
+    inicio = 0
+    while inicio + dias_train + dias_test <= n_total:
+        split = inicio + dias_train
+        fin   = split + dias_test
+        ventanas.append((inicio, split, fin))
+        inicio += dias_test   # avanza exactamente 1 periodo de test
 
+    n_ventanas = len(ventanas)
+    if n_ventanas == 0:
+        raise ValueError(
+            f"Dataset insuficiente ({n_total} dias) para "
+            f"train={dias_train}d + test={dias_test}d. "
+            f"Reduce dias_train o amplia el rango de fechas."
+        )
+
+    resultados = []
     print(f"\n{'='*60}")
-    print(f"WALK-FORWARD VALIDATION — {n_ventanas} ventanas")
-    print(f"Total de datos: {n_total} días | Paso entre ventanas: {paso} días")
+    print(f"WALK-FORWARD VALIDATION")
+    print(f"Dataset: {n_total} dias ({n_total/252:.1f} anios) | "
+          f"Train: {dias_train}d ({dias_train/252:.0f}a) | "
+          f"Test: {dias_test}d (1a)")
+    print(f"Ventanas calculadas automaticamente: {n_ventanas}")
     print(f"{'='*60}")
 
-    for i in range(n_ventanas):
-        inicio  = i * paso
-        fin     = inicio + paso * 2           # ventana de 2×paso días
-        fin     = min(fin, n_total)
-        split   = inicio + int((fin - inicio) * split_train)
-
-        print(f"\n[Ventana {i+1}/{n_ventanas}] Train: días {inicio}–{split} | Test: días {split}–{fin}")
+    for i, (inicio, split, fin) in enumerate(ventanas):
+        fecha_ini   = df_f.index[inicio][:10]
+        fecha_split = df_f.index[split][:10]
+        fecha_fin   = df_f.index[fin - 1][:10]
+        print(f"\n[Ventana {i+1}/{n_ventanas}] "
+              f"Train: {fecha_ini} a {fecha_split} ({split-inicio}d) | "
+              f"Test: {fecha_split} a {fecha_fin} ({fin-split}d)")
 
         # Entrenamiento dentro de la ventana
         train_env = PortfolioEnv(features_path, prices_path,
@@ -279,15 +293,15 @@ def walk_forward_validation(features_path: str,
     print(f"{'='*60}")
 
     # Guardar resultados
-    os.makedirs('reports', exist_ok=True)
-    df_wf.to_csv('reports/walk_forward_results.csv')
+    os.makedirs('src/reports', exist_ok=True)
+    df_wf.to_csv('src/reports/walk_forward_results.csv')
     _plot_walk_forward(df_wf)
 
     return df_wf
 
 
 def _plot_walk_forward(df: pd.DataFrame,
-                       ruta: str = 'reports/walk_forward_analysis.png') -> None:
+                       ruta: str = 'src/reports/walk_forward_analysis.png') -> None:
     """Visualización del análisis walk-forward."""
     fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.suptitle('Walk-Forward Validation — Estabilidad de la Política',
@@ -341,13 +355,16 @@ class OverfitDetectorCallback(BaseCallback):
     """
 
     def __init__(self, eval_env, eval_freq=10000, n_eval_ep=3,
-                 patience=5, min_mejora=0.01, verbose=1):
+                 patience=5, min_mejora_pct=0.02, verbose=1):
         super().__init__(verbose)
-        self.eval_env    = eval_env
-        self.eval_freq   = eval_freq
-        self.n_eval_ep   = n_eval_ep
-        self.patience    = patience
-        self.min_mejora  = min_mejora
+        self.eval_env       = eval_env
+        self.eval_freq      = eval_freq
+        self.n_eval_ep      = n_eval_ep
+        self.patience       = patience
+        # Mejora mínima en términos RELATIVOS al mejor valor visto (2% por defecto).
+        # Usar porcentaje evita que la escala del reward (puede ser -50 a +50)
+        # haga que min_mejora absoluta sea irrelevante.
+        self.min_mejora_pct = min_mejora_pct
 
         self.historial_train = []
         self.historial_eval  = []
@@ -383,7 +400,9 @@ class OverfitDetectorCallback(BaseCallback):
         self.timesteps_log.append(self.num_timesteps)
 
         # Early stopping con paciencia
-        if reward_eval > self.mejor_eval + self.min_mejora:
+        # Mejora mínima relativa: el reward_eval debe superar el mejor en un % del rango actual
+        umbral_mejora = abs(self.mejor_eval) * self.min_mejora_pct if self.mejor_eval != -np.inf else 0.01
+        if reward_eval > self.mejor_eval + umbral_mejora:
             self.mejor_eval       = reward_eval
             self.pasos_sin_mejora = 0
         else:
@@ -408,7 +427,7 @@ class OverfitDetectorCallback(BaseCallback):
 
         return True
 
-    def guardar_curvas(self, ruta: str = 'reports/overfitting_analysis.png') -> None:
+    def guardar_curvas(self, ruta: str = 'src/reports/overfitting_analysis.png') -> None:
         """Visualiza el gap train vs eval para detectar sobreajuste."""
         if not self.timesteps_log:
             return
@@ -531,8 +550,8 @@ def entrenar_academico(features_path: str = 'data/normalized_features.csv',
 
     # Guardar reportes
     print("\nGenerando reportes de diagnóstico...")
-    monitor_cb.guardar_reporte('reports/training_diagnostics.png')
-    overfit_cb.guardar_curvas('reports/overfitting_analysis.png')
+    monitor_cb.guardar_reporte('src/reports/training_diagnostics.png')
+    overfit_cb.guardar_curvas('src/reports/overfitting_analysis.png')
 
     model.save("models/ppo_academic_final")
     print("\nModelo final guardado en models/ppo_academic_final.zip")

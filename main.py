@@ -86,15 +86,17 @@ async def iniciar_entrenamiento_academico(
 @app.post("/fase3/walk-forward")
 async def iniciar_walk_forward(
     background_tasks: BackgroundTasks,
-    n_ventanas: int = 5,
     steps_por_ventana: int = 100000
 ):
     """
-    Validación Walk-Forward: equivalente temporal del cross-validation.
+    Validación Walk-Forward con ventanas de tamaño fijo (2 años train + 1 año test).
 
-    Divide la serie en N ventanas solapadas. Por cada ventana entrena en el
-    70% inicial y evalúa en el 30% final (out-of-sample). Mide si la política
-    generaliza a períodos no vistos y detecta dependencia de régimen.
+    El número de ventanas y su tamaño se calculan internamente a partir del dataset
+    disponible en data/normalized_features.csv. Con datos desde 2018 produce 6 ventanas;
+    si se amplía el rango histórico, las ventanas se añaden automáticamente.
+
+    steps_por_ventana: pasos de entrenamiento PPO por cada ventana. Ajustar según
+    recursos disponibles (100k = rápido/orientativo, 300k = más preciso).
 
     Reportes generados:
       - reports/walk_forward_results.csv
@@ -104,11 +106,11 @@ async def iniciar_walk_forward(
         walk_forward_validation,
         features_path='data/normalized_features.csv',
         prices_path='data/original_prices.csv',
-        n_ventanas=n_ventanas,
         total_timesteps=steps_por_ventana
     )
     return {
-        "message": f"Walk-forward iniciado: {n_ventanas} ventanas × {steps_por_ventana:,} pasos c/u.",
+        "message": f"Walk-forward iniciado ({steps_por_ventana:,} pasos/ventana). "
+                   "El numero de ventanas se calcula del dataset.",
         "reportes": [
             "reports/walk_forward_results.csv",
             "reports/walk_forward_analysis.png"

@@ -1,6 +1,0 @@
-﻿,Retorno Total (%),CAGR (%),Volatilidad Anualizada (%),Sharpe Ratio,Sortino Ratio,Max Drawdown (%),Valor Final ($)
-IA_PPO,19.71,7.65,20.19,0.268,0.384,-13.97,11971.25
-Equal_Weight_Mensual,54.86,19.63,11.52,1.266,1.847,-7.08,15485.51
-Buy_and_Hold,55.68,19.89,11.53,1.284,1.882,-6.94,15568.3
-Cartera_60_40,36.23,13.51,9.69,0.943,1.28,-11.25,13623.05
-Markowitz_MV,21.35,14.38,13.72,0.757,0.982,-12.27,12182.21
