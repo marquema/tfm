@@ -390,32 +390,40 @@ class OverfitDetectorCallback(BaseCallback):
         if self.num_timesteps % self.eval_freq != 0:
             return True
 
-        # Reward medio en train (últimos episodios del rollout buffer)
+        # Reward por step en train (ep_info_buffer contiene 'r'=total y 'l'=length).
+        # Normalizar por longitud del episodio evita que datasets más largos produzcan
+        # rewards acumulados mayores en magnitud y hagan incomparable la señal de mejora.
         if hasattr(self.model, 'ep_info_buffer') and len(self.model.ep_info_buffer) > 0:
-            reward_train = np.mean([ep['r'] for ep in self.model.ep_info_buffer])
+            reward_train = np.mean([
+                ep['r'] / max(ep['l'], 1) for ep in self.model.ep_info_buffer
+            ])
         else:
             reward_train = np.nan
 
-        # Reward medio en eval (N episodios deterministas)
+        # Reward por step en eval (N episodios deterministas)
         rewards_eval = []
         for _ in range(self.n_eval_ep):
             obs, _ = self.eval_env.reset()
             done   = False
             total  = 0.0
+            pasos  = 0
             while not done:
                 action, _ = self.model.predict(obs, deterministic=True)
                 obs, rew, done, _, _ = self.eval_env.step(action)
                 total += rew
-            rewards_eval.append(total)
+                pasos += 1
+            rewards_eval.append(total / max(pasos, 1))
         reward_eval = np.mean(rewards_eval)
 
         self.historial_train.append(reward_train)
         self.historial_eval.append(reward_eval)
         self.timesteps_log.append(self.num_timesteps)
 
-        # Early stopping con paciencia
-        # Mejora mínima relativa: el reward_eval debe superar el mejor en un % del rango actual
-        umbral_mejora = abs(self.mejor_eval) * self.min_mejora_pct if self.mejor_eval != -np.inf else 0.01
+        # Early stopping con paciencia.
+        # Umbral de mejora: ahora los rewards son por step (escala ~[-0.5, 0.5]),
+        # así que usamos un umbral absoluto pequeño fijo (0.001) en lugar de
+        # relativo al mejor valor, que con valores negativos grandes era demasiado exigente.
+        umbral_mejora = 0.001
         if reward_eval > self.mejor_eval + umbral_mejora:
             self.mejor_eval       = reward_eval
             self.pasos_sin_mejora = 0
@@ -519,13 +527,33 @@ def entrenar_academico(features_path: str = 'data/normalized_features.csv',
     train_env = PortfolioEnv(features_path, prices_path, end_idx=split_idx)
     eval_env  = PortfolioEnv(features_path, prices_path, start_idx=split_idx)
 
+    # eval_freq adaptativo: evaluar cada ~20 episodios completos de entrenamiento.
+    # Con dataset largo (split_idx=2000 steps/ep), eval_freq=10000 → solo 5 episodios
+    # entre evaluaciones → señal de mejora ruidosa → early stopping prematuro.
+    # Con dataset corto (split_idx=100 steps/ep), eval_freq=10000 → 100 episodios
+    # entre evaluaciones → umbral de mejora relativo se vuelve muy pequeño → nunca para.
+    # Solución: eval_freq = 20 episodios × longitud del episodio de train.
+    ep_len_train = split_idx  # el entorno recorre todo el split en cada episodio
+    eval_freq = max(5000, min(50000, ep_len_train * 20))
+
+    # Patience adaptativa: más pasos totales → más evaluaciones antes de rendir.
+    # Con total_timesteps=500000 y eval_freq adaptativo, habrá ~total/eval_freq evaluaciones.
+    # Patience = 30% de esas evaluaciones, con mínimo 5 y máximo 15.
+    n_evaluaciones_total = total_timesteps // eval_freq
+    patience_efectiva = max(5, min(15, n_evaluaciones_total // 3))
+
+    print(f"  Longitud episodio train: {ep_len_train} steps")
+    print(f"  eval_freq adaptativo:    {eval_freq} steps (~20 episodios)")
+    print(f"  Evaluaciones previstas:  {n_evaluaciones_total}")
+    print(f"  Patience efectiva:       {patience_efectiva} evaluaciones sin mejora")
+
     # Callbacks
     monitor_cb  = AcademicMonitorCallback(verbose=0)
     overfit_cb  = OverfitDetectorCallback(
         eval_env=eval_env,
-        eval_freq=10000,
+        eval_freq=eval_freq,
         n_eval_ep=3,
-        patience=patience,
+        patience=patience_efectiva,
         verbose=1
     )
     # EvalCallback guarda el mejor modelo según reward medio
@@ -533,7 +561,7 @@ def entrenar_academico(features_path: str = 'data/normalized_features.csv',
         eval_env,
         best_model_save_path='./models/best_model_academic/',
         log_path='./logs/academic/',
-        eval_freq=10000,
+        eval_freq=eval_freq,
         n_eval_episodes=3,
         deterministic=True,
         render=False,
