@@ -159,7 +159,12 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         todas_series = {'IA_PPO': serie_ppo, **resultados_bl}
         df_metricas  = tabla_comparativa(todas_series)
 
-    fechas = list(range(max(len(s) for s in todas_series.values())))
+    # Construir eje de fechas: las series tienen 1 punto extra al inicio (balance inicial)
+    # Se añade un día hábil anterior al test como "día 0" para ese punto.
+    fechas_test = pd.to_datetime(df_p_test.index)
+    from pandas.tseries.offsets import BDay
+    fecha_d0 = fechas_test[0] - BDay(1)
+    fechas   = [fecha_d0] + fechas_test.tolist()
 
     # ════════════════════════════════════════════════════════════════════════
     # SECCIÓN 1: Métricas comparativas
@@ -206,12 +211,13 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     st.markdown("---")
     st.markdown("## 2. Evolución del Capital (Equity Curves)")
     st.markdown(
-        "Muestra cómo crece o decrece el capital invertido en cada estrategia "
-        "a lo largo del período de test. La línea discontinua marca el capital "
-        "inicial — todo lo que quede por encima es ganancia. "
-        "**Haz clic en la leyenda** para activar o desactivar estrategias. "
-        "**Doble clic** sobre una para aislarla. Puedes hacer zoom arrastrando."
+        "Muestra el valor de la cartera día a día durante el período de test. "
+        "Todas las estrategias parten del mismo capital inicial (línea discontinua). "
+        "La estrategia que acaba más arriba obtuvo mayor rentabilidad total, pero fíjate "
+        "también en el **camino**: una curva con grandes bajadas intermedias es mucho más "
+        "difícil de seguir en la práctica que una curva suave aunque acabe en el mismo punto."
     )
+    st.caption("Interacción: clic en la leyenda para mostrar/ocultar estrategias · doble clic para aislar una · arrastra para hacer zoom")
 
     fig_eq = go.Figure()
     for nombre, serie in todas_series.items():
@@ -220,26 +226,31 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             y=serie.values,
             name=NOMBRES.get(nombre, nombre),
             line=dict(color=COLORES.get(nombre, '#aaa'), width=3 if nombre == 'IA_PPO' else 1.5),
-            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>Día %{{x}}: $%{{y:,.2f}}<extra></extra>"
+            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>%{{x|%d %b %Y}}: $%{{y:,.2f}}<extra></extra>"
         ))
     fig_eq.add_hline(y=initial_bal, line_dash="dash", line_color="white",
                      opacity=0.3, annotation_text="Capital inicial", annotation_font_color="white")
-    fig_eq.update_layout(**LAYOUT_OSCURO, xaxis_title="Días de trading", yaxis_title="Valor ($)", height=450)
+    fig_eq.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha", yaxis_title="Valor ($)", height=450)
     st.plotly_chart(fig_eq, use_container_width=True)
 
     # ════════════════════════════════════════════════════════════════════════
     # SECCIÓN 3: Drawdown
     # ════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.markdown("## 3. Drawdown")
+    st.markdown("## 3. Drawdown — Peor Caída en Cada Momento")
     st.markdown(
-        "El **drawdown** mide la caída desde el máximo histórico alcanzado hasta ese momento. "
-        "Un valor de −20% significa que la cartera vale un 20% menos que en su mejor punto "
-        "anterior. Es la métrica que más impacta al inversor real: representa el peor "
-        "escenario que habrías vivido si hubieras invertido justo en el pico. "
-        "Cuanto más cerca de 0 se mantenga la línea, más estable es la estrategia. "
-        "**Haz clic en la leyenda** para comparar pares de estrategias."
+        "Esta gráfica responde a la pregunta: **¿cuánto habría perdido un inversor si hubiese "
+        "comprado en el peor momento?** Para cada día, muestra qué porcentaje ha caído la "
+        "cartera respecto a su máximo histórico anterior."
     )
+    st.markdown(
+        "- Un valor de **−20%** significa que en ese momento la cartera valía un 20% menos que "
+        "en su mejor punto previo.  \n"
+        "- Las zonas sombreadas más profundas son las **crisis**: cuanto más tiempo permanece "
+        "la curva alejada de 0, más tarda la estrategia en recuperarse.  \n"
+        "- El **máximo drawdown** de la tabla anterior es el punto más bajo de esta gráfica."
+    )
+    st.caption("Interacción: clic en la leyenda para comparar dos estrategias en detalle")
 
     fig_dd = go.Figure()
     for nombre, serie in todas_series.items():
@@ -251,9 +262,9 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             name=NOMBRES.get(nombre, nombre),
             line=dict(color=COLORES.get(nombre, '#aaa'), width=1.5),
             fill='tozeroy',
-            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>Día %{{x}}: %{{y:.2f}}%<extra></extra>"
+            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>%{{x|%d %b %Y}}: %{{y:.2f}}%<extra></extra>"
         ))
-    fig_dd.update_layout(**LAYOUT_OSCURO, xaxis_title="Días de trading",
+    fig_dd.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
                          yaxis_title="Drawdown (%)", yaxis_ticksuffix="%", height=350)
     st.plotly_chart(fig_dd, use_container_width=True)
 
@@ -261,17 +272,18 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     # SECCIÓN 4: Asset Allocation
     # ════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.markdown("## 4. Asset Allocation del Agente PPO")
+    st.markdown("## 4. Qué Compra el Agente — Asset Allocation")
 
     col_pie, col_evol = st.columns(2)
 
     with col_pie:
-        st.markdown("### Pesos finales")
+        st.markdown("### Cartera final")
         st.markdown(
-            "Distribución de la cartera en el **último paso del período de test**. "
-            "Representa qué compraría el agente si operase hoy con los datos disponibles. "
-            "**Haz clic** en un activo de la leyenda para ocultarlo y ver el resto con más detalle."
+            "Qué proporción del capital asigna el agente a cada activo al **final del período de test**. "
+            "Si el agente ha aprendido bien, debería concentrarse en los activos que mejor se "
+            "comportaron en ese período y reducir exposición a los volátiles o con peor rendimiento."
         )
+        st.caption("Clic en la leyenda para ocultar activos y ver los demás con más detalle")
         last_w = np.array(weights_history[-1]).flatten()
         if len(last_w) == len(tickers):
             fig_pie = go.Figure(go.Pie(
@@ -284,23 +296,25 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             st.warning(f"Dimensiones: modelo={len(last_w)}, CSV={len(tickers)}. Reentrenar.")
 
     with col_evol:
-        st.markdown("### Evolución de pesos")
+        st.markdown("### Cómo cambia la cartera en el tiempo")
         st.markdown(
-            "Cómo varía la asignación a cada activo a lo largo del test. "
-            "Mucha variación entre pasos indica **alto turnover** (rotación de cartera), "
-            "lo que genera costes de transacción. Una línea estable indica que el agente "
-            "mantiene posiciones y opera con eficiencia. **Haz clic en la leyenda** para aislar activos."
+            "Cada franja de color representa el porcentaje asignado a un activo en cada día del test. "
+            "La suma siempre es 100%. Fíjate en dos cosas:  \n"
+            "- **Franjas estables** = el agente mantiene posiciones (bajo coste de transacción)  \n"
+            "- **Franjas muy cambiantes** = alta rotación, lo que erosiona el rendimiento con comisiones"
         )
+        st.caption("Clic en la leyenda para aislar un activo concreto")
         if weights_history and len(weights_history[0]) == len(tickers):
-            df_w = pd.DataFrame(weights_history, columns=tickers)
+            df_w = pd.DataFrame(weights_history, columns=tickers,
+                                index=pd.to_datetime(df_p_test.index[:len(weights_history)]))
             fig_w = go.Figure()
             for ticker in tickers:
                 fig_w.add_trace(go.Scatter(
-                    x=list(range(len(df_w))), y=df_w[ticker].values,
+                    x=df_w.index, y=df_w[ticker].values,
                     name=ticker, stackgroup='one',
-                    hovertemplate=f"<b>{ticker}</b>: %{{y:.1%}}<extra></extra>"
+                    hovertemplate=f"<b>{ticker}</b> %{{x|%d %b %Y}}: %{{y:.1%}}<extra></extra>"
                 ))
-            fig_w.update_layout(**LAYOUT_OSCURO, xaxis_title="Días de trading",
+            fig_w.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
                                 yaxis_title="Peso", yaxis_tickformat=".0%", height=350)
             st.plotly_chart(fig_w, use_container_width=True)
 
@@ -308,61 +322,72 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     # SECCIÓN 5: Diagnóstico del Entrenamiento
     # ════════════════════════════════════════════════════════════════════════
     st.markdown("---")
-    st.markdown("## 5. Diagnóstico del Entrenamiento")
+    st.markdown("## 5. ¿Aprendió Bien el Agente? — Diagnóstico del Entrenamiento")
     st.markdown(
-        "Antes de confiar en los resultados del backtest, hay que verificar que el "
-        "entrenamiento fue **correcto y sin sobreajuste**. Las tres gráficas siguientes "
-        "son la evidencia académica de que el modelo aprendió de forma robusta."
+        "Un backtest con buenos resultados no es suficiente: también hay que demostrar que el "
+        "agente **aprendió de verdad** y no simplemente memorizó los datos de entrenamiento. "
+        "Las tres gráficas siguientes son esa evidencia."
     )
 
-    with st.expander("ℹ️  Cómo interpretar cada gráfica"):
+    with st.expander("ℹ️  Guía para interpretar cada gráfica"):
         st.markdown("""
-**Gráfica 1 — Métricas internas del entrenamiento PPO**
+### Gráfica 1 — ¿Cómo fue el proceso de aprendizaje?
 
-Indicadores que miden la salud del proceso de aprendizaje paso a paso:
+Muestra cinco indicadores internos del algoritmo PPO durante el entrenamiento.
+Son el equivalente a un electrocardiograma: permiten saber si el entrenamiento
+fue saludable o si hubo algún problema.
 
-| Métrica | Qué mide | Objetivo |
-|---|---|---|
-| **Entropía de política** | Cuánta exploración mantiene el agente | Debe bajar gradualmente. Colapso rápido = memorización |
-| **Value Function Loss** | Error al predecir retornos futuros | Debe estabilizarse. Si sube, la red es inestable |
-| **Explained Variance** | Fracción de retornos futuros que la red predice | > 0.5. Si es negativa, el modelo es peor que la media |
-| **KL Divergencia** | Cambio de política por actualización | < 0.05. Si supera, las actualizaciones son demasiado bruscas |
-| **Clip Fraction** | Actualizaciones recortadas por PPO | Entre 0.01 y 0.3. Fuera de rango: ajustar clip_range |
-
----
-
-**Gráfica 2 — Detección de sobreajuste**
-
-Compara el reward en datos de **entrenamiento** vs datos de **evaluación** (nunca vistos):
-
-- Ambas curvas suben juntas → el agente generaliza correctamente.
-- Train sube pero eval no → **sobreajuste**: memorizó el pasado, no aprendió estructura.
-- El Early Stopping guarda el modelo en el punto de máxima generalización antes de que sobreajuste.
+| Indicador | En palabras simples | Señal buena | Señal de problema |
+|---|---|---|---|
+| **Entropía** | ¿Cuánto explora el agente vs cuánto explota lo que ya sabe? | Baja poco a poco: primero explora, luego se especializa | Cae a cero muy rápido: el agente dejó de explorar antes de aprender |
+| **Value Loss** | ¿Cuán equivocado está el agente al predecir sus recompensas futuras? | Baja y se estabiliza | Sube sin parar: la red es inestable |
+| **Explained Variance** | ¿Qué fracción del futuro acierta a predecir? | Por encima de 0.5 | Negativa: predice peor que la media |
+| **KL Divergence** | ¿Cuánto cambia su estrategia en cada actualización? | Por debajo de 0.05 | Supera 0.05: cambios demasiado bruscos, riesgo de colapso |
+| **Clip Fraction** | ¿Cuántas actualizaciones frena PPO por ser demasiado grandes? | Entre 1% y 30% | Fuera de ese rango: clip_range mal calibrado |
 
 ---
 
-**Gráfica 3 — Walk-Forward Validation**
+### Gráfica 2 — ¿Memorizó los datos o aprendió de verdad?
 
-Equivalente temporal del cross-validation. Se divide la historia en **6 ventanas**
-(2 años de entrenamiento + 1 año de test cada una). El agente se reentrena desde cero
-en cada ventana y se evalúa en el período siguiente que nunca vio:
+Esta es la prueba más importante. Compara la recompensa en dos conjuntos:
+- **Train** (azul): datos que el agente usó para aprender
+- **Eval** (rojo): datos que el agente **nunca vio** durante el entrenamiento
 
-- Sharpe estable entre ventanas → la política funciona en distintos regímenes de mercado.
-- Alta varianza entre ventanas → rendimiento dependiente del período concreto (inestable).
-- Sharpe decreciente en ventanas recientes → el modelo está sesgado hacia el pasado.
+**¿Qué buscar?**
+- ✅ Ambas curvas suben juntas → el agente generalizó, funcionará en datos nuevos
+- ⚠️ Train sube pero Eval no → **sobreajuste**: memorizó el pasado pero no aprendió nada transferible
+- El sistema guarda automáticamente el modelo en el momento donde Eval es máximo, antes de que empiece a degradarse
+
+---
+
+### Gráfica 3 — ¿Funciona en distintos períodos de mercado?
+
+Esta gráfica responde a: "¿los buenos resultados del backtest son casualidad o son robustos?"
+
+Se divide toda la historia disponible en varias ventanas temporales. En cada una, el agente
+se entrena desde cero con datos anteriores y se evalúa en el período siguiente que nunca vio.
+Es el equivalente financiero del **k-fold cross-validation** en machine learning.
+
+**¿Qué buscar?**
+- ✅ Sharpe positivo y consistente en la mayoría de ventanas → la estrategia funciona en distintos regímenes (crisis, rally, consolidación)
+- ⚠️ Alta varianza entre ventanas → el rendimiento depende de qué período toque: suerte, no habilidad
+- ⚠️ Sharpe decreciente en las ventanas más recientes → el modelo está sesgado hacia el pasado lejano
         """)
 
     col_r1, col_r2, col_r3 = st.columns(3)
     for col, ruta, titulo, desc in [
         (col_r1, 'src/reports/training_diagnostics.png',
-         "Métricas internas PPO",
-         "Entropía, value loss, explained variance, KL y clip fraction durante el entrenamiento."),
+         "1. Salud del entrenamiento",
+         "Entropía, value loss, explained variance, KL y clip fraction. "
+         "Confirman que el algoritmo PPO convergió de forma estable."),
         (col_r2, 'src/reports/overfitting_analysis.png',
-         "Sobreajuste Train vs Eval",
-         "Gap entre reward en datos de train y datos de evaluación. Detecta memorización."),
+         "2. ¿Memorizó o aprendió?",
+         "Reward en datos de train vs datos de evaluación nunca vistos. "
+         "Si las dos curvas van juntas, el agente generalizó correctamente."),
         (col_r3, 'src/reports/walk_forward_analysis.png',
-         "Walk-Forward Validation",
-         "Sharpe, retorno y MDD del agente en 6 ventanas temporales independientes."),
+         "3. ¿Funciona en el tiempo?",
+         "Sharpe, retorno y drawdown en ventanas temporales independientes. "
+         "Resultados consistentes = estrategia robusta, no suerte de un período."),
     ]:
         col.markdown(f"**{titulo}**")
         col.caption(desc)
