@@ -308,11 +308,19 @@ def generar_dataset(tickers: list,
     # ── Fase 6: Limpieza, normalización y guardado ────────────────────────────
     print("\n=== FASE 6: Limpieza, normalización y guardado ===")
 
-    # Rellenar huecos temporales:
-    #   - Backfill: para activos con historia más corta (IBIT cotiza desde enero 2024)
-    #     se propaga hacia atrás el primer valor válido
-    #   - Forward fill: para huecos al final de la serie (mercados cerrados, festivos)
-    #   - dropna: eliminar filas con NaN residuales (inicio de la serie con rolling)
+    # Limpieza en dos pasos:
+    #   1. Eliminar columnas enteramente NaN antes de hacer dropna por filas.
+    #      Esto ocurre cuando el dataset es demasiado corto para alguna ventana rolling
+    #      (ej. rolling(200) con 150 días → columna todo NaN).
+    #      Si se hace dropna() por filas primero, se eliminarían TODAS las filas → CSV vacío.
+    cols_antes = len(dataset.columns)
+    dataset = dataset.dropna(axis=1, how='all')
+    cols_eliminadas = cols_antes - len(dataset.columns)
+    if cols_eliminadas > 0:
+        print(f"  [AVISO] {cols_eliminadas} columnas enteramente NaN eliminadas "
+              f"(dataset demasiado corto para algunas ventanas rolling).")
+    #   2. Backfill + forward fill para NaN de warmup al inicio/final de la serie
+    #   3. dropna residual (debería quedar vacío tras bfill+ffill)
     dataset = dataset.bfill().ffill().dropna()
 
     # Sincronizar precios originales con el índice limpio del dataset

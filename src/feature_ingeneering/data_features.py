@@ -109,8 +109,12 @@ def calcular_features_precio(df_ohlcv: pd.DataFrame, ticker: str,
     # ── Precio relativo a medias móviles ──────────────────────────────────────
     # Señales de tendencia: precio por encima de MA → momentum alcista
     # MA50 captura tendencia de medio plazo; MA200 captura tendencia estructural
+    # La ventana se adapta al tamaño del dataset para evitar columnas enteramente NaN
+    # (con < 200 días de datos, rolling(200) sería todo NaN → dropna vaciaría el CSV)
+    n_filas = len(df_ohlcv)
     for ma in [50, 200]:
-        ma_val = df_ohlcv['Close'].rolling(ma).mean()
+        ma_eff = min(ma, max(2, n_filas // 2))
+        ma_val = df_ohlcv['Close'].rolling(ma_eff).mean()
         df_feat[f'{ticker}_precio_vs_ma{ma}'] = df_ohlcv['Close'] / (ma_val + 1e-8) - 1
 
     # ── Volumen relativo (volume surge) ───────────────────────────────────────
@@ -166,9 +170,11 @@ def calcular_correlaciones_dinamicas(dataset: pd.DataFrame,
         # Solo calcular si ambos activos están presentes en el universo
         if col_a not in dataset.columns or col_b not in dataset.columns:
             continue
+        n_filas = len(dataset)
         for v in ventanas:
+            v_eff = min(v, max(5, n_filas // 3))
             nombre = f'corr_{ticker_a}_{ticker_b}_{v}d'
-            df_corr[nombre] = dataset[col_a].rolling(v).corr(dataset[col_b])
+            df_corr[nombre] = dataset[col_a].rolling(v_eff).corr(dataset[col_b])
 
     return df_corr
 
@@ -198,8 +204,11 @@ def calcular_beta_rolling(dataset: pd.DataFrame, tickers: list,
     if col_mercado not in dataset.columns:
         return df_beta
 
+    # Ventana adaptativa: nunca superar 1/3 del dataset para evitar columnas enteramente NaN
+    ventana_eff = min(ventana, max(10, len(dataset) // 3))
+
     r_mercado = dataset[col_mercado]
-    var_mercado = r_mercado.rolling(ventana).var()
+    var_mercado = r_mercado.rolling(ventana_eff).var()
 
     for ticker in tickers:
         if ticker == ticker_mercado:
@@ -207,7 +216,7 @@ def calcular_beta_rolling(dataset: pd.DataFrame, tickers: list,
         col_ret = f'{ticker}_retornos'
         if col_ret not in dataset.columns:
             continue
-        cov = dataset[col_ret].rolling(ventana).cov(r_mercado)
+        cov = dataset[col_ret].rolling(ventana_eff).cov(r_mercado)
         df_beta[f'{ticker}_beta_{ventana}d'] = cov / (var_mercado + 1e-8)
 
     return df_beta
@@ -283,6 +292,11 @@ def calcular_regimen_volatilidad(dataset: pd.DataFrame,
 
     col_vol_corta_key = f'_vol_{ventana_corta}d'
 
+    # Ventana larga adaptativa: con datasets cortos, rolling(252) produce NaN en todo el período.
+    # La comparación NaN > X devuelve False en pandas → régimen artificialmente siempre en 0.
+    # Usamos como mínimo ventana_corta+1 y como máximo 1/3 del dataset.
+    ventana_larga_eff = min(ventana_larga, max(ventana_corta + 1, len(dataset) // 3))
+
     for ticker in tickers:
         col_ret      = f'{ticker}_retornos'
         col_vol_c    = f'{ticker}{col_vol_corta_key}'
@@ -291,7 +305,7 @@ def calcular_regimen_volatilidad(dataset: pd.DataFrame,
             continue
 
         # Volatilidad de largo plazo calculada directamente sobre retornos
-        vol_larga = dataset[col_ret].rolling(ventana_larga).std()
+        vol_larga = dataset[col_ret].rolling(ventana_larga_eff).std()
 
         # Usar la volatilidad corta ya calculada si existe; si no, recalcular
         if col_vol_c in dataset.columns:

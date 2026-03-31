@@ -211,7 +211,27 @@ def walk_forward_validation(features_path: str,
     df_f    = pd.read_csv(features_path, index_col=0)
     n_total = len(df_f)
 
-    # Calcular ventanas con tamaño fijo: el número surge del dato, no del parámetro
+    # ── Ventanas adaptativas ───────────────────────────────────────────────────
+    # Si el dataset no alcanza los valores académicos ideales (504+252=756 días),
+    # se escalan proporcionalmente manteniendo la ratio 2:1 (train:test).
+    # Mínimos absolutos: test ≥ 21 días (1 mes), train ≥ test × 2.
+    MIN_TEST  = 21
+    MIN_TRAIN = MIN_TEST * 2
+    if n_total < MIN_TRAIN + MIN_TEST:
+        raise ValueError(
+            f"Dataset demasiado pequeño ({n_total} dias). "
+            f"Necesita al menos {MIN_TRAIN + MIN_TEST} dias para walk-forward. "
+            f"Amplía el rango de fechas en /fase1/preparar-datos."
+        )
+
+    if dias_train + dias_test > n_total:
+        # Escalar: test = 20% del total, train = 40% del total (ratio 2:1)
+        dias_test  = max(MIN_TEST,  n_total // 5)
+        dias_train = max(MIN_TRAIN, n_total * 2 // 5)
+        print(f"  [AVISO] Dataset corto ({n_total}d). "
+              f"Ventanas adaptadas automaticamente: train={dias_train}d, test={dias_test}d")
+
+    # Calcular ventanas: el número surge del dato, no del parámetro
     ventanas = []
     inicio = 0
     while inicio + dias_train + dias_test <= n_total:
@@ -221,19 +241,13 @@ def walk_forward_validation(features_path: str,
         inicio += dias_test   # avanza exactamente 1 periodo de test
 
     n_ventanas = len(ventanas)
-    if n_ventanas == 0:
-        raise ValueError(
-            f"Dataset insuficiente ({n_total} dias) para "
-            f"train={dias_train}d + test={dias_test}d. "
-            f"Reduce dias_train o amplia el rango de fechas."
-        )
 
     resultados = []
     print(f"\n{'='*60}")
     print(f"WALK-FORWARD VALIDATION")
     print(f"Dataset: {n_total} dias ({n_total/252:.1f} anios) | "
-          f"Train: {dias_train}d ({dias_train/252:.0f}a) | "
-          f"Test: {dias_test}d (1a)")
+          f"Train: {dias_train}d ({dias_train/252:.1f}a) | "
+          f"Test: {dias_test}d ({dias_test/252:.1f}a)")
     print(f"Ventanas calculadas automaticamente: {n_ventanas}")
     print(f"{'='*60}")
 

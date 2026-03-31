@@ -18,9 +18,6 @@ class DownloadConfig(BaseModel):
     start: str = "2014-01-01"
     end: str = "2026-03-01"
 
-# --- Variables Globales ---
-env = None
-
 
 # ─── FASE 1: Datos ───────────────────────────────────────────────────────────
 
@@ -34,19 +31,44 @@ async def preparar_datos(config: DownloadConfig):
             "precios":  "data/original_prices.csv"}
 
 
-# ─── FASE 2: Entorno ─────────────────────────────────────────────────────────
+# ─── FASE 2: Validación de datos ─────────────────────────────────────────────
 
-@app.post("/fase2/inicializar-entorno")
-async def init_env():
-    """Carga los CSVs y prepara el entorno Gymnasium completo."""
-    global env
+@app.get("/fase2/validar-datos")
+async def validar_datos():
+    """
+    Valida que los CSVs generados en Fase 1 son compatibles con el entorno
+    de entrenamiento. Útil para ejecutar antes de un entrenamiento largo.
+
+    Comprueba: dimensiones, ausencia de NaN/Inf, coherencia de índices
+    y que el entorno Gymnasium se instancia correctamente.
+    """
     if not os.path.exists('data/normalized_features.csv'):
-        return {"error": "Primero ejecuta /fase1/preparar-datos"}
+        return {"ok": False, "error": "Ejecuta primero /fase1/preparar-datos"}
 
-    env = PortfolioEnv("data/normalized_features.csv", "data/original_prices.csv")
-    env.reset()
-    return {"status": "Entorno listo", "n_assets": env.n_assets,
-            "n_pasos": len(env.df_features), "n_features": env.df_features.shape[1]}
+    try:
+        import pandas as pd, numpy as np
+        df_f = pd.read_csv('data/normalized_features.csv', index_col=0)
+        df_p = pd.read_csv('data/original_prices.csv',     index_col=0)
+
+        n_nan  = int(df_f.isnull().values.sum())
+        n_inf  = int(np.isinf(df_f.values).sum())
+        n_nanp = int(df_p.isnull().values.sum())
+
+        env = PortfolioEnv("data/normalized_features.csv", "data/original_prices.csv")
+        env.reset()
+
+        return {
+            "ok":        n_nan == 0 and n_inf == 0,
+            "features":  {"filas": len(df_f), "columnas": df_f.shape[1],
+                          "nan": n_nan, "inf": n_inf,
+                          "fecha_inicio": df_f.index[0], "fecha_fin": df_f.index[-1]},
+            "precios":   {"filas": len(df_p), "activos": df_p.shape[1], "nan": n_nanp},
+            "entorno":   {"n_assets": env.n_assets, "obs_shape": env.observation_space.shape[0]},
+            "aviso":     "Datos limpios, listo para entrenar." if n_nan == 0 and n_inf == 0
+                         else f"ATENCION: {n_nan} NaN y {n_inf} Inf en features."
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ─── FASE 3: Entrenamiento ───────────────────────────────────────────────────
@@ -99,8 +121,8 @@ async def iniciar_walk_forward(
     recursos disponibles (100k = rápido/orientativo, 300k = más preciso).
 
     Reportes generados:
-      - reports/walk_forward_results.csv
-      - reports/walk_forward_analysis.png
+      - src/reports/walk_forward_results.csv
+      - src/reports/walk_forward_analysis.png
     """
     background_tasks.add_task(
         walk_forward_validation,
@@ -112,8 +134,8 @@ async def iniciar_walk_forward(
         "message": f"Walk-forward iniciado ({steps_por_ventana:,} pasos/ventana). "
                    "El numero de ventanas se calcula del dataset.",
         "reportes": [
-            "reports/walk_forward_results.csv",
-            "reports/walk_forward_analysis.png"
+            "src/reports/walk_forward_results.csv",
+            "src/reports/walk_forward_analysis.png"
         ]
     }
 
