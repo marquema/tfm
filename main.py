@@ -26,9 +26,7 @@ async def preparar_datos(config: DownloadConfig):
     """Descarga precios y dividendos, genera features y guarda los CSVs en data/."""
     descargar_dividendos(config.tickers, config.start, config.end)
     generar_dataset(config.tickers, config.start, config.end)
-    return {"status": "Datos preparados",
-            "features": "data/normalized_features.csv",
-            "precios":  "data/original_prices.csv"}
+    return {"status": "Datos preparados"}
 
 
 # ─── FASE 2: Validación de datos ─────────────────────────────────────────────

@@ -156,11 +156,7 @@ class PortfolioEnv(gym.Env):
         return self._build_obs(), {}
 
     def step(self, action):
-        """
-            agente minimiza el Maximum Drawdown y optimiza el Sharpe
-            $$R_t = r_p(t) - \phi \cdot \text{Drawdown}(t)$$        
-        """
-        # todo: personalizar el factor $\phi$ para que sea dinámico según la correlación detectada en el mercado
+        """Ejecuta un paso: aplica acción, calcula retorno y reward."""
         # 1. Precios y estado previo
         precios_hoy = self.df_precios.iloc[self.current_step].values
         # Referencia de valor para calcular el retorno del paso

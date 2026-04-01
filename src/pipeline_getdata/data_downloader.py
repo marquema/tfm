@@ -149,26 +149,31 @@ def descargar_dividendos(tickers: list, start_date: str, end_date: str) -> pd.Da
                 print(f"  {ticker}: sin dividendos (cripto ETF o activo de crecimiento puro)")
                 continue
 
-            # Eliminar timezone para homogeneidad con el resto del dataset
+            #Eliminar timezone para homogeneidad con el resto del dataset
             if getattr(divs.index, "tz", None) is not None:
                 divs.index = divs.index.tz_localize(None)
 
             divs = divs[(divs.index >= start_dt) & (divs.index <= end_dt)].to_frame()
             divs.columns = ['div_amount']
 
-            # Mínimo de 4 pagos para calcular rolling stats con sentido
+            # Mínimo de 4 pagos: dividendos trimestrales para calcular rolling stats con sentido
             if len(divs) < 4:
                 print(f"  {ticker}: insuficientes dividendos ({len(divs)} pagos, necesita ≥4)")
                 continue
 
             # Dinámica del dividendo: memoria larga y riesgo de cola
-            divs['div_growth']     = divs['div_amount'].pct_change()
-            divs['div_volatility'] = divs['div_growth'].rolling(4).std()
-            divs['div_kurtosis']   = divs['div_growth'].rolling(8).kurt()
-            divs['div_skewness']   = divs['div_growth'].rolling(8).skew()
+            # Riesgo de cola: la curtosis mide si ha habido eventos extremos: un recorte brusco del 50% un 
+            # trimestre concreto. Alta curtosis significa que el dividendo tiene "colas pesadas": 
+            # la mayoría de trimestres es estable pero ocasionalmente hay sorpresas grandes. 
+            # Eso es riesgo real que el agente debe conocer para activos como MO (Altria), 
+            # cuyo dividendo es una parte importante del retorno total.
+            divs['div_growth']     = divs['div_amount'].pct_change() #sube o baja
+            divs['div_volatility'] = divs['div_growth'].rolling(4).std() # estable o no
+            #memoria de 2 años atrás
+            divs['div_kurtosis']   = divs['div_growth'].rolling(8).kurt() #recortes o cambios bruscos
+            divs['div_skewness']   = divs['div_growth'].rolling(8).skew() #cambios simétricos o no
 
-            # Expansión a frecuencia diaria: el agente opera día a día,
-            # pero los dividendos son trimestrales → forward fill
+            #frecuencia diaria: el agente opera día a día, pero los dividendos son trimestrales → forward fill
             df_diario = divs.resample('D').ffill()
             df_diario.columns = [f'{ticker}_{c}' for c in df_diario.columns]
 
