@@ -101,13 +101,53 @@ NOMBRES = {
 }
 
 DESCRIPCIONES_METRICAS = {
-    'Retorno Total (%)':          'Ganancia o pérdida total sobre el capital inicial durante todo el período de test.',
-    'CAGR (%)':                   'Tasa de crecimiento anual compuesta. Normaliza el retorno por el tiempo transcurrido.',
-    'Volatilidad Anualizada (%)': 'Desviación estándar de los retornos diarios, anualizada con √252. Mide el riesgo total.',
-    'Sharpe Ratio':               'Retorno ajustado por riesgo total: (retorno − tasa libre de riesgo) / volatilidad. Cuanto mayor, mejor.',
-    'Sortino Ratio':              'Como el Sharpe pero solo penaliza la volatilidad negativa (caídas). Más justo con estrategias asimétricas.',
-    'Max Drawdown (%)':           'Caída máxima desde un máximo histórico hasta el siguiente mínimo. Mide el peor escenario vivido.',
-    'Valor Final ($)':            'Capital resultante al final del período de test partiendo del capital inicial configurado.',
+    'Retorno Total (%)': (
+        'Cuánto creció (o cayó) el capital desde el inicio hasta el final del período de test. '
+        'Un 35% significa que $10.000 se convirtieron en $13.500. '
+        'Es la métrica más intuitiva, pero engañosa sola: un 35% con bajadas del 50% por el camino '
+        'es muy distinto a un 35% con una curva suave.'
+    ),
+    'CAGR (%)': (
+        'Tasa de Crecimiento Anual Compuesto (Compound Annual Growth Rate). '
+        'Responde a: "¿a qué ritmo anual creció esta cartera, como si fuera constante?". '
+        'Si el test dura 2 años y el retorno total es 35%, el CAGR es ~16% anual. '
+        'Permite comparar estrategias evaluadas en períodos de distinta duración.'
+    ),
+    'Volatilidad Anualizada (%)': (
+        'Cuánto oscila el valor de la cartera de un día para otro, expresado en términos anuales. '
+        'Se calcula como la desviación estándar de los retornos diarios multiplicada por √252 '
+        '(días hábiles en un año). Una volatilidad del 20% significa que en un año típico '
+        'la cartera puede subir o bajar ~20% solo por la variabilidad diaria. '
+        'Alta volatilidad no es sinónimo de pérdida, pero sí de mayor incertidumbre.'
+    ),
+    'Sharpe Ratio': (
+        'La métrica más usada en gestión de carteras profesional. '
+        'Mide cuánto retorno se obtiene por cada unidad de riesgo asumido: '
+        '(retorno_anual − tasa_libre_de_riesgo) / volatilidad_anual. '
+        'Un Sharpe de 1.0 significa que por cada punto de volatilidad se obtiene un punto de retorno. '
+        'Por debajo de 0.5 es mediocre. Entre 1 y 2 es bueno. Por encima de 2 es excepcional. '
+        'Una cartera con menos retorno pero mucho menos riesgo puede tener mejor Sharpe que otra con más retorno.'
+    ),
+    'Sortino Ratio': (
+        'Variante del Sharpe más justa para estrategias asimétricas. '
+        'La diferencia clave: el Sharpe penaliza toda la volatilidad (incluyendo los días buenos), '
+        'mientras que el Sortino solo penaliza la volatilidad negativa — las caídas. '
+        'Una estrategia que tiene muchos días muy positivos y pocos negativos pequeños '
+        'tendrá Sharpe modesto pero Sortino alto. '
+        'Si el Sortino es mucho mayor que el Sharpe, la estrategia tiene retornos asimétricos hacia arriba.'
+    ),
+    'Max Drawdown (%)': (
+        'La peor caída que habría sufrido un inversor que entrase en el peor momento posible. '
+        'Se calcula como la mayor caída desde cualquier máximo histórico hasta el siguiente mínimo. '
+        'Un MDD de −20% significa que en algún momento la cartera valía un 20% menos que en su pico previo. '
+        'Es la métrica que más duele psicológicamente: un inversor real habría visto esfumarse '
+        'ese porcentaje de su dinero antes de recuperarse. '
+        'Cuanto más cerca de 0, más estable y fácil de mantener la estrategia.'
+    ),
+    'Valor Final ($)': (
+        'Capital total al cierre del período de test, incluyendo comisiones y reinversión de beneficios. '
+        'Depende directamente del capital inicial configurado en el panel lateral.'
+    ),
 }
 
 LAYOUT_OSCURO = dict(template='plotly_dark', hovermode='x unified',
@@ -172,11 +212,15 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     st.markdown("---")
     st.markdown("## 1. Métricas de Rendimiento")
     st.markdown(
-        "Resumen cuantitativo de cada estrategia calculado sobre el período de test "
-        "out-of-sample. Las métricas más relevantes para comparar gestores son el "
-        "**Sharpe Ratio** (rentabilidad por unidad de riesgo total) y el "
-        "**Max Drawdown** (peor caída posible desde un máximo). "
-        "Un buen gestor tiene Sharpe > 1 y MDD controlado."
+        "Todas las estrategias se evalúan sobre el mismo período de test — "
+        "datos que el agente PPO **nunca vio** durante el entrenamiento. "
+        "La comparación es justa: mismo capital inicial, mismas comisiones, mismo período."
+    )
+    st.markdown(
+        "**¿Qué mirar primero?** El **Sharpe Ratio** resume la calidad de la estrategia en un solo número: "
+        "cuánto retorno se obtuvo por cada unidad de riesgo asumido. "
+        "El **Max Drawdown** dice cuánto habrías perdido en el peor momento. "
+        "Una estrategia con Sharpe alto y MDD bajo es la que un inversor real puede mantener sin entrar en pánico."
     )
 
     cols = st.columns(len(df_metricas))
@@ -192,9 +236,11 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         )
 
     st.markdown("### Tabla completa")
-    with st.expander("ℹ️  Qué significa cada métrica"):
+    with st.expander("📖  Glosario — qué significa cada métrica"):
         for metrica, desc in DESCRIPCIONES_METRICAS.items():
-            st.markdown(f"- **{metrica}**: {desc}")
+            st.markdown(f"**{metrica}**")
+            st.markdown(f"> {desc}")
+            st.markdown("")
 
     def highlight_ppo(row):
         return ['background-color: #1e3a5f; color: white; font-weight: bold'

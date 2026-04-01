@@ -6,7 +6,7 @@ import pandas as pd
 class PortfolioEnv(gym.Env):
 
     def __init__(self, features_path, prices_path, initial_balance=10000, commission=0.001,
-                 start_idx=0, end_idx=None, phi=0.5, gamma=0.001):
+                 start_idx=0, end_idx=None, phi=0.02, gamma=0.01):
         super().__init__()
 
         # Cargar datos: primero reemplazar ±inf (dropna NO los elimina) y luego NaNs
@@ -53,16 +53,36 @@ class PortfolioEnv(gym.Env):
         self.commission      = commission
 
         # Coeficientes de la función de recompensa compuesta:
-        #   R_t = r_p(t) - [phi·MDD(t) + gamma·Turnover(t)]
-        # phi:   penalización por Maximum Drawdown (riesgo de pérdida extrema)
-        # gamma: penalización por rotación excesiva (estabilidad de la estrategia)
-        self.phi   = phi
-        self.gamma = gamma
+        #   R_t = r_p(t) - phi·MDD(t) - gamma·Turnover(t)
+        #
+        # CALIBRACIÓN: phi debe ser comparable en escala a log_return diario (~0.001).
+        # phi=0.5 con MDD=20% → penalty=0.1 >> log_return=0.001 → agente aprende a no hacer nada.
+        # phi=0.02: un MDD del 20% penaliza 0.004, del mismo orden que un día positivo.
+        self.phi   = phi    # penalización drawdown: 0.02
+        self.gamma = gamma  # penalización turnover: 0.01 (10x mayor que antes)
+                            # Con gamma=0.001, rotar toda la cartera costaba 0.002 en penalty
+                            # vs ~0.001 de log_return → salía "barato" operar constantemente.
+                            # Con gamma=0.01, el coste de rotación completa es 0.02, lo que
+                            # equivale a ~20 días de retorno positivo → el agente aprende a mantener.
 
-        # Espacios de Gymnasium: acciones continuas en [0,1] para cada activo
+        # Buffer para Sharpe rolling: ventana de 20 días para estabilizar la señal
+        self._ret_buffer    = []
+        self._sharpe_window = 20
+
+
+        # Observación aumentada: features de mercado + estado de cartera del agente.
+        # Sin el estado de cartera, el agente no sabe qué tiene ni cuánto ha ganado/perdido,
+        # lo que hace imposible aprender estrategias de gestión de riesgo.
+        # Estado añadido: [pesos actuales (n_assets), retorno acumulado normalizado]
+        n_market_features = self.df_features.shape[1]
+        n_portfolio_state = self.n_assets + 1   # pesos + retorno_acumulado
+        self.n_market_features = n_market_features
+
         self.action_space = spaces.Box(low=0, high=1, shape=(self.n_assets,), dtype=np.float32)
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(self.df_features.shape[1],), dtype=np.float32
+            low=-np.inf, high=np.inf,
+            shape=(n_market_features + n_portfolio_state,),
+            dtype=np.float32
         )
 
     #def __init__(self, features_path, prices_path, initial_balance=10000, commission=0.001):
@@ -102,22 +122,38 @@ class PortfolioEnv(gym.Env):
             low=-np.inf, high=np.inf, shape=(self.df_features.shape[1],), dtype=np.float32
         )
 
+    def _build_obs(self) -> np.ndarray:
+        """
+        Construye la observación aumentada: [features_mercado | pesos_actuales | retorno_acumulado].
+
+        El estado de cartera permite al agente aprender comportamientos condicionados
+        a su posición actual: aumentar o reducir exposición según lo ganado/perdido.
+        """
+        market = np.nan_to_num(
+            self.df_features.iloc[self.current_step].values,
+            nan=0.0, posinf=0.0, neginf=0.0
+        )
+        # Retorno acumulado normalizado: 0 = sin cambio, +1 = dobló, -1 = perdió todo
+        ret_acum = np.clip(
+            (self.portfolio_value - self.initial_balance) / (self.initial_balance + 1e-8),
+            -1.0, 5.0
+        )
+        portfolio_state = np.append(self.weights.astype(np.float32), np.float32(ret_acum))
+        return np.concatenate([market, portfolio_state]).astype(np.float32)
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_step    = 0
         self.balance         = self.initial_balance
         self.portfolio_value = self.initial_balance
-        self.weights         = np.zeros(self.n_assets)
+        self.weights         = np.ones(self.n_assets, dtype=np.float32) / self.n_assets
+        self._ret_buffer     = []  # buffer para Sharpe rolling
 
         # Inicializar la marca de agua máxima aquí, no en step(),
         # para garantizar que se resetea correctamente en cada episodio
         self.max_portfolio_value = self.initial_balance
 
-        obs = np.nan_to_num(
-            self.df_features.iloc[self.current_step].values,
-            nan=0.0, posinf=0.0, neginf=0.0
-        )
-        return obs.astype(np.float32), {}
+        return self._build_obs(), {}
 
     def step(self, action):
         """
@@ -131,11 +167,10 @@ class PortfolioEnv(gym.Env):
         valor_base_paso = max(self.portfolio_value, 1e-6)
 
         # 2. Normalizar pesos (sumatoria = 1)
-        # Primero recortar al espacio declarado [0, 1] — SB3 usa Gaussian que puede salirse
+        # Recortar al espacio declarado [0,1] — SB3 usa Gaussian que puede salirse
         action_clipped = np.clip(action, 0.0, 1.0)
         peso_total = np.sum(action_clipped)
         if peso_total < 1e-3:
-            # Si el agente intenta asignar ~0 a todo, distribuir uniforme (evita /0 y pesos explosivos)
             new_weights = np.ones(self.n_assets, dtype=np.float32) / self.n_assets
         else:
             new_weights = action_clipped / peso_total
@@ -148,11 +183,7 @@ class PortfolioEnv(gym.Env):
         # 4. Progresión Temporal
         if self.current_step >= len(self.df_features) - 1:
             done = True
-            obs = np.nan_to_num(
-                self.df_features.iloc[self.current_step].values,
-                nan=0.0, posinf=0.0, neginf=0.0
-            )
-            return obs.astype(np.float32), 0.0, done, False, {"value": self.portfolio_value, "drawdown": 0}
+            return self._build_obs(), 0.0, done, False, {"value": self.portfolio_value, "drawdown": 0}
 
         self.current_step += 1
         done = self.current_step >= len(self.df_features) - 1
@@ -177,54 +208,61 @@ class PortfolioEnv(gym.Env):
 
         # --- REWARD SHAPING: EL CORAZÓN DE LA ESTRATEGIA ---
 
-        # A. Retorno Logarítmico (La base del beneficio)
+        # A. Retorno logarítmico del paso
         log_return = float(np.log(self.portfolio_value / valor_base_paso + 1e-8))
 
-        # B. Cálculo de la "Marca de Agua" y Maximum Drawdown (MDD)
-        # max_portfolio_value se inicializa en reset() para garantizar coherencia entre episodios
+        # B. Sharpe rolling como señal principal de calidad.
+        # En lugar de optimizar retorno bruto (que incentiva apalancar riesgo),
+        # el agente optimiza retorno ajustado por riesgo reciente.
+        # Ventana de 20 días ≈ 1 mes de trading: suficiente para capturar volatilidad
+        # local sin ignorar el régimen actual del mercado.
+        self._ret_buffer.append(log_return)
+        if len(self._ret_buffer) > self._sharpe_window:
+            self._ret_buffer.pop(0)
+
+        if len(self._ret_buffer) >= 5:
+            rets = np.array(self._ret_buffer)
+            # Sharpe anualizado: media / std * sqrt(252). Se normaliza a [-1,1] dividing by 3.
+            sharpe_rolling = float(np.mean(rets) / (np.std(rets) + 1e-8) * np.sqrt(252))
+            sharpe_norm    = float(np.clip(sharpe_rolling / 3.0, -1.0, 1.0))
+        else:
+            # Warmup: usar log_return directamente hasta tener suficiente historia
+            sharpe_norm = float(np.clip(log_return * 100, -1.0, 1.0))
+
+        # C. Maximum Drawdown actual
         self.max_portfolio_value = max(self.max_portfolio_value, self.portfolio_value)
-        # np.clip evita NaN cuando portfolio_value == max_portfolio_value == inf
         current_drawdown = float(np.clip(
             (self.max_portfolio_value - self.portfolio_value) / (self.max_portfolio_value + 1e-8),
             0.0, 1.0
         ))
 
-        # C. Función de recompensa compuesta (según la fórmula del TFM):
-        #   R_t = r_p(t) - [α·Riesgo(t) + γ·Turnover(t)]
-        # Los costes de transacción β·Costes(t) ya están implícitos en r_p(t)
-        # a través de la deducción directa sobre portfolio_value (línea anterior).
-
-        # Penalización por riesgo: desincentiva estrategias con grandes caídas
-        risk_penalty = self.phi * current_drawdown
-
-        # Penalización por rotación: desincentiva rebalanceos excesivos
-        # turnover = Σ|w_nuevo - w_anterior| (ya calculado como diff_weights)
+        # D. Función de recompensa compuesta:
+        #   R_t = Sharpe_rolling - phi·MDD(t) - gamma·Turnover(t)
+        #
+        # Sharpe_rolling: optimiza retorno ajustado por riesgo, no retorno bruto.
+        # phi=0.02:  MDD del 20% penaliza 0.004, comparable al Sharpe diario típico.
+        # gamma=0.01: turnover completo penaliza 0.02 ≈ 20 días de retorno positivo.
+        #             El agente aprende que solo vale la pena operar si la mejora
+        #             de Sharpe compensa el coste de rotación.
         turnover         = float(np.sum(diff_weights))
+        risk_penalty     = self.phi   * current_drawdown
         turnover_penalty = self.gamma * turnover
 
-        # Recortar la recompensa a un rango acotado para evitar gradientes explosivos
-        reward = float(np.clip(log_return - risk_penalty - turnover_penalty, -10.0, 10.0))
+        reward = float(np.clip(sharpe_norm - risk_penalty - turnover_penalty, -1.0, 1.0))
 
-        # 7. Condición de quiebra (Game Over)
+        # E. Condición de quiebra: pérdida del 90% del capital
         if self.portfolio_value < (self.initial_balance * 0.1):
             done = True
-            reward = -10.0 # Penalización masiva por colapso de cartera
-        
-        obs = np.nan_to_num(
-            self.df_features.iloc[self.current_step].values,
-            nan=0.0, posinf=0.0, neginf=0.0
-        )
+            reward = -1.0
 
-        # Enviamos el drawdown en la info para monitorizarlo en Tensorboard
-        # Incluir turnover en el info para monitorización en TensorBoard
         info = {
             "value":    self.portfolio_value,
             "drawdown": current_drawdown,
             "weights":  self.weights,
             "turnover": turnover,
         }
-        
-        return obs.astype(np.float32), float(reward), done, False, info
+
+        return self._build_obs(), float(reward), done, False, info
 
 
     def step_2(self, action):

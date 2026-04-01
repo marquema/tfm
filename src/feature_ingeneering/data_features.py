@@ -324,12 +324,29 @@ def calcular_regimen_volatilidad(dataset: pd.DataFrame,
 # Normalización
 # ─────────────────────────────────────────────
 
-def normalizar_zscore(df: pd.DataFrame) -> pd.DataFrame:
+def normalizar_zscore(df: pd.DataFrame,
+                      split_pct: float = 0.8) -> pd.DataFrame:
     """
-    Normalización Z-Score: (x - μ) / σ aplicada columna a columna.
+    Normalización Z-Score sin lookahead bias.
 
-    Garantiza que el agente aprenda variaciones relativas y no valores absolutos,
-    mitigando el impacto de la escala entre activos tan dispares como BND (bonos)
-    e IBIT (Bitcoin). Añade 1e-8 al denominador para evitar divisiones por cero.
+    Calcula μ y σ SOLO sobre el conjunto de entrenamiento (primeros split_pct% de filas)
+    y aplica esas mismas estadísticas al conjunto de test.
+
+    Por qué importa:
+      Si se normalizara sobre el dataset completo, el test contaminaría el train:
+      el agente "vería" implícitamente la media y varianza de precios futuros.
+      Esto infla las métricas in-sample y hunde el rendimiento out-of-sample,
+      exactamente el patrón observado cuando PPO es peor que las baselines.
+
+    Parámetros
+    ----------
+    df        : DataFrame completo (train + test concatenados)
+    split_pct : fracción de datos que pertenece a train (por defecto 0.8)
     """
-    return (df - df.mean()) / (df.std() + 1e-8)
+    split_idx = int(len(df) * split_pct)
+    df_train  = df.iloc[:split_idx]
+
+    mu    = df_train.mean()
+    sigma = df_train.std() + 1e-8
+
+    return (df - mu) / sigma
