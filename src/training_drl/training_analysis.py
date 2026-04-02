@@ -27,10 +27,10 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 
 try:
-    from src.environment_trading import PortfolioEnv
+    from src.training_drl.environment_trading import PortfolioEnv
     from src.benchmarking.baselines import calcular_metricas
 except ImportError:
-    from environment_trading import PortfolioEnv
+    from src.training_drl.environment_trading import PortfolioEnv
     from benchmarking.baselines import calcular_metricas
 
 

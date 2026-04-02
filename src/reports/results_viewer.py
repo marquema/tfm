@@ -17,6 +17,11 @@ Uso:
   python results_viewer.py
 """
 import os
+import sys
+# Añadir raíz del proyecto al path para que 'src' sea importable
+# cuando se ejecuta directamente: python src/reports/results_viewer.py
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 import glob
 import numpy as np
 import pandas as pd
@@ -24,11 +29,11 @@ import matplotlib
 matplotlib.use('Agg')  # Backend sin pantalla (compatible con servidor)
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
-from src.environment_trading import PortfolioEnv
+from src.training_drl.environment_trading import PortfolioEnv
 from src.benchmarking.baselines import (
     ejecutar_baselines, calcular_metricas, tabla_comparativa
 )
-from src.regime_analysis import analizar_regimenes
+from src.training_drl.regime_analysis import analizar_regimenes
 
 os.makedirs("src/reports", exist_ok=True)
 
@@ -169,6 +174,24 @@ def ejecutar_backtest_completo(model_path:    str   = MODELO_PATH,
     # ── 3. Simular los cuatro baselines ───────────────────────────────────────
     print("\n  Ejecutando baselines financieros...")
     baselines = ejecutar_baselines(precios_test, initial_balance, commission=0.001)
+
+    # ── 3b. Agente especulativo (GMM + K-Means) ─────────────────────────────
+    especulativo_path = 'models/speculative_gmm.pkl'
+    if os.path.exists(especulativo_path):
+        print("\n  Ejecutando agente especulativo (GMM + K-Means)...")
+        import pickle
+        with open(especulativo_path, 'rb') as f:
+            agente_spec = pickle.load(f)
+        df_f_full = pd.read_csv(features_path, index_col=0)
+        df_f_test = df_f_full.iloc[split_idx:]
+        serie_spec = agente_spec.backtest(
+            df_f_test, precios_test,
+            initial_balance=initial_balance, commission=0.001
+        )
+        baselines['Especulativo_HMM'] = serie_spec
+    else:
+        print("  [AVISO] Agente especulativo no ajustado. "
+              "Ejecuta POST /fase4/ajustar-especulativo")
 
     # ── 4. Unir todos los resultados ─────────────────────────────────────────
     todos_los_valores = {'IA_PPO': serie_ia}

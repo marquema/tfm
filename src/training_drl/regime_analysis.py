@@ -104,9 +104,9 @@ def _ejecutar_agente(modelo, features_path: str, prices_path: str,
     Importación tardía de PortfolioEnv para evitar dependencia circular.
     """
     try:
-        from src.environment_trading import PortfolioEnv
+        from src.training_drl.environment_trading import PortfolioEnv
     except ImportError:
-        from environment_trading import PortfolioEnv
+        from src.training_drl.environment_trading import PortfolioEnv
 
     env = PortfolioEnv(features_path, prices_path, start_idx=start_idx, end_idx=end_idx)
     obs, _ = env.reset()

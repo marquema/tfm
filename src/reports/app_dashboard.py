@@ -7,13 +7,18 @@ Muestra:
   - Asset allocation de la IA (pie chart interactivo)
   - Diagnóstico del entrenamiento con explicaciones académicas
 """
+import os
+import sys
+# Añadir raíz del proyecto al path para que 'src' sea importable
+# cuando se ejecuta con: streamlit run src/reports/app_dashboard.py
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import os
 from stable_baselines3 import PPO
-from src.environment_trading import PortfolioEnv
+from src.training_drl.environment_trading import PortfolioEnv
 
 try:
     from src.benchmarking.baselines import ejecutar_baselines, calcular_metricas, tabla_comparativa
@@ -86,6 +91,7 @@ st.info(
 # ─── Constantes visuales ──────────────────────────────────────────────────────
 COLORES = {
     'IA_PPO':               '#00d4ff',
+    'Especulativo_HMM':     '#ff9f1c',
     'Equal_Weight_Mensual': '#f0a500',
     'Buy_and_Hold':         '#7ed957',
     'Cartera_60_40':        '#ff6b6b',
@@ -93,7 +99,8 @@ COLORES = {
 }
 
 NOMBRES = {
-    'IA_PPO':               'IA PPO',
+    'IA_PPO':               'IA PPO (DRL)',
+    'Especulativo_HMM':     'Especulativo (GMM+KMeans)',
     'Equal_Weight_Mensual': 'Equal Weight',
     'Buy_and_Hold':         'Buy & Hold',
     'Cartera_60_40':        'Cartera 60/40',
@@ -195,6 +202,19 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             ticker_rv='IVV_Close',
             ticker_rf='BND_Close'
         )
+
+        # ── Agente Especulativo (GMM + K-Means) ─────────────────────────────
+        especulativo_path = 'models/speculative_gmm.pkl'
+        if os.path.exists(especulativo_path):
+            import pickle
+            with open(especulativo_path, 'rb') as f:
+                agente_spec = pickle.load(f)
+            df_f_test = df_f.iloc[split_idx:]
+            serie_spec = agente_spec.backtest(
+                df_f_test, df_p_test,
+                initial_balance=initial_bal, commission=commission
+            )
+            resultados_bl['Especulativo_HMM'] = serie_spec
 
         todas_series = {'IA_PPO': serie_ppo, **resultados_bl}
         df_metricas  = tabla_comparativa(todas_series)

@@ -7,8 +7,9 @@ import numpy as np
 from stable_baselines3 import PPO
 
 from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_dataset
-from src.environment_trading import PortfolioEnv
-from src.training_analysis import entrenar_academico, walk_forward_validation
+from src.training_drl.environment_trading import PortfolioEnv
+from src.training_drl.training_analysis import entrenar_academico, walk_forward_validation
+from src.unsupervised.speculative_agent import SpeculativeAgent
 
 app = FastAPI(title="TFM Trading AI API")
 
@@ -188,11 +189,62 @@ async def ver_estado():
         "fase1_datos":        os.path.exists('data/normalized_features.csv'),
         "fase3_modelo_std":   os.path.exists('models/best_model/best_model.zip'),
         "fase3_modelo_acad":  os.path.exists('models/best_model_academic/best_model.zip'),
+        "fase4_especulativo": os.path.exists('models/speculative_gmm.pkl'),
         "reportes": {
             "backtest":      os.path.exists('reports/backtest_principal.png'),
             "diagnostico":   os.path.exists('reports/training_diagnostics.png'),
             "overfitting":   os.path.exists('reports/overfitting_analysis.png'),
             "walk_forward":  os.path.exists('reports/walk_forward_analysis.png'),
             "regimenes":     os.path.exists('reports/regime_analysis.png'),
+        }
+    }
+
+
+# ─── FASE 4: Agente Especulativo No Supervisado ─────────────────────────────
+
+@app.post("/fase4/ajustar-especulativo")
+async def ajustar_especulativo(split_pct: float = 0.8):
+    """
+    Ajusta el agente especulativo basado en GMM + K-Means (aprendizaje no supervisado).
+
+    A diferencia del PPO, este modelo se ajusta en segundos — no necesita BackgroundTasks.
+    Detecta regímenes de mercado y agrupa activos por comportamiento dinámico.
+
+    El resultado se guarda como pickle para usarlo en el backtest del dashboard.
+    Se entrena solo sobre el split de train para evitar lookahead bias.
+    """
+    if not os.path.exists('data/normalized_features.csv'):
+        return {"error": "Ejecuta primero /fase1/preparar-datos"}
+
+    df_f = pd.read_csv('data/normalized_features.csv', index_col=0)
+    df_p = pd.read_csv('data/original_prices.csv', index_col=0)
+
+    split_idx = int(len(df_f) * split_pct)
+    features_train = df_f.iloc[:split_idx]
+    precios_train  = df_p.iloc[:split_idx]
+
+    agente = SpeculativeAgent(n_regimenes=3, n_clusters=3, ventana_cluster=60)
+    agente.fit(features_train, precios_train)
+
+    # Guardar modelo ajustado
+    import pickle
+    os.makedirs('models', exist_ok=True)
+    with open('models/speculative_gmm.pkl', 'wb') as f:
+        pickle.dump(agente, f)
+
+    # Backtest rápido sobre test para dar feedback inmediato
+    features_test = df_f.iloc[split_idx:]
+    precios_test  = df_p.iloc[split_idx:]
+    equity = agente.backtest(features_test, precios_test)
+
+    ret_total = (equity.iloc[-1] / equity.iloc[0] - 1) * 100
+
+    return {
+        "status": "Agente especulativo ajustado y guardado",
+        "modelo": "models/speculative_gmm.pkl",
+        "regimenes_detectados": agente.detector.descripcion_regimenes(features_train).to_dict(orient='records'),
+        "backtest_test": {
+            "retorno_total": f"{ret_total:.1f}%",
+            "valor_final": f"${equity.iloc[-1]:,.2f}"
         }
     }

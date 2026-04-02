@@ -118,7 +118,7 @@ Todos los campos deben estar en `true` antes de ejecutar el backtest.
 Ejecuta el backtest completo e imprime la tabla comparativa en consola. No requiere la API.
 
 ```bash
-python results_viewer.py
+python src/reports/results_viewer.py
 ```
 
 **Archivos generados en `src/reports/`:**
@@ -135,7 +135,7 @@ python results_viewer.py
 ## 9. Dashboard interactivo — Streamlit
 
 ```bash
-streamlit run app_dashboard.py
+streamlit run src/reports/app_dashboard.py
 ```
 
 Se abre en `http://localhost:8501`.
@@ -163,8 +163,8 @@ uvicorn main:app --reload
 ├── POST /fase3/entrenar-academico      # entrenar PPO (1M pasos)
 └── POST /fase3/walk-forward            # validación temporal
 
-python results_viewer.py               # backtest + tabla por consola
-streamlit run app_dashboard.py         # dashboard interactivo
+python src/reports/results_viewer.py         # backtest + tabla por consola
+streamlit run src/reports/app_dashboard.py  # dashboard interactivo
 ```
 
 ---
@@ -172,27 +172,34 @@ streamlit run app_dashboard.py         # dashboard interactivo
 ## Estructura del proyecto
 
 ```
-├── main.py                          # API FastAPI
-├── app_dashboard.py                 # Dashboard Streamlit
-├── results_viewer.py                # Backtest por consola
+├── main.py                              # API FastAPI (entry point)
 ├── data/
-│   ├── normalized_features.csv      # features normalizadas (generado)
-│   └── original_prices.csv          # precios de cierre (generado)
+│   ├── normalized_features.csv          # features normalizadas (generado)
+│   └── original_prices.csv              # precios de cierre (generado)
 ├── models/
 │   └── best_model_academic/
-│       └── best_model.zip           # modelo PPO final (generado)
+│       └── best_model.zip               # modelo PPO final (generado)
 ├── src/
-│   ├── environment_trading.py       # entorno Gymnasium para el agente
-│   ├── training_analysis.py         # callbacks académicos y walk-forward
-│   ├── train.py                     # configuración PPO
+│   ├── training_drl/                    # Deep Reinforcement Learning
+│   │   ├── environment_trading.py       #   entorno Gymnasium (PortfolioEnv)
+│   │   ├── training_analysis.py         #   callbacks académicos y walk-forward
+│   │   ├── train.py                     #   configuración PPO
+│   │   └── regime_analysis.py           #   análisis de regímenes de volatilidad
+│   ├── unsupervised/                    # Agente especulativo no supervisado
+│   │   ├── regime_hmm.py               #   detección de regímenes con HMM
+│   │   ├── asset_clustering.py          #   clustering dinámico de activos
+│   │   └── speculative_agent.py         #   agente basado en régimen + cluster
 │   ├── pipeline_getdata/
-│   │   ├── data_downloader.py       # pipeline de descarga y features
-│   │   └── data_source.py           # abstracción de fuentes de datos
+│   │   ├── data_downloader.py           #   pipeline de descarga y features
+│   │   └── data_source.py              #   abstracción de fuentes de datos
 │   ├── feature_ingeneering/
-│   │   └── data_features.py         # cálculo de indicadores técnicos
+│   │   └── data_features.py             #   cálculo de indicadores técnicos
 │   ├── benchmarking/
-│   │   └── baselines.py             # estrategias de referencia
-│   └── reports/                     # gráficas y CSVs generados
+│   │   └── baselines.py                 #   estrategias de referencia
+│   └── reports/
+│       ├── app_dashboard.py             #   dashboard Streamlit interactivo
+│       ├── results_viewer.py            #   backtest por consola
+│       └── *.png / *.csv                #   gráficas y tablas generadas
 └── requirements.txt
 ```
 

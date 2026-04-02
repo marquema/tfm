@@ -7,5 +7,7 @@ logs/
 *.pyc.*
 data/
 models/
-reports/
+*.png
+*.csv
 __pycache__/
+*.zip
