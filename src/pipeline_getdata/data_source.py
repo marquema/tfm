@@ -56,13 +56,13 @@ class DataSource(ABC):
         ...
 
     # Aliases retrocompatibles (el pipeline actual usa estos nombres)
-    #def obtener_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
-    #    """Alias de get_ohlcv() para retrocompatibilidad con el pipeline."""
-    #    return self.get_ohlcv(ticker, start_date, end_date)
+    def obtener_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+        """Alias de get_ohlcv() para retrocompatibilidad con el pipeline."""
+        return self.get_ohlcv(ticker, start_date, end_date)
 
-    #def nombre(self) -> str:
-    #    """Alias de name() para retrocompatibilidad con el pipeline."""
-    #    return self.name()
+    def nombre(self) -> str:
+        """Alias de name() para retrocompatibilidad con el pipeline."""
+        return self.name()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

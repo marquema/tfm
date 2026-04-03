@@ -309,7 +309,7 @@ def generate_dataset(tickers: list,
     # Cuando baja → actúa como diversificador. El agente aprende a reducir
     # exposición a IBIT cuando la correlación con renta variable aumenta.
     print(f"\n=== FASE 3: Correlaciones dinámicas entre activos ===")
-    df_corr = calcular_correlaciones_dinamicas(dataset, correlation_pairs, ventanas=[20, 60])
+    df_corr = calcular_correlaciones_dinamicas(dataset, correlation_pairs, windows=[20, 60])
     dataset = pd.concat([dataset, df_corr], axis=1)
     print(f"  {len(df_corr.columns)} columnas de correlación añadidas.")
 
@@ -327,7 +327,7 @@ def generate_dataset(tickers: list,
     # Beta alta → el activo amplifica las caídas del mercado.
     # Beta negativa → cobertura natural (relevante para BND en crisis).
     market_ticker = 'IVV' if 'IVV' in valid_tickers else valid_tickers[0]
-    df_beta = calcular_beta_rolling(dataset, valid_tickers, ticker_mercado=market_ticker)
+    df_beta = calcular_beta_rolling(dataset, valid_tickers, market_ticker=market_ticker)
     if not df_beta.empty:
         dataset = pd.concat([dataset, df_beta], axis=1)
         print(f"  {len(df_beta.columns)} features de beta rolling añadidas.")

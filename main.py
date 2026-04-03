@@ -223,7 +223,7 @@ async def ajustar_especulativo(split_pct: float = 0.8):
     features_train = df_f.iloc[:split_idx]
     precios_train  = df_p.iloc[:split_idx]
 
-    agente = SpeculativeAgent(n_regimenes=3, n_clusters=3, ventana_cluster=60)
+    agente = SpeculativeAgent(n_regimes=3, n_clusters=3, cluster_window=60)
     agente.fit(features_train, precios_train)
 
     # Guardar modelo ajustado

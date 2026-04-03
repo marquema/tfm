@@ -205,8 +205,8 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             df_p_test,
             initial_balance=initial_bal,
             commission=commission,
-            ticker_rv='IVV_Close',
-            ticker_rf='BND_Close'
+            ticker_equity='IVV_Close',
+            ticker_bond='BND_Close'
         )
 
         # ── Agente Especulativo (GMM + K-Means) ─────────────────────────────
