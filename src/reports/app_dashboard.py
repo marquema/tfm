@@ -43,7 +43,7 @@ st.markdown(
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración")
 
-modelo_path = st.sidebar.selectbox(
+model_path = st.sidebar.selectbox(
     "Modelo a evaluar",
     options=[
         "models/best_model_academic/best_model.zip",
@@ -60,15 +60,21 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("**Estado del sistema**")
 features_ok = os.path.exists('data/normalized_features.csv')
 prices_ok   = os.path.exists('data/original_prices.csv')
-modelo_ok   = os.path.exists(modelo_path)
+model_ok    = os.path.exists(model_path)
 st.sidebar.markdown(f"{'✅' if features_ok else '❌'} Features CSV")
 st.sidebar.markdown(f"{'✅' if prices_ok   else '❌'} Precios CSV")
-st.sidebar.markdown(f"{'✅' if modelo_ok   else '❌'} Modelo PPO")
+st.sidebar.markdown(f"{'✅' if model_ok    else '❌'} Modelo PPO")
 
 
 # ─── Carga de datos ───────────────────────────────────────────────────────────
 @st.cache_data
 def load_data():
+    """
+    Carga los CSVs de features normalizadas y precios originales.
+
+    Retorna una tupla (df_features, df_prices) con ambos DataFrames indexados
+    por la primera columna del CSV.
+    """
     df_f = pd.read_csv('data/normalized_features.csv', index_col=0)
     df_p = pd.read_csv('data/original_prices.csv',     index_col=0)
     return df_f, df_p
@@ -164,8 +170,8 @@ LAYOUT_OSCURO = dict(template='plotly_dark', hovermode='x unified',
 # ─── Backtest ────────────────────────────────────────────────────────────────
 if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_width=True):
 
-    if not modelo_ok:
-        st.error(f"Modelo no encontrado en {modelo_path}. Entrena con POST /fase3/entrenar-academico")
+    if not model_ok:
+        st.error(f"Modelo no encontrado en {model_path}. Entrena con POST /fase3/entrenar-academico")
         st.stop()
 
     with st.spinner("Simulando estrategias en datos de test..."):
@@ -178,24 +184,24 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             commission=commission,
             initial_balance=initial_bal
         )
-        model = PPO.load(modelo_path)
+        model = PPO.load(model_path)
         obs, _ = env_test.reset()
         done   = False
-        equity_ppo      = [initial_bal]
-        weights_history = []
+        ppo_equity      = [initial_bal]
+        weight_history  = []
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, _, done, _, info = env_test.step(action)
-            equity_ppo.append(info['value'])
+            ppo_equity.append(info['value'])
             w = np.clip(action, 0, 1)
             w = w / (w.sum() + 1e-6)
-            weights_history.append(w)
+            weight_history.append(w)
 
-        serie_ppo    = pd.Series(equity_ppo, name='IA_PPO')
+        ppo_series   = pd.Series(ppo_equity, name='IA_PPO')
 
         # ── Baselines ─────────────────────────────────────────────────────────
-        resultados_bl = ejecutar_baselines(
+        baseline_results = ejecutar_baselines(
             df_p_test,
             initial_balance=initial_bal,
             commission=commission,
@@ -204,27 +210,27 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         )
 
         # ── Agente Especulativo (GMM + K-Means) ─────────────────────────────
-        especulativo_path = 'models/speculative_gmm.pkl'
-        if os.path.exists(especulativo_path):
+        speculative_path = 'models/speculative_gmm.pkl'
+        if os.path.exists(speculative_path):
             import pickle
-            with open(especulativo_path, 'rb') as f:
-                agente_spec = pickle.load(f)
+            with open(speculative_path, 'rb') as f:
+                spec_agent = pickle.load(f)
             df_f_test = df_f.iloc[split_idx:]
-            serie_spec = agente_spec.backtest(
+            spec_series = spec_agent.backtest(
                 df_f_test, df_p_test,
                 initial_balance=initial_bal, commission=commission
             )
-            resultados_bl['Especulativo_HMM'] = serie_spec
+            baseline_results['Especulativo_HMM'] = spec_series
 
-        todas_series = {'IA_PPO': serie_ppo, **resultados_bl}
-        df_metricas  = tabla_comparativa(todas_series)
+        all_series  = {'IA_PPO': ppo_series, **baseline_results}
+        df_metrics  = tabla_comparativa(all_series)
 
     # Construir eje de fechas: las series tienen 1 punto extra al inicio (balance inicial)
     # Se añade un día hábil anterior al test como "día 0" para ese punto.
-    fechas_test = pd.to_datetime(df_p_test.index)
+    test_dates = pd.to_datetime(df_p_test.index)
     from pandas.tseries.offsets import BDay
-    fecha_d0 = fechas_test[0] - BDay(1)
-    fechas   = [fecha_d0] + fechas_test.tolist()
+    date_d0 = test_dates[0] - BDay(1)
+    dates   = [date_d0] + test_dates.tolist()
 
     # ════════════════════════════════════════════════════════════════════════
     # SECCIÓN 1: Métricas comparativas
@@ -243,31 +249,35 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         "Una estrategia con Sharpe alto y MDD bajo es la que un inversor real puede mantener sin entrar en pánico."
     )
 
-    cols = st.columns(len(df_metricas))
-    for col, nombre in zip(cols, df_metricas.index):
-        sharpe  = df_metricas.loc[nombre, 'Sharpe Ratio']
-        retorno = df_metricas.loc[nombre, 'Retorno Total (%)']
-        mdd     = df_metricas.loc[nombre, 'Max Drawdown (%)']
+    cols = st.columns(len(df_metrics))
+    for col, name in zip(cols, df_metrics.index):
+        sharpe      = df_metrics.loc[name, 'Sharpe Ratio']
+        total_ret   = df_metrics.loc[name, 'Retorno Total (%)']
+        mdd         = df_metrics.loc[name, 'Max Drawdown (%)']
         col.metric(
-            label=NOMBRES.get(nombre, nombre),
+            label=NOMBRES.get(name, name),
             value=f"Sharpe {sharpe:.2f}",
-            delta=f"Ret {retorno:.1f}%  |  MDD {mdd:.1f}%",
-            delta_color="normal" if retorno >= 0 else "inverse"
+            delta=f"Ret {total_ret:.1f}%  |  MDD {mdd:.1f}%",
+            delta_color="normal" if total_ret >= 0 else "inverse"
         )
 
     st.markdown("### Tabla completa")
     with st.expander("📖  Glosario — qué significa cada métrica"):
-        for metrica, desc in DESCRIPCIONES_METRICAS.items():
-            st.markdown(f"**{metrica}**")
+        for metric_name, desc in DESCRIPCIONES_METRICAS.items():
+            st.markdown(f"**{metric_name}**")
             st.markdown(f"> {desc}")
             st.markdown("")
 
     def highlight_ppo(row):
+        """
+        Resalta la fila del agente PPO en la tabla de métricas con un estilo
+        de fondo azul oscuro para distinguirla visualmente de los baselines.
+        """
         return ['background-color: #1e3a5f; color: white; font-weight: bold'
                 if row.name == 'IA_PPO' else '' for _ in row]
 
     st.dataframe(
-        df_metricas.style.apply(highlight_ppo, axis=1).format("{:.2f}"),
+        df_metrics.style.apply(highlight_ppo, axis=1).format("{:.2f}"),
         use_container_width=True
     )
 
@@ -286,13 +296,13 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     st.caption("Interacción: clic en la leyenda para mostrar/ocultar estrategias · doble clic para aislar una · arrastra para hacer zoom")
 
     fig_eq = go.Figure()
-    for nombre, serie in todas_series.items():
+    for name, series in all_series.items():
         fig_eq.add_trace(go.Scatter(
-            x=fechas[:len(serie)],
-            y=serie.values,
-            name=NOMBRES.get(nombre, nombre),
-            line=dict(color=COLORES.get(nombre, '#aaa'), width=3 if nombre == 'IA_PPO' else 1.5),
-            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>%{{x|%d %b %Y}}: $%{{y:,.2f}}<extra></extra>"
+            x=dates[:len(series)],
+            y=series.values,
+            name=NOMBRES.get(name, name),
+            line=dict(color=COLORES.get(name, '#aaa'), width=3 if name == 'IA_PPO' else 1.5),
+            hovertemplate=f"<b>{NOMBRES.get(name, name)}</b><br>%{{x|%d %b %Y}}: $%{{y:,.2f}}<extra></extra>"
         ))
     fig_eq.add_hline(y=initial_bal, line_dash="dash", line_color="white",
                      opacity=0.3, annotation_text="Capital inicial", annotation_font_color="white")
@@ -319,16 +329,16 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     st.caption("Interacción: clic en la leyenda para comparar dos estrategias en detalle")
 
     fig_dd = go.Figure()
-    for nombre, serie in todas_series.items():
-        rolling_max = serie.cummax()
-        dd = (serie - rolling_max) / (rolling_max + 1e-8) * 100
+    for name, series in all_series.items():
+        rolling_max = series.cummax()
+        dd = (series - rolling_max) / (rolling_max + 1e-8) * 100
         fig_dd.add_trace(go.Scatter(
-            x=fechas[:len(dd)],
+            x=dates[:len(dd)],
             y=dd.values,
-            name=NOMBRES.get(nombre, nombre),
-            line=dict(color=COLORES.get(nombre, '#aaa'), width=1.5),
+            name=NOMBRES.get(name, name),
+            line=dict(color=COLORES.get(name, '#aaa'), width=1.5),
             fill='tozeroy',
-            hovertemplate=f"<b>{NOMBRES.get(nombre, nombre)}</b><br>%{{x|%d %b %Y}}: %{{y:.2f}}%<extra></extra>"
+            hovertemplate=f"<b>{NOMBRES.get(name, name)}</b><br>%{{x|%d %b %Y}}: %{{y:.2f}}%<extra></extra>"
         ))
     fig_dd.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
                          yaxis_title="Drawdown (%)", yaxis_ticksuffix="%", height=350)
@@ -350,7 +360,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             "comportaron en ese período y reducir exposición a los volátiles o con peor rendimiento."
         )
         st.caption("Clic en la leyenda para ocultar activos y ver los demás con más detalle")
-        last_w = np.array(weights_history[-1]).flatten()
+        last_w = np.array(weight_history[-1]).flatten()
         if len(last_w) == len(tickers):
             fig_pie = go.Figure(go.Pie(
                 labels=tickers, values=last_w, hole=0.35,
@@ -367,12 +377,12 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             "Cada franja de color representa el porcentaje asignado a un activo en cada día del test. "
             "La suma siempre es 100%. Fíjate en dos cosas:  \n"
             "- **Franjas estables** = el agente mantiene posiciones (bajo coste de transacción)  \n"
-            "- **Franjas muy cambiantes** = alta rotación, lo que erosiona el rendimiento con comisiones"
+            "- **Franjas muy cambiantes** = alta rotación, lo que mata el rendimiento con comisiones"
         )
         st.caption("Clic en la leyenda para aislar un activo concreto")
-        if weights_history and len(weights_history[0]) == len(tickers):
-            df_w = pd.DataFrame(weights_history, columns=tickers,
-                                index=pd.to_datetime(df_p_test.index[:len(weights_history)]))
+        if weight_history and len(weight_history[0]) == len(tickers):
+            df_w = pd.DataFrame(weight_history, columns=tickers,
+                                index=pd.to_datetime(df_p_test.index[:len(weight_history)]))
             fig_w = go.Figure()
             for ticker in tickers:
                 fig_w.add_trace(go.Scatter(
@@ -420,8 +430,8 @@ Esta es la prueba más importante. Compara la recompensa en dos conjuntos:
 - **Eval** (rojo): datos que el agente **nunca vio** durante el entrenamiento
 
 **¿Qué buscar?**
-- ✅ Ambas curvas suben juntas → el agente generalizó, funcionará en datos nuevos
-- ⚠️ Train sube pero Eval no → **sobreajuste**: memorizó el pasado pero no aprendió nada transferible
+- Ambas curvas suben juntas → el agente generalizó, funcionará en datos nuevos
+- Train sube pero Eval no → **sobreajuste**: memorizó el pasado pero no aprendió nada transferible
 - El sistema guarda automáticamente el modelo en el momento donde Eval es máximo, antes de que empiece a degradarse
 
 ---
@@ -435,13 +445,13 @@ se entrena desde cero con datos anteriores y se evalúa en el período siguiente
 Es el equivalente financiero del **k-fold cross-validation** en machine learning.
 
 **¿Qué buscar?**
-- ✅ Sharpe positivo y consistente en la mayoría de ventanas → la estrategia funciona en distintos regímenes (crisis, rally, consolidación)
-- ⚠️ Alta varianza entre ventanas → el rendimiento depende de qué período toque: suerte, no habilidad
-- ⚠️ Sharpe decreciente en las ventanas más recientes → el modelo está sesgado hacia el pasado lejano
+- Sharpe positivo y consistente en la mayoría de ventanas → la estrategia funciona en distintos regímenes (crisis, rally, consolidación)
+- Alta varianza entre ventanas → el rendimiento depende de qué período toque: suerte, no habilidad
+- Sharpe decreciente en las ventanas más recientes → el modelo está sesgado hacia el pasado lejano
         """)
 
     col_r1, col_r2, col_r3 = st.columns(3)
-    for col, ruta, titulo, desc in [
+    for col, file_path, title, desc in [
         (col_r1, 'src/reports/training_diagnostics.png',
          "1. Salud del entrenamiento",
          "Entropía, value loss, explained variance, KL y clip fraction. "
@@ -455,9 +465,9 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
          "Sharpe, retorno y drawdown en ventanas temporales independientes. "
          "Resultados consistentes = estrategia robusta, no suerte de un período."),
     ]:
-        col.markdown(f"**{titulo}**")
+        col.markdown(f"**{title}**")
         col.caption(desc)
-        if os.path.exists(ruta):
-            col.image(ruta, use_container_width=True)
+        if os.path.exists(file_path):
+            col.image(file_path, use_container_width=True)
         else:
-            col.info(f"Pendiente de generar.\n\n`{ruta}`")
+            col.info(f"Pendiente de generar.\n\n`{file_path}`")

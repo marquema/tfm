@@ -1,54 +1,99 @@
+"""
+Módulo de entrenamiento del agente PPO para gestión de carteras.
+
+Contiene funciones de entrenamiento básico y entrenamiento con validación
+temporal (split train/eval con EvalCallback de Stable-Baselines3).
+"""
+
 import os
 import pandas as pd
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import EvalCallback
 from src.training_drl.environment_trading import PortfolioEnv
-from src.training_drl.training_analysis import entrenar_academico, walk_forward_validation
+from src.training_drl.training_analysis import train_academic, walk_forward_validation
 
-def entrenar_modelo(total_timesteps=100000):
-    print("--- Iniciando Entrenamiento de la IA ---")
-    
+
+def train_model(total_timesteps=100000):
+    """
+    Entrenamiento básico del agente PPO sin validación temporal.
+
+    Crea un entorno con todo el dataset, entrena el modelo PPO con la
+    política MlpPolicy por defecto y guarda el resultado en disco.
+
+    Parameters
+    ----------
+    total_timesteps : int
+        Número total de pasos de interacción con el entorno.
+
+    Returns
+    -------
+    str
+        Mensaje de confirmación del entrenamiento completado.
+    """
+    print("--- Iniciando Entrenamiento ---")
+
     # 1. Crear el entorno
-    env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv')    
-    #Verificar si hay NaNs antes de empezar
+    env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv')
+    # Verificar si hay NaNs antes de empezar
     if env.df_features.isnull().values.any():
         print("ERROR: ¡Todavía hay NaNs en las features!")
-        return    
-    
-    #2. Configurar el algoritmo PPO
-    #MlpPolicy: Red neuronal estándar (Multi-layer Perceptron): barandilla de seguridad
+        return
+
+    # 2. Configurar el algoritmo PPO
+    # MlpPolicy: Red neuronal estándar (Multi-layer Perceptron)
     model = PPO("MlpPolicy", env, verbose=1, tensorboard_log="./logs/")
-    
-    #3. Aprender
+
+    # 3. Aprender
     print(f"Entrenando por {total_timesteps} pasos...")
     model.learn(total_timesteps=total_timesteps)
-    
-    #4. Guardar el "cerebro"
+
+    # 4. Guardar el modelo
     os.makedirs('models', exist_ok=True)
     model.save("models/ppo_portfolio_manager_50000")
     print("Modelo guardado en models/ppo_portfolio_manager_50000.zip")
-    
+
     return "Entrenamiento completado"
 
 
+def train_with_validation(total_timesteps=100000, split_pct=0.8):
+    """
+    Entrenamiento del agente PPO con validación temporal usando EvalCallback.
 
+    Divide el dataset en train (split_pct) y eval (1 - split_pct), entrena
+    con arquitectura optimizada (256-256, ent_coef=0.01) y guarda el mejor
+    modelo según el reward medio de evaluación.
 
-def entrenar_con_validacion(total_timesteps=100000, split_pct=0.8):
+    Parameters
+    ----------
+    total_timesteps : int
+        Número máximo de pasos de entrenamiento.
+    split_pct : float
+        Fracción del dataset destinada a entrenamiento (0.0-1.0).
+
+    Returns
+    -------
+    None
+    """
     print("--- Configurando Entrenamiento con Validación Temporal ---")
-    
+
     # 1. Cargar datos para calcular el punto de corte
     df_f = pd.read_csv('data/normalized_features.csv')
     split_idx = int(len(df_f) * split_pct)
-    
+
     # 2. Crear entorno de ENTRENAMIENTO (80% inicial)
-    # Pasaremos un parámetro 'end_idx' a tu PortfolioEnv para recortar los datos
-    train_env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv', end_idx=split_idx)
-    
+    train_env = PortfolioEnv(
+        'data/normalized_features.csv', 'data/original_prices.csv',
+        end_idx=split_idx
+    )
+
     # 3. Crear entorno de VALIDACIÓN (20% final)
-    eval_env = PortfolioEnv('data/normalized_features.csv', 'data/original_prices.csv', start_idx=split_idx)
-    
+    eval_env = PortfolioEnv(
+        'data/normalized_features.csv', 'data/original_prices.csv',
+        start_idx=split_idx
+    )
+
     # 4. Configurar el Callback de Evaluación
-    # Evaluará cada 5000 pasos y guardará el mejor modelo en 'models/best_model'
+    # Evaluará cada 10k pasos y guardará el mejor modelo en 'models/best_model'
     eval_callback = EvalCallback(
         eval_env,
         best_model_save_path='./models/best_model/',
@@ -58,14 +103,15 @@ def entrenar_con_validacion(total_timesteps=100000, split_pct=0.8):
         deterministic=True,
         render=False
     )
+    #todo por qué 3 episodios?
 
-    # 5. Inicializar PPO con arquitectura y hiperparámetros optimizados para portfolios
+    # 5. Inicializar PPO con arquitectura e hiperparámetros optimizados para portfolios
     #
     # Red más profunda (256-256): con 171 features el default (64-64) es demasiado pequeño
     # para capturar las relaciones entre indicadores técnicos, correlaciones y regímenes.
     #
     # n_steps=1024: horizonte de rollout reducido (default 2048) — el episodio de train
-    # tiene ~2460 pasos, con 2048 el agente ve solo ~1 episodio por update, lo que ralentiza
+    # tiene ~2460 pasos; con 2048 el agente ve solo ~1 episodio por update, lo que ralentiza
     # la convergencia. Con 1024 ve ~2 episodios y actualiza más frecuentemente.
     #
     # ent_coef=0.01: coeficiente de entropía — incentiva exploración durante el entrenamiento,
@@ -89,11 +135,18 @@ def entrenar_con_validacion(total_timesteps=100000, split_pct=0.8):
         verbose=1,
         tensorboard_log="./logs/"
     )
-    
-    # 6. ¡Lanzar los 100.000 pasos!
+
+    # 6. Lanzar el entrenamiento
     print(f"Iniciando entrenamiento de {total_timesteps} pasos...")
     model.learn(total_timesteps=total_timesteps, callback=eval_callback)
-    
+
     # 7. Guardar el modelo final (aunque el 'best_model' suele ser el mejor)
     model.save("models/ppo_final_100k")
     print("Entrenamiento finalizado.")
+
+#todo analizar esto de la retro compatibilidad
+# ---------------------------------------------------------------------------
+# Compatibilidad hacia atrás: aliases de funciones renombradas
+# ---------------------------------------------------------------------------
+entrenar_modelo = train_model
+entrenar_con_validacion = train_with_validation

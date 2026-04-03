@@ -29,7 +29,6 @@ from abc import ABC, abstractmethod
 # ─────────────────────────────────────────────────────────────────────────────
 # Interfaz base
 # ─────────────────────────────────────────────────────────────────────────────
-
 class DataSource(ABC):
     """Contrato que toda fuente de datos debe cumplir."""
 
@@ -57,13 +56,13 @@ class DataSource(ABC):
         ...
 
     # Aliases retrocompatibles (el pipeline actual usa estos nombres)
-    def obtener_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Alias de get_ohlcv() para retrocompatibilidad con el pipeline."""
-        return self.get_ohlcv(ticker, start_date, end_date)
+    #def obtener_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
+    #    """Alias de get_ohlcv() para retrocompatibilidad con el pipeline."""
+    #    return self.get_ohlcv(ticker, start_date, end_date)
 
-    def nombre(self) -> str:
-        """Alias de name() para retrocompatibilidad con el pipeline."""
-        return self.name()
+    #def nombre(self) -> str:
+    #    """Alias de name() para retrocompatibilidad con el pipeline."""
+    #    return self.name()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +166,7 @@ class LiveSource(DataSource):
             return pd.Series({'Open': bar.o, 'High': bar.h,
                                'Low': bar.l, 'Close': bar.c, 'Volume': bar.v})
     """
+    # todo: implementar conexión a datos en RealTime
 
     def __init__(self, proveedor: str = "pendiente", **kwargs):
         self._proveedor = proveedor

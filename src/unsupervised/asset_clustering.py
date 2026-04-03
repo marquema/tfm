@@ -16,9 +16,9 @@ Fundamentación:
   con mejor momentum y evitar clusters en drawdown.
 
 Uso:
-  clusterer = AssetClusterer(n_clusters=3, ventana=60)
-  clusterer.fit(precios_df)
-  labels = clusterer.predict(precios_df)
+  clusterer = AssetClusterer(n_clusters=3, window=60)
+  clusterer.fit(prices_df)
+  labels = clusterer.predict(prices_df)
 """
 
 import numpy as np
@@ -35,36 +35,51 @@ class AssetClusterer:
       [retorno_acumulado, volatilidad, skewness, max_drawdown]
     K-Means agrupa activos con vectores similares.
 
-    Parámetros
+    Parameters
     ----------
-    n_clusters : número de grupos de activos (2-4 es razonable con 8 activos)
-    ventana    : días de la ventana rolling para calcular features por activo
+    n_clusters : int
+        Número de grupos de activos (2-4 es razonable con 8 activos).
+    window : int
+        Días de la ventana rolling para calcular features por activo.
+    random_state : int
+        Semilla para reproducibilidad.
     """
 
-    def __init__(self, n_clusters: int = 3, ventana: int = 60,
+    def __init__(self, n_clusters: int = 3, window: int = 60,
                  random_state: int = 42):
-        self.n_clusters   = n_clusters
-        self.ventana      = ventana
+        self.n_clusters = n_clusters
+        self.window  = window
         self.random_state = random_state
-        self.scaler       = StandardScaler()
+        self.scaler  = StandardScaler()
 
-    def _features_por_activo(self, retornos: pd.DataFrame,
-                              idx_fin: int) -> np.ndarray:
+    def _features_per_asset(self, returns: pd.DataFrame,
+                            end_idx: int) -> np.ndarray:
         """
         Calcula el vector de características de cada activo en la ventana
-        [idx_fin - ventana, idx_fin].
+        [end_idx - window, end_idx].
 
-        Retorna array (n_activos, 4) con: retorno acum, vol, skew, mdd.
+        Parameters
+        ----------
+        returns : pd.DataFrame
+            DataFrame de retornos logarítmicos con una columna por activo.
+        end_idx : int
+            Índice del último día de la ventana (exclusivo).
+
+        Returns
+        -------
+        np.ndarray
+            Array de forma (n_activos, 4) con: retorno acumulado, volatilidad,
+            skewness y max drawdown por activo.
         """
-        inicio = max(0, idx_fin - self.ventana)
-        ventana_rets = retornos.iloc[inicio:idx_fin]
+        start = max(0, end_idx - self.window)
+        window_returns = returns.iloc[start:end_idx]
 
         features = []
-        for col in ventana_rets.columns:
-            r = ventana_rets[col].values
-            ret_acum = np.nansum(r)
-            vol      = np.nanstd(r)
-            skew     = float(pd.Series(r).skew()) if len(r) > 2 else 0.0
+        for col in window_returns.columns:
+            r = window_returns[col].values
+            cum_return = np.nansum(r)
+            vol        = np.nanstd(r)
+            skew       = float(pd.Series(r).skew()) if len(r) > 2 else 0.0
 
             # Max drawdown de la ventana
             cum = np.nancumsum(r)
@@ -72,56 +87,81 @@ class AssetClusterer:
             dd = cum - peak
             mdd = float(np.nanmin(dd)) if len(dd) > 0 else 0.0
 
-            features.append([ret_acum, vol, skew, mdd])
+            features.append([cum_return, vol, skew, mdd])
 
         return np.array(features)
 
-    def cluster_en_fecha(self, retornos: pd.DataFrame,
-                          idx: int) -> np.ndarray:
+    def cluster_at_date(self, returns: pd.DataFrame,
+                        idx: int) -> np.ndarray:
         """
         Asigna cada activo a un cluster para una fecha concreta.
 
-        Retorna array (n_activos,) con etiquetas de cluster [0, 1, ..., n_clusters-1],
-        ordenadas para que cluster 0 = peor momentum, cluster N-1 = mejor momentum.
+        Parameters
+        ----------
+        returns : pd.DataFrame
+            DataFrame de retornos logarítmicos con una columna por activo.
+        idx : int
+            Índice de la fecha para la cual calcular los clusters.
+
+        Returns
+        -------
+        np.ndarray
+            Array de forma (n_activos,) con etiquetas de cluster [0, 1, ..., n_clusters-1],
+            ordenadas para que cluster 0 = peor momentum, cluster N-1 = mejor momentum.
         """
-        X = self._features_por_activo(retornos, idx)
+        X = self._features_per_asset(returns, idx)
         X_scaled = self.scaler.fit_transform(X)
 
-        n_activos = len(retornos.columns)
-        k = min(self.n_clusters, n_activos)
+        n_assets = len(returns.columns)
+        k = min(self.n_clusters, n_assets)
         km = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
         labels_raw = km.fit_predict(X_scaled)
 
         # Ordenar clusters por retorno medio: 0=peor, N-1=mejor
-        ret_por_cluster = {}
+        return_per_cluster = {}
         for c in range(k):
             mask = labels_raw == c
-            ret_por_cluster[c] = X[mask, 0].mean()  # columna 0 = retorno acumulado
+            return_per_cluster[c] = X[mask, 0].mean()  # columna 0 = retorno acumulado
 
-        orden = sorted(ret_por_cluster.keys(), key=lambda c: ret_por_cluster[c])
-        mapa  = {viejo: nuevo for nuevo, viejo in enumerate(orden)}
-        return np.array([mapa[l] for l in labels_raw])
+        order = sorted(return_per_cluster.keys(), key=lambda c: return_per_cluster[c])
+        mapping = {old: new for new, old in enumerate(order)}
+        return np.array([mapping[l] for l in labels_raw])
 
-    def clustering_rolling(self, precios: pd.DataFrame,
-                            frecuencia: int = 20) -> pd.DataFrame:
+    def rolling_clustering(self, prices: pd.DataFrame,
+                           frequency: int = 20) -> pd.DataFrame:
         """
-        Ejecuta el clustering cada `frecuencia` días sobre todo el histórico.
+        Ejecuta el clustering cada ``frequency`` días sobre todo el histórico.
 
-        Retorna DataFrame (n_fechas, n_activos) con la etiqueta de cluster,
-        forward-filled entre evaluaciones.
+        Parameters
+        ----------
+        prices : pd.DataFrame
+            DataFrame de precios de cierre con una columna por activo.
+        frequency : int
+            Cada cuántos días se recalcula el clustering (por defecto 20, ~1 mes).
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame de forma (n_fechas, n_activos) con la etiqueta de cluster,
+            forward-filled entre evaluaciones.
         """
         # Calcular retornos logarítmicos
-        retornos = np.log(precios / precios.shift(1)).dropna()
+        returns = np.log(prices / prices.shift(1)).dropna()
 
-        resultados = pd.DataFrame(index=retornos.index, columns=precios.columns)
+        results = pd.DataFrame(index=returns.index, columns=prices.columns)
 
-        for i in range(self.ventana, len(retornos), frecuencia):
-            labels = self.cluster_en_fecha(retornos, i)
-            fecha  = retornos.index[i]
-            for j, col in enumerate(precios.columns):
-                resultados.loc[fecha, col] = labels[j]
+        for i in range(self.window, len(returns), frequency):
+            labels = self.cluster_at_date(returns, i)
+            date   = returns.index[i]
+            for j, col in enumerate(prices.columns):
+                results.loc[date, col] = labels[j]
 
         # Forward fill para los días entre evaluaciones
-        resultados = resultados.ffill().bfill().astype(float)
+        results = results.ffill().bfill().astype(float)
 
-        return resultados
+        return results
+
+    # todo: ojo retro compatibilidad
+    # --- Alias de retrocompatibilidad ---
+    cluster_en_fecha = cluster_at_date
+    clustering_rolling = rolling_clustering
