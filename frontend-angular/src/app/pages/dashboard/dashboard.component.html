@@ -1,0 +1,56 @@
+<div class="dashboard-page">
+  <h1>Dashboard</h1>
+  <p class="page-subtitle">Resumen del rendimiento del portfolio gestionado por IA</p>
+
+  <!-- Metric Cards -->
+  <div class="metrics-row">
+    @for (metric of metrics; track metric.label) {
+      <div class="card metric-card">
+        <span class="metric-label">{{ metric.label }}</span>
+        <span class="metric-value" [class]="'trend-' + metric.trend">
+          {{ metric.value }}{{ metric.suffix }}
+        </span>
+        <span class="metric-trend">
+          @if (metric.trend === 'up') {
+            &#x25B2; Positivo
+          } @else if (metric.trend === 'down') {
+            &#x25BC; Negativo
+          } @else {
+            &#x25CF; Estable
+          }
+        </span>
+      </div>
+    }
+  </div>
+
+  <!-- Main Chart Area -->
+  <div class="card chart-card main-chart">
+    <h3>Curvas de Equity</h3>
+    <div class="chart-placeholder">
+      <span class="placeholder-icon">&#x1F4C8;</span>
+      <p>Grafica de Equity Curves (proximamente)</p>
+      <p class="text-muted">Se mostraran las curvas del agente DRL vs baselines (60/40, Markowitz)</p>
+    </div>
+  </div>
+
+  <!-- Secondary Charts Row -->
+  <div class="charts-row">
+    <div class="card chart-card">
+      <h3>Drawdown</h3>
+      <div class="chart-placeholder">
+        <span class="placeholder-icon">&#x1F4C9;</span>
+        <p>Grafica de Drawdown (proximamente)</p>
+        <p class="text-muted">Caida maxima del portfolio a lo largo del tiempo</p>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <h3>Asignacion de Activos</h3>
+      <div class="chart-placeholder">
+        <span class="placeholder-icon">&#x1F4CA;</span>
+        <p>Asset Allocation (proximamente)</p>
+        <p class="text-muted">Distribucion de pesos del portfolio por activo</p>
+      </div>
+    </div>
+  </div>
+</div>

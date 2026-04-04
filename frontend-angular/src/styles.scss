@@ -1,0 +1,225 @@
+/* ============================================================
+   TFM AI Portfolio Manager - Global Styles (Dark Theme)
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---- Links ---- */
+a {
+  color: #00d4ff;
+  text-decoration: none;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #33dfff;
+  }
+}
+
+/* ---- Headings ---- */
+h1, h2, h3, h4, h5, h6 {
+  color: #ffffff;
+  font-weight: 600;
+  margin-bottom: 0.5em;
+}
+
+h1 { font-size: 1.8rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+
+/* ---- Cards ---- */
+.card {
+  background: #16213e;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ---- Tables ---- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #16213e;
+  border-radius: 12px;
+  overflow: hidden;
+
+  thead {
+    background: #0f3460;
+
+    th {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: #00d4ff;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid rgba(0, 212, 255, 0.2);
+    }
+  }
+
+  tbody {
+    tr {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.15s ease;
+
+      &:nth-child(even) {
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      &:hover {
+        background: rgba(0, 212, 255, 0.05);
+      }
+
+      td {
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+        color: #c0c0c0;
+      }
+    }
+  }
+}
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.btn-primary {
+  background: #00d4ff;
+  color: #0a0a1a;
+
+  &:hover:not(:disabled) {
+    background: #33dfff;
+    box-shadow: 0 4px 16px rgba(0, 212, 255, 0.35);
+  }
+}
+
+.btn-secondary {
+  background: #f0a500;
+  color: #0a0a1a;
+
+  &:hover:not(:disabled) {
+    background: #f5b732;
+    box-shadow: 0 4px 16px rgba(240, 165, 0, 0.35);
+  }
+}
+
+.btn-outline {
+  background: transparent;
+  color: #00d4ff;
+  border: 1px solid #00d4ff;
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 212, 255, 0.1);
+  }
+}
+
+/* ---- Form Inputs ---- */
+input, select, textarea {
+  background: #0f3460;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 0.65rem 1rem;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  font-family: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  width: 100%;
+
+  &:focus {
+    outline: none;
+    border-color: #00d4ff;
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
+  }
+
+  &::placeholder {
+    color: #6a6a8a;
+  }
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #a0a0c0;
+  margin-bottom: 0.4rem;
+}
+
+/* ---- Scrollbar (Dark Theme) ---- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0e0e1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2a2a4a;
+  border-radius: 4px;
+
+  &:hover {
+    background: #3a3a5a;
+  }
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a4a #0e0e1a;
+}
+
+/* ---- Utility classes ---- */
+.text-success { color: #00e676; }
+.text-danger  { color: #ff5252; }
+.text-warning { color: #f0a500; }
+.text-info    { color: #00d4ff; }
+.text-muted   { color: #6a6a8a; }
+
+.mt-1 { margin-top: 0.5rem; }
+.mt-2 { margin-top: 1rem; }
+.mt-3 { margin-top: 1.5rem; }
+.mb-1 { margin-bottom: 0.5rem; }
+.mb-2 { margin-bottom: 1rem; }
+.mb-3 { margin-bottom: 1.5rem; }

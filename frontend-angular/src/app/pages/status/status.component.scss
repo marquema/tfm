@@ -1,0 +1,176 @@
+.status-page {
+  max-width: 1400px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.page-subtitle {
+  color: #6a6a8a;
+  font-size: 0.95rem;
+  margin-top: 0.25rem;
+}
+
+/* ---- Status Card ---- */
+.status-card {
+  margin-bottom: 2rem;
+}
+
+.status-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  color: #6a6a8a;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 212, 255, 0.15);
+  border-top-color: #00d4ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+}
+
+.indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+
+  &.green {
+    background: #00e676;
+    box-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
+  }
+
+  &.red {
+    background: #ff5252;
+    box-shadow: 0 0 10px rgba(255, 82, 82, 0.5);
+  }
+}
+
+.status-text {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.status-message {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.status-details {
+  margin-top: 0.75rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+
+  pre {
+    color: #a0a0c0;
+    font-size: 0.8rem;
+    font-family: 'Consolas', 'Courier New', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+  }
+}
+
+/* ---- Section Title ---- */
+.section-title {
+  margin-bottom: 1rem;
+  color: #c0c0e0;
+}
+
+/* ---- Phases Grid ---- */
+.phases-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.phase-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.phase-header {
+  h3 {
+    margin-bottom: 0.25rem;
+    font-size: 1.05rem;
+  }
+}
+
+.phase-desc {
+  font-size: 0.85rem;
+  color: #6a6a8a;
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(10, 10, 26, 0.3);
+  border-top-color: #0a0a1a;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+/* ---- Phase Response ---- */
+.phase-response {
+  background: rgba(0, 230, 118, 0.05);
+  border: 1px solid rgba(0, 230, 118, 0.2);
+  border-radius: 8px;
+  padding: 0.85rem;
+
+  &.error {
+    background: rgba(255, 82, 82, 0.05);
+    border-color: rgba(255, 82, 82, 0.2);
+  }
+}
+
+.response-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #a0a0c0;
+  display: block;
+  margin-bottom: 0.4rem;
+}
+
+.response-body {
+  font-size: 0.8rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  color: #c0c0c0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .phases-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,13 +1,23 @@
+# ─── Python (backend) ─────────────────────────
 .venv/
 *.pyc
-.vscode/
-backup/
-logs/
-.idea
 *.pyc.*
-data/
-models/
+__pycache__/
+backend/data/
+backend/models/
+backend/logs/
+*.zip
+
+# ─── Node (frontends) ─────────────────────────
+node_modules/
+dist/
+.angular/
+
+# ─── IDEs ─────────────────────────────────────
+.vscode/
+.idea/
+
+# ─── Generados ────────────────────────────────
 *.png
 *.csv
-__pycache__/
-*.zip
+backup/

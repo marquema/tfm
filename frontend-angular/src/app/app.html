@@ -1,0 +1,61 @@
+<div class="app-layout" [class.sidebar-collapsed]="sidebarCollapsed">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo-area">
+        <span class="logo-icon">&#x1F4CA;</span>
+        @if (!sidebarCollapsed) {
+          <div class="logo-text">
+            <span class="logo-title">TFM</span>
+            <span class="logo-subtitle">AI Portfolio Manager</span>
+          </div>
+        }
+      </div>
+      <button class="toggle-btn" (click)="toggleSidebar()">
+        @if (sidebarCollapsed) {
+          &#x25B6;
+        } @else {
+          &#x25C0;
+        }
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">&#x1F3E0;</span>
+        @if (!sidebarCollapsed) {
+          <span class="nav-label">Dashboard</span>
+        }
+      </a>
+      <a routerLink="/universo" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">&#x1F30D;</span>
+        @if (!sidebarCollapsed) {
+          <span class="nav-label">Universo</span>
+        }
+      </a>
+      <a routerLink="/estado" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">&#x2699;</span>
+        @if (!sidebarCollapsed) {
+          <span class="nav-label">Estado</span>
+        }
+      </a>
+      <a routerLink="/login" routerLinkActive="active" class="nav-item">
+        <span class="nav-icon">&#x1F511;</span>
+        @if (!sidebarCollapsed) {
+          <span class="nav-label">Login</span>
+        }
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      @if (!sidebarCollapsed) {
+        <span class="footer-text">TFM {{ currentYear }}</span>
+      }
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <router-outlet />
+  </main>
+</div>

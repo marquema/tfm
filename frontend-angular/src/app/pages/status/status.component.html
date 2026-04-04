@@ -1,0 +1,76 @@
+<div class="status-page">
+  <div class="page-header">
+    <div>
+      <h1>Estado del Sistema</h1>
+      <p class="page-subtitle">Monitoreo del backend y ejecucion de fases del pipeline</p>
+    </div>
+    <button class="btn btn-outline" (click)="loadStatus()" [disabled]="statusLoading">
+      &#x21BB; Actualizar
+    </button>
+  </div>
+
+  <!-- System Status Card -->
+  <div class="card status-card">
+    <h3>Conexion al Backend</h3>
+
+    @if (statusLoading) {
+      <div class="status-loading">
+        <div class="spinner"></div>
+        <span>Comprobando conexion...</span>
+      </div>
+    } @else if (statusError) {
+      <div class="status-indicator">
+        <span class="indicator red"></span>
+        <span class="status-text">Desconectado</span>
+      </div>
+      <p class="status-message text-danger">{{ statusError }}</p>
+    } @else {
+      <div class="status-indicator">
+        <span class="indicator green"></span>
+        <span class="status-text">Conectado</span>
+      </div>
+      @if (systemStatus) {
+        <div class="status-details">
+          <pre>{{ systemStatus | json }}</pre>
+        </div>
+      }
+    }
+  </div>
+
+  <!-- Phase Actions -->
+  <h2 class="section-title">Fases del Pipeline</h2>
+  <div class="phases-grid">
+    @for (phase of phases; track phase.id) {
+      <div class="card phase-card">
+        <div class="phase-header">
+          <h3>{{ phase.label }}</h3>
+          <p class="phase-desc">{{ phase.description }}</p>
+        </div>
+
+        <button
+          class="btn btn-primary"
+          (click)="executePhase(phase)"
+          [disabled]="phase.loading">
+          @if (phase.loading) {
+            <span class="btn-spinner"></span> Ejecutando...
+          } @else {
+            &#x25B6; Ejecutar
+          }
+        </button>
+
+        @if (phase.response) {
+          <div class="phase-response" [class.error]="phase.error">
+            <span class="response-label">
+              @if (phase.error) {
+                &#x274C; Resultado:
+              } @else {
+                &#x2705; Resultado:
+              }
+            </span>
+            <pre class="response-body">{{ phase.response }}</pre>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

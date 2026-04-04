@@ -1,0 +1,115 @@
+.dashboard-page {
+  max-width: 1400px;
+}
+
+.page-subtitle {
+  color: #6a6a8a;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+/* ---- Metric Cards Row ---- */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.25rem;
+}
+
+.metric-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #6a6a8a;
+  font-weight: 600;
+}
+
+.metric-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+
+  &.trend-up {
+    color: #00e676;
+  }
+
+  &.trend-down {
+    color: #ff5252;
+  }
+
+  &.trend-neutral {
+    color: #00d4ff;
+  }
+}
+
+.metric-trend {
+  font-size: 0.75rem;
+  color: #6a6a8a;
+}
+
+/* ---- Chart Cards ---- */
+.chart-card {
+  margin-bottom: 1.5rem;
+
+  h3 {
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    color: #c0c0e0;
+  }
+}
+
+.main-chart {
+  min-height: 320px;
+}
+
+.chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 2px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+
+  .placeholder-icon {
+    font-size: 2.5rem;
+    margin-bottom: 0.75rem;
+    opacity: 0.5;
+  }
+
+  p {
+    color: #6a6a8a;
+    font-size: 0.95rem;
+
+    &.text-muted {
+      font-size: 0.8rem;
+      margin-top: 0.25rem;
+    }
+  }
+}
+
+/* ---- Secondary Charts ---- */
+.charts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
+
+  .chart-card {
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .charts-row {
+    grid-template-columns: 1fr;
+  }
+}

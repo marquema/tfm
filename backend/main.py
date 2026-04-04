@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List
 import os
@@ -15,6 +16,15 @@ from src.pipeline_getdata.market_screener import MarketScreener
 
 app = FastAPI(title="TFM Trading AI API")
 
+# CORS: permite que el frontend Angular (localhost:4200) acceda a la API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200", "http://localhost:4201"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # --- Modelos de Datos ---
 class DownloadConfig(BaseModel):
     tickers: List[str] = get_tickers('core')
@@ -24,15 +34,7 @@ class DownloadConfig(BaseModel):
 
 # ─── FASE 1: Datos ───────────────────────────────────────────────────────────
 
-@app.post("/fase1/preparar-datos")
-async def preparar_datos(config: DownloadConfig):
-    """Descarga precios y dividendos, genera features y guarda los CSVs en data/."""
-    descargar_dividendos(config.tickers, config.start, config.end)
-    generar_dataset(config.tickers, config.start, config.end)
-    return {"status": "Datos preparados"}
-
-
-@app.post("/fase1/screener")
+@app.post("/fase1/obtener-screener")
 async def ejecutar_screener(
     start_date: str = "2020-01-01",
     end_date: str = "2026-04-01",
@@ -65,6 +67,12 @@ async def ejecutar_screener(
         "uso": f"Pasa estos tickers a POST /fase1/preparar-datos: {result['candidates']}"
     }
 
+@app.post("/fase1/preparar-datos")
+async def preparar_datos(config: DownloadConfig):
+    """Descarga precios y dividendos, genera features y guarda los CSVs en data/."""
+    descargar_dividendos(config.tickers, config.start, config.end)
+    generar_dataset(config.tickers, config.start, config.end)
+    return {"status": "Datos preparados"}
 
 # ─── FASE 2: Validación de datos ─────────────────────────────────────────────
 

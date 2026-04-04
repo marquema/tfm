@@ -1,0 +1,61 @@
+<div class="universe-page">
+  <div class="page-header">
+    <div>
+      <h1>Universo de Activos</h1>
+      <p class="page-subtitle">Listado de activos disponibles para el portfolio gestionado por IA</p>
+    </div>
+    <button class="btn btn-outline" (click)="loadUniverse()" [disabled]="loading">
+      @if (loading) {
+        Cargando...
+      } @else {
+        &#x21BB; Recargar
+      }
+    </button>
+  </div>
+
+  @if (errorMessage) {
+    <div class="alert alert-error">
+      <span>&#x26A0;</span> {{ errorMessage }}
+    </div>
+  }
+
+  @if (loading) {
+    <div class="loading-container">
+      <div class="spinner"></div>
+      <p>Cargando universo de activos...</p>
+    </div>
+  } @else if (assets.length > 0) {
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticker</th>
+            <th>Nombre</th>
+            <th>Categoria</th>
+            <th>Sector</th>
+            <th>Instrumento</th>
+            <th>Descripcion</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (asset of assets; track asset.ticker) {
+            <tr>
+              <td class="ticker-cell">{{ asset.ticker }}</td>
+              <td>{{ asset.nombre }}</td>
+              <td>{{ asset.categoria }}</td>
+              <td>{{ asset.sector }}</td>
+              <td>{{ asset.instrumento }}</td>
+              <td class="desc-cell">{{ asset.descripcion }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="record-count">{{ assets.length }} activos encontrados</p>
+  } @else if (!errorMessage) {
+    <div class="empty-state">
+      <span class="empty-icon">&#x1F4ED;</span>
+      <p>No se encontraron activos. Ejecuta la fase de preparacion de datos primero.</p>
+    </div>
+  }
+</div>

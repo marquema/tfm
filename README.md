@@ -1,226 +1,131 @@
 # TFM — Optimización Dinámica de Carteras Híbridas de ETFs mediante Deep Reinforcement Learning
 
-Implementación completa del sistema de gestión de carteras basado en PPO (Proximal Policy Optimization) comparado contra cuatro estrategias clásicas: Equal Weight, Buy & Hold, Cartera 60/40 y Markowitz Media-Varianza.
+Monorepo del Trabajo Final de Máster. Contiene el backend de IA (Python/FastAPI),
+el frontend web (Angular) y placeholders para evolución futura (Vue, app móvil).
 
 ---
 
-## Requisitos
+## Estructura del monorepo
 
-- Python 3.10+
-- Windows / Linux / macOS
+```
+Impl_tfm/
+├── backend/                         # Python — IA, API, pipeline de datos
+│   ├── .venv/                       #   entorno virtual Python (no se sube a git)
+│   ├── main.py                      #   API FastAPI (entry point)
+│   ├── requirements.txt
+│   ├── src/
+│   │   ├── training_drl/            #   PPO: entorno, entrenamiento, validación
+│   │   ├── unsupervised/            #   GMM + KMeans: agente especulativo
+│   │   ├── pipeline_getdata/        #   descarga, features, screener, registro
+│   │   ├── feature_engineering/     #   indicadores técnicos y estadísticos
+│   │   ├── benchmarking/            #   baselines (Equal Weight, 60/40, Markowitz)
+│   │   └── reports/                 #   dashboard Streamlit, results viewer
+│   ├── data/                        #   CSVs generados (no se sube a git)
+│   └── models/                      #   modelos entrenados (no se sube a git)
+│
+├── frontend-angular/                # Angular — dashboard web en tiempo real
+│   ├── src/
+│   ├── package.json
+│   └── angular.json
+│
+├── frontend-vue/                    # Vue 3 — evolución futura
+│   └── README.md
+│
+├── mobile/                          # App móvil — evolución futura
+│   └── README.md
+│
+├── .gitignore
+└── README.md                        # este fichero
+```
 
 ---
 
-## 1. Instalación
+## Backend (Python)
+
+### Instalación
 
 ```bash
-# Crear y activar entorno virtual
+cd backend
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # Linux / macOS
-
-# Instalar dependencias
 pip install -r requirements.txt
 ```
 
----
-
-## 2. Arrancar la API
+### Arrancar la API
 
 ```bash
+cd backend
 uvicorn main:app --reload
 ```
 
-La API queda disponible en `http://localhost:8000`.  
-Dejar esta terminal abierta durante todo el flujo.
+API en `http://localhost:8000`. Documentación automática en `http://localhost:8000/docs`.
 
----
+### Flujo de ejecución
 
-## 3. Descarga y preparación de datos
-
-Descarga precios OHLCV desde Yahoo Finance, calcula features técnicas y normaliza con Z-Score sin lookahead bias.
-
-```bash
-curl -X POST "http://localhost:8000/fase1/preparar-datos" \
-     -H "Content-Type: application/json" \
-     -d '{
-           "tickers": ["IVV","BND","IBIT","MO","JNJ","SCU","AWK","CB"],
-           "start_date": "2014-01-01",
-           "end_date": "2026-03-01"
-         }'
+```
+POST /fase1/screener                    ← filtra S&P 500 a 10-15 candidatos
+POST /fase1/preparar-datos              ← descarga + features + normalización
+GET  /fase2/validar-datos               ← verificar integridad
+POST /fase3/entrenar-academico          ← entrenar PPO (1M pasos)
+POST /fase3/walk-forward                ← validación temporal
+POST /fase4/ajustar-especulativo        ← GMM + KMeans (segundos)
+GET  /universo                          ← diccionario de activos
+GET  /estado                            ← estado del sistema
 ```
 
-**Archivos generados:**
-- `data/normalized_features.csv` — features normalizadas para el agente
-- `data/original_prices.csv` — precios de cierre sin normalizar
-
----
-
-## 4. Verificar datos
+### Dashboard Streamlit
 
 ```bash
-curl http://localhost:8000/fase2/validar-datos
-```
-
-La respuesta debe mostrar `filas > 0`, `columnas > 0` y `nan = 0`.
-
----
-
-## 5. Entrenamiento académico
-
-Entrena el agente PPO con validación out-of-sample continua, early stopping y detección de sobreajuste.
-
-```bash
-curl -X POST "http://localhost:8000/fase3/entrenar-academico?steps=1000000"
-```
-
-El proceso puede tardar entre 30 minutos y varias horas según la CPU.  
-Monitorizar el progreso en la terminal de uvicorn.
-
-**Archivos generados:**
-- `models/best_model_academic/best_model.zip` — modelo en el punto de máxima generalización ✅
-- `models/ppo_academic_final.zip` — modelo al final del entrenamiento
-- `src/reports/training_diagnostics.png` — métricas internas PPO (entropía, value loss, explained variance)
-- `src/reports/overfitting_analysis.png` — curvas train vs eval para detección de sobreajuste
-
-> **Nota:** usar siempre `best_model.zip`, no `ppo_academic_final.zip`. El best model se guarda en el momento de máximo reward de evaluación, antes de cualquier degradación por sobreentrenamiento.
-
----
-
-## 6. Walk-Forward Validation
-
-Validación temporal equivalente al k-fold cross-validation. Entrena y evalúa el agente en múltiples ventanas temporales independientes para demostrar robustez en distintos regímenes de mercado.
-
-```bash
-curl -X POST "http://localhost:8000/fase3/walk-forward?steps_por_ventana=100000"
-```
-
-**Archivos generados:**
-- `src/reports/walk_forward_analysis.png` — Sharpe, retorno y MDD por ventana temporal
-- `src/reports/walk_forward_results.csv` — tabla de resultados por ventana
-
-> Se puede lanzar en paralelo con el entrenamiento si hay recursos suficientes, o después de que termine.
-
----
-
-## 7. Verificar estado del sistema
-
-```bash
-curl http://localhost:8000/estado
-```
-
-Todos los campos deben estar en `true` antes de ejecutar el backtest.
-
----
-
-## 8. Backtest por consola — results_viewer
-
-Ejecuta el backtest completo e imprime la tabla comparativa en consola. No requiere la API.
-
-```bash
-python src/reports/results_viewer.py
-```
-
-**Archivos generados en `src/reports/`:**
-| Archivo | Contenido |
-|---|---|
-| `backtest_principal.png` | Curvas de equity de todas las estrategias |
-| `metrics_table.csv` | Tabla de métricas exportable para la memoria del TFM |
-| `training_progress.png` | Curva de reward durante el entrenamiento |
-
-> `results_viewer.py` usa `models/best_model_academic/best_model.zip` por defecto.
-
----
-
-## 9. Dashboard interactivo — Streamlit
-
-```bash
+cd backend
+.venv\Scripts\activate
 streamlit run src/reports/app_dashboard.py
 ```
 
-Se abre en `http://localhost:8501`.
+### Backtest por consola
 
-**Pasos dentro del dashboard:**
-1. Sidebar → seleccionar `models/best_model_academic/best_model.zip`
-2. Ajustar comisión por operación (por defecto 0.1%), capital inicial y split train/test
-3. Pulsar **▶ Ejecutar Backtest Completo**
-4. Explorar las secciones:
-   - **Métricas de rendimiento** — tabla comparativa con glosario explicativo
-   - **Equity curves** — evolución del capital con fechas reales
-   - **Drawdown** — peor caída en cada momento del período de test
-   - **Asset allocation** — cartera final del agente + evolución de pesos
-   - **Diagnóstico del entrenamiento** — validación académica del proceso de aprendizaje
-
----
-
-## Orden de ejecución completo
-
-```
-uvicorn main:app --reload
-│
-├── POST /fase1/preparar-datos          # descarga y features
-├── GET  /fase2/validar-datos           # verificar integridad
-├── POST /fase3/entrenar-academico      # entrenar PPO (1M pasos)
-└── POST /fase3/walk-forward            # validación temporal
-
-python src/reports/results_viewer.py         # backtest + tabla por consola
-streamlit run src/reports/app_dashboard.py  # dashboard interactivo
+```bash
+cd backend
+.venv\Scripts\activate
+python src/reports/results_viewer.py
 ```
 
 ---
 
-## Estructura del proyecto
+## Frontend Angular
 
+### Instalación
+
+```bash
+cd frontend-angular
+npm install
 ```
-├── main.py                              # API FastAPI (entry point)
-├── data/
-│   ├── normalized_features.csv          # features normalizadas (generado)
-│   └── original_prices.csv              # precios de cierre (generado)
-├── models/
-│   └── best_model_academic/
-│       └── best_model.zip               # modelo PPO final (generado)
-├── src/
-│   ├── training_drl/                    # Deep Reinforcement Learning
-│   │   ├── environment_trading.py       #   entorno Gymnasium (PortfolioEnv)
-│   │   ├── training_analysis.py         #   callbacks académicos y walk-forward
-│   │   ├── train.py                     #   configuración PPO
-│   │   └── regime_analysis.py           #   análisis de regímenes de volatilidad
-│   ├── unsupervised/                    # Agente especulativo no supervisado
-│   │   ├── regime_hmm.py               #   detección de regímenes con HMM
-│   │   ├── asset_clustering.py          #   clustering dinámico de activos
-│   │   └── speculative_agent.py         #   agente basado en régimen + cluster
-│   ├── pipeline_getdata/
-│   │   ├── data_downloader.py           #   pipeline de descarga y features
-│   │   └── data_source.py              #   abstracción de fuentes de datos
-│   ├── feature_ingeneering/
-│   │   └── data_features.py             #   cálculo de indicadores técnicos
-│   ├── benchmarking/
-│   │   └── baselines.py                 #   estrategias de referencia
-│   └── reports/
-│       ├── app_dashboard.py             #   dashboard Streamlit interactivo
-│       ├── results_viewer.py            #   backtest por consola
-│       └── *.png / *.csv                #   gráficas y tablas generadas
-└── requirements.txt
+
+### Desarrollo
+
+```bash
+cd frontend-angular
+ng serve
 ```
+
+Se abre en `http://localhost:4200`. Se conecta al backend en `http://localhost:8000`.
 
 ---
 
-## Universo de activos
+## Estrategias comparadas
 
-| Ticker | Activo | Categoría |
-|--------|--------|-----------|
-| IVV | iShares Core S&P 500 ETF | Renta variable EE.UU. |
-| BND | Vanguard Total Bond Market ETF | Renta fija |
-| IBIT | iShares Bitcoin Trust ETF | Activo digital |
-| MO | Altria Group | Dividendo alto |
-| JNJ | Johnson & Johnson | Defensivo salud |
-| SCU | Sculptor Capital Management | Alternativo |
-| AWK | American Water Works | Utilities |
-| CB | Chubb Limited | Seguros |
+| Estrategia | Tipo | Descripción |
+|---|---|---|
+| IA PPO (DRL) | Deep Reinforcement Learning | Agente que aprende por experiencia |
+| Especulativo (GMM+KMeans) | No supervisado | Regímenes + clustering dinámico |
+| Equal Weight | Baseline | Mismo peso a todos, rebalanceo mensual |
+| Buy & Hold | Baseline | Comprar y no tocar |
+| Cartera 60/40 | Baseline | Clásica renta variable / fija |
+| Markowitz MV | Baseline | Media-varianza optimizada |
 
 ---
 
-## Función de recompensa
+## Función de recompensa del agente PPO
 
 $$R_t = \text{Sharpe}_{20d}(t) - \phi \cdot \text{MDD}(t) - \gamma \cdot \text{Turnover}(t)$$
 
