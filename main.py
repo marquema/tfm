@@ -10,12 +10,14 @@ from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_d
 from src.training_drl.environment_trading import PortfolioEnv
 from src.training_drl.training_analysis import entrenar_academico, walk_forward_validation
 from src.unsupervised.speculative_agent import SpeculativeAgent
+from src.pipeline_getdata.asset_registry import get_tickers, get_universe
+from src.pipeline_getdata.market_screener import MarketScreener
 
 app = FastAPI(title="TFM Trading AI API")
 
 # --- Modelos de Datos ---
 class DownloadConfig(BaseModel):
-    tickers: List[str] = ['IVV', 'BND', 'IBIT', 'MO', 'JNJ', 'SCU', 'AWK', 'CB']
+    tickers: List[str] = get_tickers('core')
     start: str = "2014-01-01"
     end: str = "2026-03-01"
 
@@ -28,6 +30,40 @@ async def preparar_datos(config: DownloadConfig):
     descargar_dividendos(config.tickers, config.start, config.end)
     generar_dataset(config.tickers, config.start, config.end)
     return {"status": "Datos preparados"}
+
+
+@app.post("/fase1/screener")
+async def ejecutar_screener(
+    start_date: str = "2020-01-01",
+    end_date: str = "2026-04-01",
+    top_n: int = 15,
+    max_per_sector: int = 3
+):
+    """
+    Screener de mercado: selecciona los mejores candidatos del S&P 500.
+
+    Descarga datos básicos de ~500 activos, aplica filtros cuantitativos
+    (liquidez, historial, volatilidad, Sharpe) y devuelve los top_n
+    mejores diversificados por sector.
+
+    Tarda 3-5 minutos dependiendo de la conexión (descarga ~500 tickers).
+    Los candidatos resultantes se pueden usar como input de /fase1/preparar-datos.
+    """
+    screener = MarketScreener(max_per_sector=max_per_sector)
+    result = screener.run(
+        start_date=start_date,
+        end_date=end_date,
+        top_n=top_n,
+        force_include=['IVV', 'BND']  # Mantener benchmarks obligatorios
+    )
+
+    return {
+        "candidates": result['candidates'],
+        "n_candidates": len(result['candidates']),
+        "details": result['details'].to_dict(orient='records') if not result['details'].empty else [],
+        "filtered_out": result['filtered_out'],
+        "uso": f"Pasa estos tickers a POST /fase1/preparar-datos: {result['candidates']}"
+    }
 
 
 # ─── FASE 2: Validación de datos ─────────────────────────────────────────────
@@ -178,6 +214,19 @@ async def predecir_pesos():
         "pesos_recomendados": {t: f"{float(w)*100:.2f}%" for t, w in zip(tickers, weights)},
         "valor_final_test":   f"${info['value']:,.2f}"
     }
+
+
+# ─── UNIVERSO DE ACTIVOS ─────────────────────────────────────────────────────
+
+@app.get("/universo")
+async def ver_universo(level: str = 'core'):
+    """
+    Retorna el diccionario de activos con metadatos completos.
+
+    level: 'core' (8 activos del TFM) o 'extended' (core + activos adicionales)
+    """
+    df = get_universe(level)
+    return df.reset_index().to_dict(orient='records')
 
 
 # ─── ESTADO ──────────────────────────────────────────────────────────────────

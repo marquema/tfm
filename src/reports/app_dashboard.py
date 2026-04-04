@@ -19,6 +19,7 @@ import numpy as np
 import plotly.graph_objects as go
 from stable_baselines3 import PPO
 from src.training_drl.environment_trading import PortfolioEnv
+from src.pipeline_getdata.asset_registry import get_asset_info, get_display_name, get_tickers
 
 try:
     from src.benchmarking.baselines import ejecutar_baselines, calcular_metricas, tabla_comparativa
@@ -57,6 +58,13 @@ initial_bal = st.sidebar.number_input("Capital inicial ($)", value=10000, step=1
 split_pct   = st.sidebar.slider("Split train/test (%)", 60, 90, 80) / 100
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("**Universo de activos**")
+with st.sidebar.expander("Ver activos del portfolio"):
+    for t in get_tickers('core'):
+        info = get_asset_info(t)
+        st.sidebar.caption(f"**{t}** — {info['name']}  \n{info['category']} · {info['sector']}")
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("**Estado del sistema**")
 features_ok = os.path.exists('data/normalized_features.csv')
 prices_ok   = os.path.exists('data/original_prices.csv')
@@ -86,7 +94,9 @@ if not (features_ok and prices_ok):
 df_f, df_p = load_data()
 split_idx  = int(len(df_f) * split_pct)
 df_p_test  = df_p.iloc[split_idx:].copy()
-tickers    = df_p.columns.tolist()
+tickers_raw = df_p.columns.tolist()                                    # ['IVV_Close', 'BND_Close', ...]
+tickers     = [t.replace('_Close', '') for t in tickers_raw]           # ['IVV', 'BND', ...]
+ticker_labels = [get_display_name(t) for t in tickers]                 # ['IVV — iShares Core S&P 500 ETF', ...]
 
 st.info(
     f"Período de test: **{df_p_test.index[0][:10]}** → **{df_p_test.index[-1][:10]}**"
@@ -363,7 +373,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         last_w = np.array(weight_history[-1]).flatten()
         if len(last_w) == len(tickers):
             fig_pie = go.Figure(go.Pie(
-                labels=tickers, values=last_w, hole=0.35,
+                labels=ticker_labels, values=last_w, hole=0.35,
                 hovertemplate="<b>%{label}</b><br>Peso: %{percent}<extra></extra>"
             ))
             fig_pie.update_layout(template='plotly_dark', height=380)
@@ -384,11 +394,11 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             df_w = pd.DataFrame(weight_history, columns=tickers,
                                 index=pd.to_datetime(df_p_test.index[:len(weight_history)]))
             fig_w = go.Figure()
-            for ticker in tickers:
+            for ticker, label in zip(tickers, ticker_labels):
                 fig_w.add_trace(go.Scatter(
                     x=df_w.index, y=df_w[ticker].values,
-                    name=ticker, stackgroup='one',
-                    hovertemplate=f"<b>{ticker}</b> %{{x|%d %b %Y}}: %{{y:.1%}}<extra></extra>"
+                    name=label, stackgroup='one',
+                    hovertemplate=f"<b>{label}</b> %{{x|%d %b %Y}}: %{{y:.1%}}<extra></extra>"
                 ))
             fig_w.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
                                 yaxis_title="Peso", yaxis_tickformat=".0%", height=350)
