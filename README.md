@@ -61,17 +61,45 @@ uvicorn main:app --reload
 
 API en `http://localhost:8000`. Documentación automática en `http://localhost:8000/docs`.
 
-### Flujo de ejecución
+### Credenciales por defecto
 
+Al arrancar por primera vez, se crea automáticamente un usuario administrador:
+
+| Campo | Valor |
+|-------|-------|
+| Email | `admin@tfm.com` |
+| Password | `admin123` |
+| Rol | `admin` |
+
+> Cambiar estas credenciales en producción. Se definen en `main.py` → `startup()`.
+
+### Endpoints de la API
+
+**Públicos (sin autenticación):**
 ```
-POST /fase1/screener                    ← filtra S&P 500 a 10-15 candidatos
-POST /fase1/preparar-datos              ← descarga + features + normalización
-GET  /fase2/validar-datos               ← verificar integridad
-POST /fase3/entrenar-academico          ← entrenar PPO (1M pasos)
-POST /fase3/walk-forward                ← validación temporal
-POST /fase4/ajustar-especulativo        ← GMM + KMeans (segundos)
+POST /auth/login                        ← devuelve JWT token
+POST /auth/register                     ← registrar nuevo inversor
 GET  /universo                          ← diccionario de activos
 GET  /estado                            ← estado del sistema
+```
+
+**Administrador (requieren JWT con role=admin):**
+```
+POST /admin/fase1/screener              ← filtra S&P 500 a 10-15 candidatos
+POST /admin/fase1/preparar-datos        ← descarga + features + normalización
+GET  /admin/fase2/validar-datos         ← verificar integridad
+POST /admin/fase3/entrenar-academico    ← entrenar PPO (1M pasos)
+POST /admin/fase3/walk-forward          ← validación temporal
+POST /admin/fase4/ajustar-especulativo  ← GMM + KMeans (segundos)
+GET  /auth/users                        ← listar usuarios
+DELETE /auth/users/{email}              ← eliminar usuario
+```
+
+**Inversor (requieren JWT con role=investor o admin):**
+```
+GET  /investor/strategies               ← estrategias disponibles
+POST /investor/simulate                 ← backtest personalizado (capital, comisión)
+GET  /auth/me                           ← datos del usuario autenticado
 ```
 
 ### Dashboard Streamlit
