@@ -92,6 +92,20 @@ CORE_UNIVERSE = {
             'en períodos de calma puede actuar como diversificador.'
         ),
     },
+    'ETHA': {
+        'name': 'iShares Ethereum Trust ETF',
+        'category': 'Digital Asset',
+        'sector': 'Cryptocurrency / Smart Contracts',
+        'instrument': 'ETF',
+        'description': (
+            'ETF que replica el precio de Ethereum. Disponible desde julio 2024. '
+            'Segunda criptomoneda por capitalización, con un perfil de riesgo diferente '
+            'a Bitcoin: mayor correlación con el sector tecnológico por su uso como '
+            'plataforma de contratos inteligentes (DeFi, NFTs). Incluir ambas criptos '
+            'permite al agente aprender a diferenciar entre Bitcoin como reserva de valor '
+            'y Ethereum como activo tecnológico.'
+        ),
+    },
     'MO': {
         'name': 'Altria Group Inc.',
         'category': 'Equity',

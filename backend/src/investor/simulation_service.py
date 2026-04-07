@@ -25,6 +25,8 @@ from stable_baselines3 import PPO
 
 from src.training_drl.environment_trading import PortfolioEnv
 from src.benchmarking.baselines import run_baselines, compute_metrics
+from src.auth.models import SessionLocal
+from src.auth import universe_repository as universe_repo
 
 
 def get_available_strategies() -> list[dict]:
@@ -110,6 +112,15 @@ def run_simulation(capital: float = 10000,
     if not os.path.exists(model_path):
         return {"error": "Modelo no entrenado. El administrador debe ejecutar /admin/fase3/entrenar-academico"}
 
+    # Validar que el modelo PPO fue entrenado con el mismo universo que los datos actuales
+    db = SessionLocal()
+    try:
+        validation = universe_repo.validate_model_compatibility(db, model_type="ppo")
+        if not validation["compatible"]:
+            return {"error": validation["error"]}
+    finally:
+        db.close()
+
     # Cargar datos
     df_f = pd.read_csv(features_path, index_col=0)
     df_p = pd.read_csv(prices_path, index_col=0)
@@ -151,18 +162,23 @@ def run_simulation(capital: float = 10000,
         ticker_bond=tickers_raw[1] if len(tickers_raw) > 1 else 'BND_Close',
     )
 
-    # ── Especulativo (si existe) ─────────────────────────────────────────────
+    # ── Especulativo (si existe y es compatible con los datos actuales) ──────
     spec_path = 'models/speculative_gmm.pkl'
     if os.path.exists(spec_path):
-        import pickle
-        with open(spec_path, 'rb') as f:
-            spec_agent = pickle.load(f)
-        df_f_test = df_f.iloc[split_idx:]
-        spec_series = spec_agent.backtest(
-            df_f_test, df_p_test,
-            initial_balance=capital, commission=commission,
-        )
-        baseline_results['Especulativo_HMM'] = spec_series
+        try:
+            import pickle
+            with open(spec_path, 'rb') as f:
+                spec_agent = pickle.load(f)
+            df_f_test = df_f.iloc[split_idx:]
+            spec_series = spec_agent.backtest(
+                df_f_test, df_p_test,
+                initial_balance=capital, commission=commission,
+            )
+            baseline_results['Especulativo_HMM'] = spec_series
+        except (KeyError, Exception) as e:
+            # El modelo especulativo fue entrenado con un universo de activos distinto
+            # al actual (ej. screener generó tickers diferentes). Se omite sin crashear.
+            print(f"  [AVISO] Modelo especulativo incompatible con datos actuales: {e}")
 
     # ── Unir y calcular métricas ─────────────────────────────────────────────
     all_series = {'IA_PPO': ppo_series, **baseline_results}
