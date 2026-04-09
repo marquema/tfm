@@ -37,6 +37,34 @@
         1. <strong>Screener</strong>: selecciona los mejores activos del S&P 500 (+ IBIT, ETHA obligatorios).<br>
         2. <strong>Preparar Datos</strong>: descarga precios y genera features con los activos del screener.
       </p>
+      <!-- Selector de fechas (compartido entre screener y preparar datos) -->
+      <div class="date-params">
+        <div class="form-group">
+          <label for="startDate">Fecha inicio</label>
+          <input id="startDate" type="date" [(ngModel)]="startDate" [disabled]="locked" />
+        </div>
+        <div class="form-group">
+          <label for="endDate">Fecha fin</label>
+          <input id="endDate" type="date" [(ngModel)]="endDate" [disabled]="locked" />
+        </div>
+      </div>
+      <div class="date-params">
+        <div class="form-group">
+          <label for="topN">Candidatos a seleccionar</label>
+          <input id="topN" type="number" [(ngModel)]="topN"
+                 min="5" max="50" step="1" [disabled]="locked" />
+        </div>
+        <div class="form-group">
+          <label for="maxPerSector">Máximo por sector</label>
+          <input id="maxPerSector" type="number" [(ngModel)]="maxPerSector"
+                 min="1" max="10" step="1" [disabled]="locked" />
+        </div>
+      </div>
+      <p class="date-hint">
+        Las mismas fechas se usan en el screener y en preparar datos para garantizar coherencia.
+        IBIT (Bitcoin) y ETHA (Ethereum) se incluyen siempre como obligatorios.
+      </p>
+
       <!-- Universo actual (tickers por defecto) -->
       @if (defaultTickersLoading) {
         <div class="default-tickers-loading">

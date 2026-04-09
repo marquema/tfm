@@ -38,6 +38,20 @@
   margin-bottom: 1.25rem;
 }
 
+.date-params {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.date-hint {
+  font-size: 0.78rem;
+  color: #6a6a8a;
+  margin-bottom: 1rem;
+  font-style: italic;
+}
+
 .button-group {
   display: flex;
   flex-wrap: wrap;

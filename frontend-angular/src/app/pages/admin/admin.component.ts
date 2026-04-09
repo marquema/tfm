@@ -26,6 +26,14 @@ export class AdminComponent implements OnInit {
   defaultTickers: string[] = [];
   defaultTickersLoading = false;
 
+  // ─── Parámetros de fechas (compartidos entre screener y preparar datos) ────
+  startDate = '2019-01-01';
+  endDate = '2026-04-01';
+
+  // ─── Parámetros del screener ───────────────────────────────────────────────
+  topN = 15;
+  maxPerSector = 3;
+
   // ─── Resultados del screener ───────────────────────────────────────────────
   screenerCandidates: any[] = [];
 
@@ -116,7 +124,12 @@ export class AdminComponent implements OnInit {
     this.screenerCandidates = [];
     this.log('Ejecutando screener... Esto puede tardar 3-5 minutos.', 'info');
 
-    this.api.postScreener({}).subscribe({
+    this.api.postScreener({
+      start_date: this.startDate,
+      end_date: this.endDate,
+      top_n: this.topN.toString(),
+      max_per_sector: this.maxPerSector.toString(),
+    }).subscribe({
       next: (res) => {
         this.unlock();
         this.screenerCandidates = res.details || [];
@@ -137,7 +150,11 @@ export class AdminComponent implements OnInit {
     this.prepararResult = null;
     this.log('Descargando datos y generando features...', 'info');
 
-    this.api.postPrepararDatos({ tickers: null }).subscribe({
+    this.api.postPrepararDatos({
+      tickers: null,
+      start: this.startDate,
+      end: this.endDate,
+    }).subscribe({
       next: (res) => {
         this.unlock();
         this.prepararResult = res;
@@ -159,7 +176,11 @@ export class AdminComponent implements OnInit {
 
     this.api.postEntrenar(this.trainSteps).subscribe({
       next: (res) => {
-        this.log(res.message || 'Entrenamiento lanzado.', 'info');
+        // El backend respondió inmediatamente — el entrenamiento corre en background.
+        // Cambiamos el nombre de la operación para que el banner sea informativo.
+        this.activeOperation = 'Entrenamiento PPO (segundo plano)';
+        this.log(res.message || 'Entrenamiento lanzado en segundo plano. Pulsa "Desbloquear" cuando termine.', 'info');
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.unlock();
@@ -176,7 +197,9 @@ export class AdminComponent implements OnInit {
 
     this.api.postWalkForward(this.wfSteps).subscribe({
       next: (res) => {
-        this.log(res.message || 'Walk-Forward lanzado.', 'info');
+        this.activeOperation = 'Walk-Forward (segundo plano)';
+        this.log(res.message || 'Walk-Forward lanzado en segundo plano. Pulsa "Desbloquear" cuando termine.', 'info');
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.unlock();

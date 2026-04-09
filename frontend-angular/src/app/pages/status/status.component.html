@@ -1,76 +1,74 @@
 <div class="status-page">
-  <div class="page-header">
-    <div>
-      <h1>Estado del Sistema</h1>
-      <p class="page-subtitle">Monitoreo del backend y ejecucion de fases del pipeline</p>
-    </div>
-    <button class="btn btn-outline" (click)="loadStatus()" [disabled]="statusLoading">
-      &#x21BB; Actualizar
-    </button>
-  </div>
+  <h1>Estado del Sistema</h1>
+  <p class="page-subtitle">Información pública sobre la disponibilidad de la plataforma</p>
 
-  <!-- System Status Card -->
-  <div class="card status-card">
-    <h3>Conexion al Backend</h3>
+  <!-- Conexión al backend -->
+  <section class="card connection-card">
+    <h2>Conexión al Backend</h2>
 
-    @if (statusLoading) {
-      <div class="status-loading">
-        <div class="spinner"></div>
-        <span>Comprobando conexion...</span>
+    @if (loading) {
+      <div class="status-row">
+        <span class="spinner"></span>
+        <span>Comprobando conexión...</span>
       </div>
-    } @else if (statusError) {
-      <div class="status-indicator">
-        <span class="indicator red"></span>
+    } @else if (connected) {
+      <div class="status-row">
+        <span class="dot green"></span>
+        <span class="status-text">Conectado a <strong>localhost:8000</strong></span>
+      </div>
+    } @else {
+      <div class="status-row">
+        <span class="dot red"></span>
         <span class="status-text">Desconectado</span>
       </div>
-      <p class="status-message text-danger">{{ statusError }}</p>
-    } @else {
-      <div class="status-indicator">
-        <span class="indicator green"></span>
-        <span class="status-text">Conectado</span>
+      <p class="error-text">{{ error }}</p>
+    }
+  </section>
+
+  <!-- Estado de las fases -->
+  @if (connected) {
+    <section class="card phases-card">
+      <div class="phases-header">
+        <h2>Componentes del Sistema</h2>
+        <span class="ready-count" [class.all-ready]="allReady">
+          {{ readyCount }} / {{ phases.length }} listos
+        </span>
       </div>
-      @if (systemStatus) {
-        <div class="status-details">
-          <pre>{{ systemStatus | json }}</pre>
+
+      @if (allReady) {
+        <div class="all-ready-banner">
+          El sistema está completamente operativo. Los inversores pueden ejecutar simulaciones.
         </div>
       }
-    }
-  </div>
 
-  <!-- Phase Actions -->
-  <h2 class="section-title">Fases del Pipeline</h2>
-  <div class="phases-grid">
-    @for (phase of phases; track phase.id) {
-      <div class="card phase-card">
-        <div class="phase-header">
-          <h3>{{ phase.label }}</h3>
-          <p class="phase-desc">{{ phase.description }}</p>
-        </div>
-
-        <button
-          class="btn btn-primary"
-          (click)="executePhase(phase)"
-          [disabled]="phase.loading">
-          @if (phase.loading) {
-            <span class="btn-spinner"></span> Ejecutando...
-          } @else {
-            &#x25B6; Ejecutar
-          }
-        </button>
-
-        @if (phase.response) {
-          <div class="phase-response" [class.error]="phase.error">
-            <span class="response-label">
-              @if (phase.error) {
-                &#x274C; Resultado:
-              } @else {
-                &#x2705; Resultado:
-              }
+      <div class="phases-list">
+        @for (phase of phases; track phase.name) {
+          <div class="phase-row">
+            <span class="dot" [class.green]="phase.ready" [class.red]="!phase.ready"></span>
+            <div class="phase-info">
+              <strong>{{ phase.name }}</strong>
+              <span class="phase-desc">{{ phase.description }}</span>
+            </div>
+            <span class="phase-badge" [class.ready]="phase.ready" [class.pending]="!phase.ready">
+              {{ phase.ready ? 'Operativo' : 'Pendiente' }}
             </span>
-            <pre class="response-body">{{ phase.response }}</pre>
           </div>
         }
       </div>
-    }
-  </div>
+
+      @if (!allReady) {
+        <p class="pending-note">
+          Los componentes pendientes deben ser configurados por un administrador
+          desde el panel de administración.
+        </p>
+      }
+    </section>
+
+    <!-- Botón actualizar -->
+    <div class="refresh-row">
+      <button class="btn btn-outline" (click)="checkStatus()" [disabled]="loading">
+        Actualizar estado
+      </button>
+    </div>
+  }
 </div>
