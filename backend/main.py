@@ -188,6 +188,12 @@ async def preparar_datos(config: DownloadConfig = None,
     if not config.tickers:
         config.tickers = universe_repo.get_default_tickers(db)
 
+    # Garantizar que IBIT y ETHA siempre están presentes (requisito del TFM:
+    # "Integrando Criptoactivos en la Inversión Tradicional")
+    for crypto in ['IBIT', 'ETHA']:
+        if crypto not in config.tickers:
+            config.tickers.append(crypto)
+
     print(f"  Tickers resueltos: {config.tickers}")
 
     descargar_dividendos(config.tickers, config.start, config.end)
