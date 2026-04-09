@@ -1,0 +1,223 @@
+<div class="admin-page">
+  <h1>Panel de Administración</h1>
+  <p class="page-subtitle">Gestiona datos, entrenamiento y usuarios del sistema</p>
+
+  <!-- Banner de operación activa -->
+  @if (locked) {
+    <div class="alert alert-warning operation-banner">
+      <span class="spinner"></span>
+      <strong>{{ activeOperation }}</strong>
+      <span class="banner-hint">— Todos los botones bloqueados hasta que finalice.</span>
+      <button class="btn btn-outline-sm unlock-btn" (click)="forceUnlock()">
+        Desbloquear
+      </button>
+    </div>
+  }
+
+  <!-- Log de mensajes -->
+  @if (messages.length > 0) {
+    <div class="messages-container">
+      @for (msg of messages; track $index) {
+        <div class="alert"
+             [class.alert-success]="msg.type === 'success'"
+             [class.alert-error]="msg.type === 'error'"
+             [class.alert-info]="msg.type === 'info'">
+          <span class="msg-time">{{ msg.time | date:'HH:mm:ss' }}</span>
+          {{ msg.text }}
+        </div>
+      }
+    </div>
+  }
+
+  <div class="admin-grid">
+    <!-- ─── Gestión de datos ──────────────────────────────────────────── -->
+    <section class="admin-section card">
+      <h2>Gestión de Datos</h2>
+      <p class="section-desc">
+        1. <strong>Screener</strong>: selecciona los mejores activos del S&P 500 (+ IBIT, ETHA obligatorios).<br>
+        2. <strong>Preparar Datos</strong>: descarga precios y genera features con los activos del screener.
+      </p>
+      <!-- Universo actual (tickers por defecto) -->
+      @if (defaultTickersLoading) {
+        <div class="default-tickers-loading">
+          <span class="spinner-sm"></span> Cargando universo actual...
+        </div>
+      } @else if (defaultTickers.length > 0 && screenerCandidates.length === 0) {
+        <div class="default-tickers-box">
+          <h3>Universo actual ({{ defaultTickers.length }} activos)</h3>
+          <div class="ticker-chips">
+            @for (ticker of defaultTickers; track ticker) {
+              <span class="ticker-chip">{{ ticker }}</span>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="button-group">
+        <button class="btn btn-primary" (click)="runScreener()" [disabled]="locked">
+          @if (activeOperation === 'Screener S&P 500') {
+            <span class="spinner"></span> Ejecutando...
+          } @else {
+            Ejecutar Screener
+          }
+        </button>
+        <button class="btn btn-secondary" (click)="runPrepararDatos()" [disabled]="locked">
+          @if (activeOperation === 'Preparando datos') {
+            <span class="spinner"></span> Preparando...
+          } @else {
+            Preparar Datos
+          }
+        </button>
+      </div>
+
+      <!-- Resultados del screener -->
+      @if (screenerCandidates.length > 0) {
+        <div class="screener-results mt-1">
+          <h3>Candidatos seleccionados ({{ screenerCandidates.length }})</h3>
+          <div class="table-wrapper">
+            <table class="table-sm">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Sector</th>
+                  <th>Sharpe</th>
+                  <th>Vol. anual</th>
+                  <th>Vol. diario ($)</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of screenerCandidates; track c.ticker) {
+                  <tr>
+                    <td><strong>{{ c.ticker }}</strong></td>
+                    <td class="text-muted">{{ c.sector }}</td>
+                    <td>{{ c.sharpe_rolling }}</td>
+                    <td>{{ (c.annual_vol * 100) | number:'1.1-1' }}%</td>
+                    <td>{{ c.avg_volume_usd | number:'1.0-0' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
+
+      <!-- Resultado de preparar datos -->
+      @if (prepararResult) {
+        <div class="preparar-result mt-1">
+          <div class="result-badge">
+            {{ prepararResult.tickers?.length || 0 }} activos ·
+            {{ prepararResult.n_days || '?' }} días ·
+            {{ prepararResult.n_features || '?' }} features
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- ─── Entrenamiento ─────────────────────────────────────────────── -->
+    <section class="admin-section card">
+      <h2>Entrenamiento</h2>
+      <p class="section-desc">
+        Entrena PPO y valida con walk-forward.<br>
+        <strong>Nota:</strong> Entrenar y Walk-Forward corren en segundo plano.
+      </p>
+
+      <div class="train-params">
+        <div class="form-group">
+          <label for="trainSteps">Steps entrenamiento</label>
+          <input id="trainSteps" type="number" [(ngModel)]="trainSteps"
+                 min="10000" step="10000" [disabled]="locked" />
+        </div>
+        <div class="form-group">
+          <label for="wfSteps">Steps walk-forward</label>
+          <input id="wfSteps" type="number" [(ngModel)]="wfSteps"
+                 min="10000" step="10000" [disabled]="locked" />
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-primary" (click)="runEntrenar()" [disabled]="locked">
+          @if (activeOperation === 'Entrenamiento PPO') {
+            <span class="spinner"></span> Entrenando...
+          } @else {
+            Entrenar PPO
+          }
+        </button>
+        <button class="btn btn-secondary" (click)="runWalkForward()" [disabled]="locked">
+          @if (activeOperation === 'Walk-Forward') {
+            <span class="spinner"></span> Ejecutando...
+          } @else {
+            Walk-Forward
+          }
+        </button>
+        <button class="btn btn-outline" (click)="runEspeculativo()" [disabled]="locked">
+          @if (activeOperation === 'Agente Especulativo') {
+            <span class="spinner"></span> Ajustando...
+          } @else {
+            Especulativo
+          }
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ─── Usuarios ──────────────────────────────────────────────────────── -->
+  <section class="admin-section users-section card mt-3">
+    <div class="section-header">
+      <h2>Usuarios Registrados</h2>
+      <button class="btn btn-outline-sm" (click)="loadUsers()" [disabled]="usersLoading">
+        @if (usersLoading) {
+          <span class="spinner-sm"></span>
+        } @else {
+          Actualizar
+        }
+      </button>
+    </div>
+
+    @if (usersError) {
+      <div class="alert alert-error">{{ usersError }}</div>
+    }
+
+    @if (usersLoading) {
+      <div class="loading-state">
+        <span class="spinner-lg"></span>
+        <p>Cargando usuarios...</p>
+      </div>
+    } @else if (users.length > 0) {
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Nombre</th>
+              <th>Rol</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (user of users; track user.email) {
+              <tr>
+                <td>{{ user.email }}</td>
+                <td>{{ user.full_name || '—' }}</td>
+                <td>
+                  <span class="role-badge" [class.role-admin]="user.role === 'admin'">
+                    {{ user.role }}
+                  </span>
+                </td>
+                <td>
+                  <button class="btn btn-danger-sm"
+                          (click)="deleteUser(user.email)"
+                          [disabled]="user.role === 'admin'"
+                          [title]="user.role === 'admin' ? 'No se puede eliminar un admin' : 'Eliminar'">
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else if (!usersError) {
+      <p class="text-muted text-center">No hay usuarios registrados</p>
+    }
+  </section>
+</div>

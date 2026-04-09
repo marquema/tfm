@@ -1,0 +1,105 @@
+<div class="simulator-page">
+  <h1>Simulador de Portfolio</h1>
+  <p class="page-subtitle">Configura los parámetros y ejecuta una simulación con las estrategias disponibles</p>
+
+  <!-- Estado del sistema -->
+  @if (systemChecking) {
+    <div class="system-check card">
+      <span class="spinner"></span> Verificando estado del sistema...
+    </div>
+  } @else if (systemError) {
+    <div class="alert alert-error">
+      <strong>Sistema no disponible:</strong> {{ systemError }}
+    </div>
+    <div class="strategies-status card">
+      <h3>Estado de las estrategias</h3>
+      @for (s of availableStrategies; track s.id) {
+        <div class="strategy-status-row">
+          <span class="status-dot" [class.ready]="s.available" [class.not-ready]="!s.available"></span>
+          <strong>{{ s.name }}</strong>
+          @if (!s.available) {
+            <span class="status-hint">— No disponible</span>
+          } @else {
+            <span class="status-hint ready">— Listo</span>
+          }
+        </div>
+      }
+    </div>
+  } @else {
+    <!-- Formulario de simulación -->
+    @if (errorMessage) {
+      <div class="alert alert-error">{{ errorMessage }}</div>
+    }
+    @if (successMessage) {
+      <div class="alert alert-success">{{ successMessage }}</div>
+    }
+
+    <div class="strategies-status card">
+      <h3>Estrategias disponibles</h3>
+      @for (s of availableStrategies; track s.id) {
+        <div class="strategy-status-row">
+          <span class="status-dot" [class.ready]="s.available" [class.not-ready]="!s.available"></span>
+          <strong>{{ s.name }}</strong>
+          <span class="status-desc">{{ s.description }}</span>
+        </div>
+      }
+    </div>
+
+    <div class="simulator-card card">
+      <form (ngSubmit)="onSimulate()" class="simulator-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="capital">Capital inicial ($)</label>
+            <input
+              id="capital"
+              type="number"
+              [(ngModel)]="capital"
+              name="capital"
+              min="1000"
+              max="10000000"
+              step="1000"
+              required
+            />
+            <span class="form-hint">Mínimo: $1.000</span>
+          </div>
+
+          <div class="form-group">
+            <label for="commission">Comisión por operación (%)</label>
+            <div class="slider-group">
+              <input
+                id="commission"
+                type="range"
+                [(ngModel)]="commission"
+                name="commission"
+                min="0"
+                max="0.5"
+                step="0.01"
+                class="slider"
+              />
+              <span class="slider-value">{{ commission }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-summary">
+          <div class="summary-item">
+            <span class="summary-label">Capital:</span>
+            <span class="summary-value">${{ capital | number:'1.0-0' }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Comisión:</span>
+            <span class="summary-value">{{ commission }}%</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary simulate-btn" [disabled]="loading">
+          @if (loading) {
+            <span class="spinner"></span> Simulando... (puede tardar unos segundos)
+          } @else {
+            Simular
+          }
+        </button>
+      </form>
+    </div>
+  }
+</div>

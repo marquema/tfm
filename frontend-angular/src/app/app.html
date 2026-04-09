@@ -21,34 +21,78 @@
     </div>
 
     <nav class="sidebar-nav">
-      <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
-        <span class="nav-icon">&#x1F3E0;</span>
-        @if (!sidebarCollapsed) {
-          <span class="nav-label">Dashboard</span>
+      @if (!authStore.isLoggedIn()) {
+        <!-- No autenticado: solo Login y Estado -->
+        <a routerLink="/login" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F511;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Login</span>
+          }
+        </a>
+        <a routerLink="/estado" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x2699;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Estado</span>
+          }
+        </a>
+      } @else {
+        <!-- Autenticado -->
+        <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F3E0;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Dashboard</span>
+          }
+        </a>
+
+        @if (authStore.isAdmin()) {
+          <a routerLink="/admin" routerLinkActive="active" class="nav-item">
+            <span class="nav-icon">&#x1F6E0;</span>
+            @if (!sidebarCollapsed) {
+              <span class="nav-label">Admin</span>
+            }
+          </a>
         }
-      </a>
-      <a routerLink="/universo" routerLinkActive="active" class="nav-item">
-        <span class="nav-icon">&#x1F30D;</span>
-        @if (!sidebarCollapsed) {
-          <span class="nav-label">Universo</span>
-        }
-      </a>
-      <a routerLink="/estado" routerLinkActive="active" class="nav-item">
-        <span class="nav-icon">&#x2699;</span>
-        @if (!sidebarCollapsed) {
-          <span class="nav-label">Estado</span>
-        }
-      </a>
-      <a routerLink="/login" routerLinkActive="active" class="nav-item">
-        <span class="nav-icon">&#x1F511;</span>
-        @if (!sidebarCollapsed) {
-          <span class="nav-label">Login</span>
-        }
-      </a>
+
+        <a routerLink="/investor/simulator" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F4B0;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Simulador</span>
+          }
+        </a>
+        <a routerLink="/investor/results" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F4CA;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Resultados</span>
+          }
+        </a>
+        <a routerLink="/universo" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F30D;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Universo</span>
+          }
+        </a>
+        <a routerLink="/estado" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x2699;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Estado</span>
+          }
+        </a>
+
+        <!-- Cerrar sesion -->
+        <a class="nav-item nav-logout" (click)="logout()">
+          <span class="nav-icon">&#x1F6AA;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Cerrar sesion</span>
+          }
+        </a>
+      }
     </nav>
 
     <div class="sidebar-footer">
       @if (!sidebarCollapsed) {
+        @if (authStore.isLoggedIn() && authStore.email) {
+          <span class="footer-email">{{ authStore.email }}</span>
+        }
         <span class="footer-text">TFM {{ currentYear }}</span>
       }
     </div>

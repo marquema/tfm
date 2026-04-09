@@ -52,3 +52,60 @@
   font-size: 0.75rem;
   margin-top: 0.5rem;
 }
+
+.login-toggle {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #6a6a8a;
+  margin-top: 0.5rem;
+}
+
+.toggle-link {
+  color: #00d4ff;
+  cursor: pointer;
+  font-weight: 600;
+
+  &:hover {
+    color: #33dfff;
+    text-decoration: underline;
+  }
+}
+
+/* ---- Alerts ---- */
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.alert-error {
+  background: rgba(255, 82, 82, 0.15);
+  color: #ff5252;
+  border: 1px solid rgba(255, 82, 82, 0.3);
+}
+
+.alert-success {
+  background: rgba(0, 230, 118, 0.15);
+  color: #00e676;
+  border: 1px solid rgba(0, 230, 118, 0.3);
+}
+
+/* ---- Spinner ---- */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(10, 10, 26, 0.3);
+  border-top-color: #0a0a1a;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 0.25rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

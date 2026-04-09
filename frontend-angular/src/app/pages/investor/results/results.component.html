@@ -1,0 +1,102 @@
+<div class="results-page">
+  <div class="results-header">
+    <div>
+      <h1>Resultados de la Simulación</h1>
+      @if (testPeriod) {
+        <p class="page-subtitle">
+          Período de test: {{ testPeriod.start }} → {{ testPeriod.end }}
+          ({{ testPeriod.days }} días) · {{ tickers.length }} activos
+        </p>
+      }
+    </div>
+    <button class="btn btn-outline" (click)="goBack()">
+      Nueva simulación
+    </button>
+  </div>
+
+  @if (errorMessage) {
+    <div class="alert alert-error">{{ errorMessage }}</div>
+  }
+
+  @if (!hasData) {
+    <div class="no-results card">
+      <h2>No hay resultados disponibles</h2>
+      <p>Ejecuta una simulación desde el simulador para ver la comparativa de estrategias.</p>
+      <a routerLink="/investor/simulator" class="btn btn-primary">Ir al simulador</a>
+    </div>
+  } @else {
+    <!-- Tabla comparativa principal -->
+    <section class="card">
+      <h2>Comparativa de estrategias</h2>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Estrategia</th>
+              <th>Retorno (%)</th>
+              <th>CAGR (%)</th>
+              <th>Volatilidad (%)</th>
+              <th>Sharpe</th>
+              <th>Sortino</th>
+              <th>Max Drawdown (%)</th>
+              <th>Valor Final ($)</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (s of strategies; track s.name) {
+              <tr [class.highlight-ppo]="s.name.includes('PPO')">
+                <td><strong>{{ s.name }}</strong></td>
+                <td>{{ fmt(s.retorno) }}</td>
+                <td>{{ fmt(s.cagr) }}</td>
+                <td>{{ fmt(s.volatilidad) }}</td>
+                <td>{{ fmt(s.sharpe, 3) }}</td>
+                <td>{{ fmt(s.sortino, 3) }}</td>
+                <td class="text-danger">{{ fmt(s.mdd) }}</td>
+                <td class="text-info">{{ fmt(s.valor_final) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tarjetas por estrategia -->
+    <section class="strategy-cards">
+      @for (s of strategies; track s.name) {
+        <div class="strategy-card card" [class.card-ppo]="s.name.includes('PPO')">
+          <h3>{{ s.name }}</h3>
+          <div class="metrics-grid">
+            <div class="metric">
+              <span class="label">Sharpe</span>
+              <span class="value">{{ fmt(s.sharpe, 3) }}</span>
+            </div>
+            <div class="metric">
+              <span class="label">Retorno</span>
+              <span class="value">{{ fmt(s.retorno) }}%</span>
+            </div>
+            <div class="metric">
+              <span class="label">MDD</span>
+              <span class="value text-danger">{{ fmt(s.mdd) }}%</span>
+            </div>
+            <div class="metric">
+              <span class="label">Valor Final</span>
+              <span class="value text-info">${{ fmt(s.valor_final) }}</span>
+            </div>
+          </div>
+        </div>
+      }
+    </section>
+
+    <!-- Placeholders para gráficas -->
+    <section class="charts-section">
+      <div class="chart-placeholder card">
+        <h3>Equity Curves (próximamente)</h3>
+        <p class="text-muted">Evolución del capital por estrategia a lo largo del período de test.</p>
+      </div>
+      <div class="chart-placeholder card">
+        <h3>Drawdown (próximamente)</h3>
+        <p class="text-muted">Caída desde el máximo histórico de cada estrategia.</p>
+      </div>
+    </section>
+  }
+</div>

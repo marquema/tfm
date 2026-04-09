@@ -1,14 +1,5 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { ApiService } from '../../services/api.service';
-
-interface Asset {
-  ticker: string;
-  nombre: string;
-  categoria: string;
-  sector: string;
-  instrumento: string;
-  descripcion: string;
-}
 
 @Component({
   selector: 'app-universe',
@@ -17,11 +8,11 @@ interface Asset {
   styleUrl: './universe.component.scss'
 })
 export class UniverseComponent implements OnInit {
-  assets: Asset[] = [];
+  assets: any[] = [];
   loading = false;
   errorMessage = '';
 
-  constructor(private apiService: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadUniverse();
@@ -30,15 +21,16 @@ export class UniverseComponent implements OnInit {
   loadUniverse(): void {
     this.loading = true;
     this.errorMessage = '';
-    this.apiService.getUniverso('core').subscribe({
+    this.api.getUniverso('core').subscribe({
       next: (data) => {
-        this.assets = data.activos ?? data ?? [];
         this.loading = false;
+        this.assets = Array.isArray(data) ? data : [];
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.errorMessage = 'Error al cargar el universo de activos. Verifica que el backend este activo.';
         this.loading = false;
-        console.error('Error cargando universo:', err);
+        this.errorMessage = 'Error al cargar el universo de activos. Verifica que el backend esté activo.';
+        this.cdr.detectChanges();
       }
     });
   }

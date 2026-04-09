@@ -2,42 +2,120 @@
   <div class="login-card card">
     <div class="login-header">
       <span class="login-icon">&#x1F512;</span>
-      <h2>Iniciar Sesion</h2>
-      <p class="login-subtitle">Accede al panel de gestion del portfolio</p>
+      @if (!showRegister) {
+        <h2>Iniciar Sesion</h2>
+        <p class="login-subtitle">Accede al panel de gestion del portfolio</p>
+      } @else {
+        <h2>Registrarse</h2>
+        <p class="login-subtitle">Crea una nueva cuenta para acceder</p>
+      }
     </div>
 
-    <form (ngSubmit)="onSubmit()" class="login-form">
-      <div class="form-group">
-        <label for="email">Correo electronico</label>
-        <input
-          id="email"
-          type="email"
-          [(ngModel)]="email"
-          name="email"
-          placeholder="usuario@ejemplo.com"
-          autocomplete="email"
-        />
-      </div>
+    @if (errorMessage) {
+      <div class="alert alert-error">{{ errorMessage }}</div>
+    }
 
-      <div class="form-group">
-        <label for="password">Contrasena</label>
-        <input
-          id="password"
-          type="password"
-          [(ngModel)]="password"
-          name="password"
-          placeholder="Introduce tu contrasena"
-          autocomplete="current-password"
-        />
-      </div>
+    @if (successMessage) {
+      <div class="alert alert-success">{{ successMessage }}</div>
+    }
 
-      <button type="submit" class="btn btn-primary login-btn">
-        Iniciar sesion
-      </button>
+    @if (!showRegister) {
+      <!-- Formulario de login -->
+      <form (ngSubmit)="onSubmit()" class="login-form">
+        <div class="form-group">
+          <label for="email">Correo electronico</label>
+          <input
+            id="email"
+            type="email"
+            [(ngModel)]="email"
+            name="email"
+            placeholder="usuario@ejemplo.com"
+            autocomplete="email"
+            required
+          />
+        </div>
 
-      <p class="login-note text-muted">
-        Autenticacion pendiente de implementacion. Este formulario es solo visual.
-      </p>
-    </form>
+        <div class="form-group">
+          <label for="password">Contrasena</label>
+          <input
+            id="password"
+            type="password"
+            [(ngModel)]="password"
+            name="password"
+            placeholder="Introduce tu contrasena"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary login-btn" [disabled]="loading">
+          @if (loading) {
+            <span class="spinner"></span> Cargando...
+          } @else {
+            Iniciar sesion
+          }
+        </button>
+
+        <p class="login-toggle">
+          No tienes cuenta?
+          <a (click)="toggleForm()" class="toggle-link">Registrarse</a>
+        </p>
+      </form>
+    } @else {
+      <!-- Formulario de registro -->
+      <form (ngSubmit)="onRegister()" class="login-form">
+        <div class="form-group">
+          <label for="registerName">Nombre completo</label>
+          <input
+            id="registerName"
+            type="text"
+            [(ngModel)]="registerName"
+            name="registerName"
+            placeholder="Tu nombre"
+            autocomplete="name"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="registerEmail">Correo electronico</label>
+          <input
+            id="registerEmail"
+            type="email"
+            [(ngModel)]="registerEmail"
+            name="registerEmail"
+            placeholder="usuario@ejemplo.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="registerPassword">Contrasena</label>
+          <input
+            id="registerPassword"
+            type="password"
+            [(ngModel)]="registerPassword"
+            name="registerPassword"
+            placeholder="Crea una contrasena"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn btn-primary login-btn" [disabled]="loading">
+          @if (loading) {
+            <span class="spinner"></span> Cargando...
+          } @else {
+            Crear cuenta
+          }
+        </button>
+
+        <p class="login-toggle">
+          Ya tienes cuenta?
+          <a (click)="toggleForm()" class="toggle-link">Iniciar sesion</a>
+        </p>
+      </form>
+    }
   </div>
 </div>

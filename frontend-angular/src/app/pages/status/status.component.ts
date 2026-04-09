@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { JsonPipe } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 
@@ -58,7 +58,7 @@ export class StatusComponent implements OnInit {
     }
   ];
 
-  constructor(private apiService: ApiService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadStatus();
@@ -71,11 +71,13 @@ export class StatusComponent implements OnInit {
       next: (data) => {
         this.systemStatus = data;
         this.statusLoading = false;
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.statusError = 'No se pudo conectar con el backend. Verifica que el servidor este activo en localhost:8000.';
         this.statusLoading = false;
         console.error('Error cargando estado:', err);
+        this.cdr.detectChanges();
       }
     });
   }

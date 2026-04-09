@@ -132,10 +132,33 @@
   text-overflow: ellipsis;
 }
 
+/* ---- Logout nav item ---- */
+.nav-logout {
+  margin-top: auto;
+  cursor: pointer;
+  color: #ff5252 !important;
+
+  &:hover {
+    background: rgba(255, 82, 82, 0.1) !important;
+    color: #ff7070 !important;
+  }
+}
+
 /* ---- Sidebar Footer ---- */
 .sidebar-footer {
   padding: 1rem 1.25rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.footer-email {
+  font-size: 0.75rem;
+  color: #00d4ff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .footer-text {
