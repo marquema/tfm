@@ -48,7 +48,6 @@ model_path = st.sidebar.selectbox(
     "Modelo a evaluar",
     options=[
         "models/best_model_academic/best_model.zip",
-        "models/best_model/best_model.zip",
         "models/ppo_academic_final.zip",
     ],
     index=0

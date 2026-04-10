@@ -175,7 +175,7 @@ def run_full_backtest(model_path: str= MODEL_PATH,
     split_idx   = int(len(df_f) * split_pct)
     test_prices = df_p.iloc[split_idx:].copy()
 
-    print(f"  Período de test: {test_prices.index[0].date()} → {test_prices.index[-1].date()}")
+    print(f"  Período de test: {test_prices.index[0].date()} -> {test_prices.index[-1].date()}")
     print(f"  Días de trading: {len(test_prices)}")
 
     # ── 2. Ejecutar el agente PPO 
@@ -339,5 +339,5 @@ if __name__ == "__main__":
         analizar_regimenes(
             features_path=FEATURES_PATH,
             prices_path=PRICES_PATH,
-            modelo_path=MODEL_PATH,
+            model_path=MODEL_PATH,
         )

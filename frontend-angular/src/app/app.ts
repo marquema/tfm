@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthStore } from './services/auth.store';
 
@@ -8,11 +8,17 @@ import { AuthStore } from './services/auth.store';
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
-export class App {
+export class App implements OnInit {
   readonly currentYear = new Date().getFullYear();
   sidebarCollapsed = false;
 
   constructor(public authStore: AuthStore) {}
+
+  ngOnInit(): void {
+    // Verificar si el token almacenado sigue siendo válido al arrancar.
+    // Si el token expiró, limpia la sesión y el usuario verá el login.
+    this.authStore.validateSession();
+  }
 
   toggleSidebar(): void {
     this.sidebarCollapsed = !this.sidebarCollapsed;

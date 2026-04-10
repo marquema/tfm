@@ -26,7 +26,7 @@ from src.pipeline_getdata.market_screener import MarketScreener
 from src.pipeline_getdata.universe_config import save_config  # legacy JSON (fallback)
 
 from sqlalchemy.orm import Session
-from src.auth.models import init_db, get_db, User
+from src.auth.models import init_db, get_db, User, SessionLocal
 from src.auth.auth_router import router as auth_router
 from src.auth.auth_service import require_admin, get_current_user
 from src.auth import universe_repository as universe_repo
@@ -267,7 +267,31 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
         model_path="models/best_model_academic/best_model.zip", steps=steps,
     )
 
-    background_tasks.add_task(entrenar_academico, total_timesteps=steps, patience=patience)
+    # Wrapper que ejecuta el entrenamiento y actualiza el status en BD al terminar
+    def train_and_update_status(model_id: int, **kwargs):
+        try:
+            entrenar_academico(**kwargs)
+            # El entrenamiento terminó exitosamente — marcar como ready
+            db_session = SessionLocal()
+            try:
+                universe_repo.update_model_status(db_session, model_id, "ready")
+                print(f"  [BD] Modelo PPO id={model_id} marcado como 'ready'.")
+            finally:
+                db_session.close()
+        except Exception as e:
+            db_session = SessionLocal()
+            try:
+                universe_repo.update_model_status(db_session, model_id, "failed")
+                print(f"  [BD] Modelo PPO id={model_id} marcado como 'failed': {e}")
+            finally:
+                db_session.close()
+
+    background_tasks.add_task(
+        train_and_update_status,
+        model_id=model_record.id,
+        total_timesteps=steps,
+        patience=patience,
+    )
     return {
         "message": f"Entrenamiento iniciado (máx. {steps:,} pasos, patience={patience}).",
         "universe_id": universe.id,
@@ -311,11 +335,12 @@ async def ajustar_especulativo(split_pct: float = 0.8,
     with open('models/speculative_gmm.pkl', 'wb') as f:
         pickle.dump(agente, f)
 
-    # Registrar modelo en BD vinculado al universo activo
-    universe_repo.register_model(
+    # Registrar modelo como ready (es síncrono — ya terminó)
+    model_record = universe_repo.register_model(
         db, universe_id=universe.id, model_type="speculative",
         model_path="models/speculative_gmm.pkl",
     )
+    universe_repo.update_model_status(db, model_record.id, "ready")
 
     equity = agente.backtest(df_f.iloc[split_idx:], df_p.iloc[split_idx:])
     ret = (equity.iloc[-1] / equity.iloc[0] - 1) * 100

@@ -289,12 +289,12 @@ def analyze_regimes(features_path: str = 'data/normalized_features.csv',
 
     # Baselines simples (no requieren modelo)
     try:
-        from src.benchmarking.baselines import simular_buy_and_hold, simular_equal_weight
+        from src.benchmarking.baselines import simulate_buy_and_hold, simulate_equal_weight
     except ImportError:
-        from src.benchmarking.baselines import simular_buy_and_hold, simular_equal_weight
+        from src.benchmarking.baselines import simulate_buy_and_hold, simulate_equal_weight
 
-    series_bh = simular_buy_and_hold(test_prices, initial_balance)
-    series_ew = simular_equal_weight(test_prices, initial_balance)
+    series_bh = simulate_buy_and_hold(test_prices, initial_balance)
+    series_ew = simulate_equal_weight(test_prices, initial_balance)
 
     results['Buy_and_Hold'] = series_bh
     results['Equal_Weight'] = series_ew
