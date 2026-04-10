@@ -135,10 +135,12 @@ export class AdminComponent implements OnInit {
         this.screenerCandidates = res.details || [];
         const n = res.candidates?.length || 0;
         this.log(`Screener completado: ${n} candidatos seleccionados. Se usarán automáticamente en "Preparar Datos".`, 'success');
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.unlock();
         this.log(err.error?.detail || 'Error al ejecutar screener.', 'error');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -160,10 +162,12 @@ export class AdminComponent implements OnInit {
         this.prepararResult = res;
         const tickers = res.tickers || [];
         this.log(`Datos preparados: ${tickers.length} activos, ${res.n_days || '?'} días. Tickers: ${tickers.join(', ')}`, 'success');
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.unlock();
         this.log(err.error?.detail || 'Error al preparar datos.', 'error');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -218,10 +222,12 @@ export class AdminComponent implements OnInit {
       next: (res) => {
         this.unlock();
         this.log(`Especulativo ajustado. Retorno test: ${res.retorno_test || '?'}, Valor final: ${res.valor_final || '?'}`, 'success');
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.unlock();
         this.log(err.error?.detail || 'Error al ajustar especulativo.', 'error');
+        this.cdr.detectChanges();
       }
     });
   }
