@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -10,7 +10,11 @@ import { ApiService } from '../../services/api.service';
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss'
 })
-export class AdminComponent implements OnInit {
+export class AdminComponent implements OnInit, OnDestroy {
+
+  // Polling para detectar cuando un background task termina
+  private pollTimer: any = null;
+  private pollField: string = '';  // campo de /estado a vigilar
 
   // ─── Usuarios ──────────────────────────────────────────────────────────────
   users: any[] = [];
@@ -180,10 +184,9 @@ export class AdminComponent implements OnInit {
 
     this.api.postEntrenar(this.trainSteps).subscribe({
       next: (res) => {
-        // El backend respondió inmediatamente — el entrenamiento corre en background.
-        // Cambiamos el nombre de la operación para que el banner sea informativo.
         this.activeOperation = 'Entrenamiento PPO (segundo plano)';
-        this.log(res.message || 'Entrenamiento lanzado en segundo plano. Pulsa "Desbloquear" cuando termine.', 'info');
+        this.log(res.message || 'Entrenamiento lanzado. Se desbloqueará automáticamente al terminar.', 'info');
+        this.startPolling('fase3_training_done');
         this.cdr.detectChanges();
       },
       error: (err) => {
@@ -193,16 +196,17 @@ export class AdminComponent implements OnInit {
     });
   }
 
-  // ─── Walk-Forward (background — requiere desbloqueo manual) ────────────────
+  // ─── Walk-Forward (background — auto-detecta finalización) ─────────────────
 
   runWalkForward(): void {
     this.lockBackground('Walk-Forward');
-    this.log(`Walk-Forward lanzado (${this.wfSteps.toLocaleString()} pasos/ventana). Corre en segundo plano.`, 'info');
+    this.log(`Walk-Forward lanzado (${this.wfSteps.toLocaleString()} pasos/ventana). Se desbloqueará automáticamente.`, 'info');
 
     this.api.postWalkForward(this.wfSteps).subscribe({
       next: (res) => {
         this.activeOperation = 'Walk-Forward (segundo plano)';
-        this.log(res.message || 'Walk-Forward lanzado en segundo plano. Pulsa "Desbloquear" cuando termine.', 'info');
+        this.log(res.message || 'Walk-Forward lanzado. Se desbloqueará automáticamente al terminar.', 'info');
+        this.startPolling('fase3_wf_done');
         this.cdr.detectChanges();
       },
       error: (err) => {
@@ -235,20 +239,62 @@ export class AdminComponent implements OnInit {
   // ─── Desbloqueo manual ─────────────────────────────────────────────────────
 
   forceUnlock(): void {
+    this.stopPolling();
     this.unlock();
     this.log('Botones desbloqueados manualmente.', 'info');
+  }
+
+  ngOnDestroy(): void {
+    this.stopPolling();
+  }
+
+  // ─── Polling para background tasks ─────────────────────────────────────────
+
+  /**
+   * Inicia un polling cada 15s a GET /estado para detectar cuando un
+   * background task termina. Cuando el campo vigilado pasa a true,
+   * desbloquea automáticamente sin intervención del usuario.
+   */
+  private startPolling(field: string): void {
+    this.stopPolling();
+    this.pollField = field;
+
+    // Guardar referencia al estado actual para detectar cambios
+    const initialStatus = this.pollField;
+
+    this.pollTimer = setInterval(() => {
+      this.api.getEstado().subscribe({
+        next: (data) => {
+          if (data[initialStatus] === true) {
+            this.stopPolling();
+            this.unlock();
+            this.log(`Operación completada: ${this.activeOperation || initialStatus}`, 'success');
+            this.cdr.detectChanges();
+          }
+        },
+        error: () => {
+          // Backend no responde — no hacer nada, seguir intentando
+        }
+      });
+    }, 15000); // Cada 15 segundos
+  }
+
+  private stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
 
   private lock(name: string): void {
     this.activeOperation = name;
-    // NO guardar en localStorage — se auto-desbloquea al terminar
   }
 
   private lockBackground(name: string): void {
     this.activeOperation = name;
-    localStorage.setItem('admin_active_op', name);  // Persiste entre navegaciones
+    localStorage.setItem('admin_active_op', name);
   }
 
   private unlock(): void {

@@ -90,6 +90,22 @@ class DownloadConfig(BaseModel):
     end: str = "2026-03-01"
 
 
+# ─── Helpers para background tasks ────────────────────────────────────────────
+
+def _create_lock(path: str):
+    """Crea un fichero de lock para señalizar que un background task está corriendo."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write('running')
+
+def _remove_lock(path: str):
+    """Elimina el fichero de lock cuando el background task termina."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
 # ─── ENDPOINTS PÚBLICOS ──────────────────────────────────────────────────────
 
 @app.get("/universo", tags=["Público"])
@@ -102,11 +118,18 @@ async def ver_universo(level: str = 'core'):
 @app.get("/estado", tags=["Público"])
 async def ver_estado():
     """Estado del sistema: qué fases están completadas."""
+    # Un fichero .lock indica que hay un background task corriendo.
+    # Se crea al lanzar y se borra al terminar.
+    training_running = os.path.exists('models/.training.lock')
+    wf_running       = os.path.exists('models/.walkforward.lock')
+
     return {
-        "fase1_datos":        os.path.exists('data/normalized_features.csv'),
-        "fase3_modelo_std":   os.path.exists('models/best_model/best_model.zip'),
-        "fase3_modelo_acad":  os.path.exists('models/best_model_academic/best_model.zip'),
-        "fase4_especulativo": os.path.exists('models/speculative_gmm.pkl'),
+        "fase1_datos":          os.path.exists('data/normalized_features.csv'),
+        "fase3_modelo_acad":    os.path.exists('models/best_model_academic/best_model.zip'),
+        "fase3_training_done":  os.path.exists('models/best_model_academic/best_model.zip') and not training_running,
+        "fase3_wf_done":        os.path.exists('src/reports/walk_forward_results.csv') and not wf_running,
+        "fase4_especulativo":   os.path.exists('models/speculative_gmm.pkl'),
+        "background_running":   training_running or wf_running,
     }
 
 
@@ -267,11 +290,12 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
         model_path="models/best_model_academic/best_model.zip", steps=steps,
     )
 
-    # Wrapper que ejecuta el entrenamiento y actualiza el status en BD al terminar
+    # Crear lock para que el frontend sepa que hay un entrenamiento corriendo
+    _create_lock('models/.training.lock')
+
     def train_and_update_status(model_id: int, **kwargs):
         try:
             entrenar_academico(**kwargs)
-            # El entrenamiento terminó exitosamente — marcar como ready
             db_session = SessionLocal()
             try:
                 universe_repo.update_model_status(db_session, model_id, "ready")
@@ -285,6 +309,8 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
                 print(f"  [BD] Modelo PPO id={model_id} marcado como 'failed': {e}")
             finally:
                 db_session.close()
+        finally:
+            _remove_lock('models/.training.lock')
 
     background_tasks.add_task(
         train_and_update_status,
@@ -305,11 +331,19 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
 async def iniciar_walk_forward(background_tasks: BackgroundTasks,
                                 steps_por_ventana: int = 100000):
     """Walk-forward validation temporal (solo admin)."""
+    _create_lock('models/.walkforward.lock')
+
+    def wf_with_lock(**kwargs):
+        try:
+            walk_forward_validation(**kwargs)
+        finally:
+            _remove_lock('models/.walkforward.lock')
+
     background_tasks.add_task(
-        walk_forward_validation,
+        wf_with_lock,
         features_path='data/normalized_features.csv',
         prices_path='data/original_prices.csv',
-        total_timesteps=steps_por_ventana
+        total_timesteps=steps_por_ventana,
     )
     return {"message": f"Walk-forward iniciado ({steps_por_ventana:,} pasos/ventana)."}
 
