@@ -1,5 +1,8 @@
 .dashboard-page {
-  max-width: 1400px;
+  max-width: 1100px;
+  margin: 0 auto;
+
+  h1 { margin-bottom: 0.25rem; }
 }
 
 .page-subtitle {
@@ -8,23 +11,71 @@
   font-size: 0.95rem;
 }
 
-/* ---- Metric Cards Row ---- */
+/* ─── Status strip ───────────────────────────────────── */
+.status-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 10px;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #a0a0c0;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  &.green { background: #00e676; box-shadow: 0 0 6px rgba(0, 230, 118, 0.4); }
+  &.red   { background: #ff5252; box-shadow: 0 0 6px rgba(255, 82, 82, 0.4); }
+}
+
+.status-badge {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.25rem 0.7rem;
+  border-radius: 10px;
+  margin-left: auto;
+
+  &.ready   { background: rgba(0, 230, 118, 0.12); color: #00e676; }
+  &.pending { background: rgba(240, 165, 0, 0.12); color: #f0a500; }
+}
+
+/* ─── Welcome card ───────────────────────────────────── */
+.welcome-card {
+  padding: 2.5rem;
+  text-align: center;
+
+  h2 { margin-bottom: 0.75rem; }
+  p { color: #8a8ab0; margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto; }
+}
+
+/* ─── Metric cards ───────────────────────────────────── */
 .metrics-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .metric-card {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.3rem;
   padding: 1.25rem;
 }
 
 .metric-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: #6a6a8a;
@@ -32,84 +83,81 @@
 }
 
 .metric-value {
-  font-size: 1.8rem;
+  font-size: 1.6rem;
   font-weight: 700;
   line-height: 1.2;
 
-  &.trend-up {
-    color: #00e676;
-  }
-
-  &.trend-down {
-    color: #ff5252;
-  }
-
-  &.trend-neutral {
-    color: #00d4ff;
-  }
+  &.trend-up      { color: #00e676; }
+  &.trend-down    { color: #ff5252; }
+  &.trend-neutral { color: #00d4ff; }
 }
 
-.metric-trend {
-  font-size: 0.75rem;
+.metric-hint {
+  font-size: 0.72rem;
   color: #6a6a8a;
 }
 
-/* ---- Chart Cards ---- */
-.chart-card {
+/* ─── Period info ────────────────────────────────────── */
+.period-info {
+  font-size: 0.82rem;
+  color: #8a8ab0;
+  padding: 0.5rem 0;
+  margin-bottom: 1.25rem;
+}
+
+/* ─── Charts ─────────────────────────────────────────── */
+.dashboard-charts {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.25rem;
   margin-bottom: 1.5rem;
 
-  h3 {
-    margin-bottom: 1rem;
-    font-size: 1.1rem;
-    color: #c0c0e0;
-  }
-}
-
-.main-chart {
-  min-height: 320px;
-}
-
-.chart-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 220px;
-  border: 2px dashed rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 2rem;
-  text-align: center;
-
-  .placeholder-icon {
-    font-size: 2.5rem;
-    margin-bottom: 0.75rem;
-    opacity: 0.5;
-  }
-
-  p {
-    color: #6a6a8a;
-    font-size: 0.95rem;
-
-    &.text-muted {
-      font-size: 0.8rem;
-      margin-top: 0.25rem;
-    }
-  }
-}
-
-/* ---- Secondary Charts ---- */
-.charts-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-  gap: 1.5rem;
-
-  .chart-card {
-    margin-bottom: 0;
-  }
-}
-
-@media (max-width: 900px) {
-  .charts-row {
+  @media (max-width: 768px) {
     grid-template-columns: 1fr;
   }
 }
+
+.chart-section {
+  padding: 1.25rem;
+
+  h3 {
+    font-size: 1rem;
+    margin-bottom: 0.2rem;
+  }
+}
+
+.chart-desc {
+  font-size: 0.78rem;
+  color: #6a6a8a;
+  margin-bottom: 0.75rem;
+}
+
+.chart-box {
+  min-height: 300px;
+
+  app-plotly-chart {
+    display: block;
+    width: 100%;
+    min-height: 300px;
+  }
+}
+
+/* ─── Action buttons ─────────────────────────────────── */
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* ─── Spinner ────────────────────────────────────────── */
+.spinner-sm {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0, 212, 255, 0.2);
+  border-top-color: #00d4ff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

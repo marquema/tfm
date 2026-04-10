@@ -359,8 +359,15 @@ def simulate_markowitz(df_prices: pd.DataFrame,
     n = len(df_prices.columns)
     returns = df_prices.pct_change().dropna()
 
-    values = []
-    index = []
+    # Adaptar ventana de estimación al tamaño del dataset
+    # Si el dataset es más corto que la ventana, usamos la mitad del dataset
+    estimation_window = min(estimation_window, max(20, len(df_prices) // 2))
+
+    # Rellenar los primeros días con el capital inicial (Markowitz aún no tiene
+    # suficiente historia para optimizar). Esto garantiza que la serie tenga
+    # el mismo número de puntos que las demás estrategias.
+    values = [initial_balance] * estimation_window
+    index = list(df_prices.index[:estimation_window])
     balance = initial_balance
     current_weights = np.ones(n) / n
     last_rebalance_month = None

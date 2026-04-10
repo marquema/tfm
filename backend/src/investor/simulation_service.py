@@ -196,9 +196,22 @@ def run_simulation(capital: float = 10000,
     test_start = df_p_test.index[0] if len(df_p_test) > 0 else "N/A"
     test_end   = df_p_test.index[-1] if len(df_p_test) > 0 else "N/A"
 
+    # Fechas del período de test como strings para el eje X de las gráficas.
+    # Incluye un día extra al inicio (día anterior al test) para el punto de capital inicial.
+    test_dates = [str(d)[:10] for d in df_p_test.index]
+    # PPO tiene un punto extra al inicio (capital inicial antes del primer paso)
+    if test_dates:
+        from pandas.tseries.offsets import BDay
+        day_before = str(pd.Timestamp(test_dates[0]) - BDay(1))[:10]
+        ppo_dates = [day_before] + test_dates
+    else:
+        ppo_dates = test_dates
+
     return {
         "metrics": metrics,
         "equity_curves": equity_curves,
+        "dates": test_dates,
+        "ppo_dates": ppo_dates,  # 1 punto extra para el capital inicial
         "test_period": {
             "start": str(test_start)[:10],
             "end": str(test_end)[:10],

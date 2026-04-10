@@ -93,32 +93,52 @@
   }
 }
 
-.chart-placeholder {
-  text-align: center;
-  padding: 2rem;
+.section-card {
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
 
-  h3 {
-    margin-bottom: 1rem;
-    color: #6a6a8a;
+  h2 {
+    font-size: 1.15rem;
+    margin-bottom: 0.25rem;
   }
 }
 
-.placeholder-content {
-  padding: 2rem;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 8px;
-  border: 1px dashed rgba(255, 255, 255, 0.1);
-}
-
-.placeholder-icon {
-  font-size: 2.5rem;
-  display: block;
-  margin-bottom: 0.75rem;
-}
-
-.placeholder-content p {
-  color: #6a6a8a;
+.section-desc {
+  color: #8a8ab0;
   font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.chart-box {
+  min-height: 420px;
+
+  app-plotly-chart {
+    display: block;
+    width: 100%;
+    min-height: 400px;
+  }
+}
+
+.chart-medium {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* legacy compat */
+.chart-container {
+  padding: 1rem;
+  min-height: 400px;
+
+  app-plotly-chart {
+    display: block;
+    width: 100%;
+    min-height: 400px;
+  }
+}
+
+.chart-full-width {
+  grid-column: 1 / -1;
 }
 
 /* ---- No Results ---- */

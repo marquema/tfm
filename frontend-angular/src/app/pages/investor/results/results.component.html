@@ -4,7 +4,7 @@
       <h1>Resultados de la Simulación</h1>
       @if (testPeriod) {
         <p class="page-subtitle">
-          Período de test: {{ testPeriod.start }} → {{ testPeriod.end }}
+          Período de test: {{ testPeriod.start }} -> {{ testPeriod.end }}
           ({{ testPeriod.days }} días) · {{ tickers.length }} activos
         </p>
       }
@@ -25,9 +25,17 @@
       <a routerLink="/investor/simulator" class="btn btn-primary">Ir al simulador</a>
     </div>
   } @else {
-    <!-- Tabla comparativa principal -->
-    <section class="card">
-      <h2>Comparativa de estrategias</h2>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 1: Tabla comparativa
+         ═══════════════════════════════════════════════════════════════════ -->
+    <section class="card section-card">
+      <h2>Comparativa de Estrategias</h2>
+      <p class="section-desc">
+        Todas las estrategias se evalúan sobre el mismo período de test — datos que el agente PPO
+        nunca vio durante el entrenamiento. El <strong>Sharpe Ratio</strong> resume la calidad en un número:
+        cuánto retorno se obtiene por cada unidad de riesgo. El <strong>Max Drawdown</strong> indica
+        la peor caída que habría sufrido un inversor.
+      </p>
       <div class="table-wrapper">
         <table>
           <thead>
@@ -60,7 +68,9 @@
       </div>
     </section>
 
-    <!-- Tarjetas por estrategia -->
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 2: Tarjetas de métricas por estrategia
+         ═══════════════════════════════════════════════════════════════════ -->
     <section class="strategy-cards">
       @for (s of strategies; track s.name) {
         <div class="strategy-card card" [class.card-ppo]="s.name.includes('PPO')">
@@ -87,16 +97,112 @@
       }
     </section>
 
-    <!-- Placeholders para gráficas -->
-    <section class="charts-section">
-      <div class="chart-placeholder card">
-        <h3>Equity Curves (próximamente)</h3>
-        <p class="text-muted">Evolución del capital por estrategia a lo largo del período de test.</p>
-      </div>
-      <div class="chart-placeholder card">
-        <h3>Drawdown (próximamente)</h3>
-        <p class="text-muted">Caída desde el máximo histórico de cada estrategia.</p>
-      </div>
-    </section>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 3: Evolución del Capital (Equity Curves)
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (equityChartData.length) {
+      <section class="card section-card">
+        <h2>Evolución del Capital</h2>
+        <p class="section-desc">
+          Cómo crece o decrece el capital invertido en cada estrategia a lo largo del período de test.
+          La estrategia que acaba más arriba obtuvo mayor rentabilidad total, pero fíjate también en
+          el <strong>camino</strong>: una curva con grandes bajadas intermedias es más difícil de mantener
+          que una curva suave aunque acabe en el mismo punto.
+          <strong>Haz clic en la leyenda</strong> para comparar pares de estrategias.
+        </p>
+        <div class="chart-box">
+          <app-plotly-chart [data]="equityChartData" [layout]="equityChartLayout" chartId="equity" />
+        </div>
+      </section>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 4: Drawdown
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (drawdownChartData.length) {
+      <section class="card section-card">
+        <h2>Drawdown — Peor Caída en Cada Momento</h2>
+        <p class="section-desc">
+          Responde a: <strong>¿cuánto habría perdido un inversor si hubiese comprado en el peor momento?</strong>
+          Un valor de -20% significa que la cartera valía un 20% menos que en su mejor punto previo.
+          Las zonas más profundas son las crisis. Cuanto más cerca de 0 se mantenga la línea, más estable es la estrategia.
+        </p>
+        <div class="chart-box">
+          <app-plotly-chart [data]="drawdownChartData" [layout]="drawdownChartLayout" chartId="drawdown" />
+        </div>
+      </section>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 5: Cartera Final del PPO (Pie Chart)
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (pieChartData.length) {
+      <section class="card section-card">
+        <h2>Cartera Final del Agente PPO</h2>
+        <p class="section-desc">
+          Qué proporción del capital asigna el agente a cada activo al <strong>final del período de test</strong>.
+          Si el agente aprendió correctamente, debería concentrarse en los activos con mejor rendimiento
+          ajustado por riesgo y reducir la exposición a los más volátiles o con peor resultado.
+        </p>
+        <div class="chart-box chart-medium">
+          <app-plotly-chart [data]="pieChartData" [layout]="pieChartLayout" chartId="pie" />
+        </div>
+      </section>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 6: Evolución de Pesos del PPO
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (weightsChartData.length) {
+      <section class="card section-card">
+        <h2>Cómo Cambia la Cartera del PPO en el Tiempo</h2>
+        <p class="section-desc">
+          Cada franja de color representa el porcentaje asignado a un activo en cada día del test.
+          La suma siempre es 100%. <strong>Franjas estables</strong> = el agente mantiene posiciones
+          (bajo coste de transacción). <strong>Franjas muy cambiantes</strong> = alta rotación,
+          lo que erosiona el rendimiento con comisiones.
+        </p>
+        <div class="chart-box">
+          <app-plotly-chart [data]="weightsChartData" [layout]="weightsChartLayout" chartId="weights" />
+        </div>
+      </section>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 7: Retornos Diarios del PPO
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (dailyReturnsData.length) {
+      <section class="card section-card">
+        <h2>Retornos Diarios del PPO</h2>
+        <p class="section-desc">
+          Cada barra muestra el retorno porcentual de la cartera PPO en un día concreto.
+          <span style="color:#00e676">Verde</span> = día positivo,
+          <span style="color:#ff5252">rojo</span> = día negativo.
+          Una distribución con muchas barras verdes pequeñas y pocas rojas grandes indica una
+          estrategia con <strong>asimetría positiva</strong> (Sortino > Sharpe).
+        </p>
+        <div class="chart-box">
+          <app-plotly-chart [data]="dailyReturnsData" [layout]="dailyReturnsLayout" chartId="dailyreturns" />
+        </div>
+      </section>
+    }
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SECCIÓN 8: Volatilidad Rolling
+         ═══════════════════════════════════════════════════════════════════ -->
+    @if (volatilityChartData.length) {
+      <section class="card section-card">
+        <h2>Volatilidad Rolling (20 días)</h2>
+        <p class="section-desc">
+          Cuánto oscila el valor de cada estrategia en una ventana de 20 días, expresado en términos anuales.
+          Una volatilidad del 20% significa que la cartera puede subir o bajar ~20% en un año por la variabilidad diaria.
+          Picos de volatilidad coinciden con eventos de mercado (correcciones, crisis). El PPO debería mostrar
+          <strong>menor volatilidad que Buy &amp; Hold</strong> si aprendió a gestionar el riesgo.
+        </p>
+        <div class="chart-box">
+          <app-plotly-chart [data]="volatilityChartData" [layout]="volatilityChartLayout" chartId="volatility" />
+        </div>
+      </section>
+    }
   }
 </div>

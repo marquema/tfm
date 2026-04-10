@@ -1,56 +1,146 @@
 <div class="dashboard-page">
-  <h1>Dashboard</h1>
-  <p class="page-subtitle">Resumen del rendimiento del portfolio gestionado por IA</p>
+  <h1>Bienvenido, {{ auth.fullName || auth.email }}</h1>
+  <p class="page-subtitle">Resumen del sistema de gestión de carteras mediante Deep Reinforcement Learning</p>
 
-  <!-- Metric Cards -->
-  <div class="metrics-row">
-    @for (metric of metrics; track metric.label) {
-      <div class="card metric-card">
-        <span class="metric-label">{{ metric.label }}</span>
-        <span class="metric-value" [class]="'trend-' + metric.trend">
-          {{ metric.value }}{{ metric.suffix }}
-        </span>
-        <span class="metric-trend">
-          @if (metric.trend === 'up') {
-            &#x25B2; Positivo
-          } @else if (metric.trend === 'down') {
-            &#x25BC; Negativo
-          } @else {
-            &#x25CF; Estable
-          }
-        </span>
+  <!-- ─── Estado del sistema ──────────────────────────────────────────── -->
+  <section class="status-strip">
+    @if (statusLoading) {
+      <span class="status-item"><span class="spinner-sm"></span> Verificando sistema...</span>
+    } @else if (systemStatus) {
+      <span class="status-item">
+        <span class="dot" [class.green]="systemStatus.fase1_datos" [class.red]="!systemStatus.fase1_datos"></span>
+        Datos
+      </span>
+      <span class="status-item">
+        <span class="dot" [class.green]="systemStatus.fase3_modelo_acad" [class.red]="!systemStatus.fase3_modelo_acad"></span>
+        Modelo PPO
+      </span>
+      <span class="status-item">
+        <span class="dot" [class.green]="systemStatus.fase4_especulativo" [class.red]="!systemStatus.fase4_especulativo"></span>
+        Especulativo
+      </span>
+      @if (systemReady) {
+        <span class="status-badge ready">Sistema operativo</span>
+      } @else {
+        <span class="status-badge pending">Configuración pendiente</span>
+      }
+    }
+  </section>
+
+  <!-- ─── Sin simulación: mensaje de bienvenida ──────────────────────── -->
+  @if (!hasSimulation) {
+    <section class="card welcome-card">
+      <h2>Empieza a explorar</h2>
+      @if (systemReady) {
+        <p>
+          El sistema está listo. Ejecuta una simulación para comparar el rendimiento del agente
+          PPO (Deep Reinforcement Learning) frente a las estrategias clásicas de inversión.
+        </p>
+        <button class="btn btn-primary" (click)="goSimulate()">
+          Ir al simulador
+        </button>
+      } @else {
+        <p>
+          El sistema necesita ser configurado por un administrador antes de poder simular.
+          Se requiere: preparar datos de mercado y entrenar el modelo PPO.
+        </p>
+        <a routerLink="/estado" class="btn btn-outline">Ver estado del sistema</a>
+      }
+    </section>
+  }
+
+  <!-- ─── Con simulación: resumen ejecutivo ──────────────────────────── -->
+  @if (hasSimulation) {
+    <!-- Métricas principales del PPO -->
+    @if (ppoMetrics) {
+      <section class="metrics-row">
+        <div class="card metric-card">
+          <span class="metric-label">Sharpe Ratio</span>
+          <span class="metric-value" [class.trend-up]="ppoMetrics['Sharpe Ratio'] > 0.5"
+                [class.trend-down]="ppoMetrics['Sharpe Ratio'] < 0">
+            {{ ppoMetrics['Sharpe Ratio']?.toFixed(3) }}
+          </span>
+          <span class="metric-hint">Retorno por unidad de riesgo</span>
+        </div>
+        <div class="card metric-card">
+          <span class="metric-label">Retorno Total</span>
+          <span class="metric-value trend-up">
+            {{ ppoMetrics['Retorno Total (%)']?.toFixed(1) }}%
+          </span>
+          <span class="metric-hint">Ganancia sobre capital inicial</span>
+        </div>
+        <div class="card metric-card">
+          <span class="metric-label">Max Drawdown</span>
+          <span class="metric-value trend-down">
+            {{ ppoMetrics['Max Drawdown (%)']?.toFixed(1) }}%
+          </span>
+          <span class="metric-hint">Peor caída desde un máximo</span>
+        </div>
+        <div class="card metric-card">
+          <span class="metric-label">CAGR</span>
+          <span class="metric-value trend-neutral">
+            {{ ppoMetrics['CAGR (%)']?.toFixed(1) }}%
+          </span>
+          <span class="metric-hint">Crecimiento anual compuesto</span>
+        </div>
+        <div class="card metric-card">
+          <span class="metric-label">Valor Final</span>
+          <span class="metric-value trend-neutral">
+            ${{ ppoMetrics['Valor Final ($)']?.toLocaleString('es-ES', {minimumFractionDigits: 0}) }}
+          </span>
+          <span class="metric-hint">Capital al final del test</span>
+        </div>
+      </section>
+    }
+
+    <!-- Info del período -->
+    @if (lastSim.test_period) {
+      <div class="period-info">
+        Última simulación: {{ lastSim.test_period.start }} -> {{ lastSim.test_period.end }}
+        ({{ lastSim.test_period.days }} días) ·
+        Capital: ${{ lastSim.capital?.toLocaleString() }} ·
+        Mejor estrategia por Sharpe: <strong>{{ bestStrategy }}</strong>
       </div>
     }
-  </div>
 
-  <!-- Main Chart Area -->
-  <div class="card chart-card main-chart">
-    <h3>Curvas de Equity</h3>
-    <div class="chart-placeholder">
-      <span class="placeholder-icon">&#x1F4C8;</span>
-      <p>Grafica de Equity Curves (proximamente)</p>
-      <p class="text-muted">Se mostraran las curvas del agente DRL vs baselines (60/40, Markowitz)</p>
-    </div>
-  </div>
+    <!-- Gráficas resumen -->
+    <div class="dashboard-charts">
+      <!-- Equity curves mini -->
+      @if (equityChartData.length) {
+        <section class="card chart-section">
+          <h3>Evolución del Capital</h3>
+          <p class="chart-desc">
+            Comparativa de todas las estrategias durante el período de test.
+            La línea más gruesa (cyan) es el agente PPO.
+          </p>
+          <div class="chart-box">
+            <app-plotly-chart [data]="equityChartData" [layout]="equityChartLayout" chartId="dash-equity" />
+          </div>
+        </section>
+      }
 
-  <!-- Secondary Charts Row -->
-  <div class="charts-row">
-    <div class="card chart-card">
-      <h3>Drawdown</h3>
-      <div class="chart-placeholder">
-        <span class="placeholder-icon">&#x1F4C9;</span>
-        <p>Grafica de Drawdown (proximamente)</p>
-        <p class="text-muted">Caida maxima del portfolio a lo largo del tiempo</p>
-      </div>
+      <!-- Pie chart mini -->
+      @if (pieChartData.length) {
+        <section class="card chart-section">
+          <h3>Cartera Final PPO</h3>
+          <p class="chart-desc">
+            Distribución de activos que recomienda el agente al final del período de test.
+          </p>
+          <div class="chart-box">
+            <app-plotly-chart [data]="pieChartData" [layout]="pieChartLayout" chartId="dash-pie" />
+          </div>
+        </section>
+      }
     </div>
 
-    <div class="card chart-card">
-      <h3>Asignacion de Activos</h3>
-      <div class="chart-placeholder">
-        <span class="placeholder-icon">&#x1F4CA;</span>
-        <p>Asset Allocation (proximamente)</p>
-        <p class="text-muted">Distribucion de pesos del portfolio por activo</p>
-      </div>
+    <!-- Botones de acción -->
+    <div class="action-buttons">
+      <button class="btn btn-primary" (click)="goSimulate()">
+        Nueva simulación
+      </button>
+      <button class="btn btn-outline" (click)="goResults()">
+        Ver resultados completos
+      </button>
     </div>
-  </div>
+  }
 </div>
