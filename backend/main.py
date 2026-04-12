@@ -115,6 +115,34 @@ async def ver_universo(level: str = 'core'):
     return df.reset_index().to_dict(orient='records')
 
 
+@app.get("/walk-forward/results", tags=["Público"])
+async def get_walk_forward_results():
+    """
+    Retorna los resultados del último walk-forward ejecutado.
+
+    Incluye métricas por ventana con fechas de train y test para
+    que el frontend pueda mostrar gráficas con períodos reales.
+    """
+    csv_path = 'src/reports/walk_forward_results.csv'
+    if not os.path.exists(csv_path):
+        return {"available": False, "error": "Walk-forward no ejecutado aún."}
+
+    df = pd.read_csv(csv_path, index_col=0)
+    windows = df.to_dict(orient='records')
+    return {
+        "available": True,
+        "n_windows": len(windows),
+        "windows": windows,
+        "summary": {
+            "sharpe_mean": round(df['Sharpe Ratio'].mean(), 3),
+            "sharpe_std": round(df['Sharpe Ratio'].std(), 3),
+            "retorno_mean": round(df['Retorno Total (%)'].mean(), 1),
+            "mdd_mean": round(df['Max Drawdown (%)'].mean(), 1),
+            "windows_positive_sharpe": int((df['Sharpe Ratio'] > 0).sum()),
+        }
+    }
+
+
 @app.get("/estado", tags=["Público"])
 async def ver_estado():
     """Estado del sistema: qué fases están completadas."""
