@@ -293,6 +293,13 @@ def walk_forward_validation(features_path: str,
     ----------
     Lopez de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
     """
+    # Borrar reportes anteriores para evitar mostrar datos incoherentes
+    # si el walk-forward falla a mitad de ejecución.
+    for old_file in ['src/reports/walk_forward_results.csv',
+                     'src/reports/walk_forward_analysis.png']:
+        if os.path.exists(old_file):
+            os.remove(old_file)
+
     df_f    = pd.read_csv(features_path, index_col=0)
     n_total = len(df_f)
 
@@ -422,20 +429,27 @@ def _plot_walk_forward(df: pd.DataFrame,
     -------
     None
     """
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    n_windows = len(df)
+    fig, axes = plt.subplots(1, 3, figsize=(max(15, n_windows * 2.5), 6))
     fig.suptitle('Walk-Forward Validation — Estabilidad de la Política',
-                 fontsize=13, fontweight='bold')
+                 fontsize=13, fontweight='bold', y=1.02)
 
-    # Etiquetas del eje X: mostrar período de test en vez de número de ventana
-    if 'test_start' in df.columns and 'test_end' in df.columns:
-        window_labels = [
-            f"{row['test_start'][5:]}\n{row['test_end'][5:]}"
-            for _, row in df.iterrows()
-        ]
+    # Eje X: "V1", "V2", "V3"...
+    x_pos = list(range(n_windows))
+    x_labels = [f"V{i+1}" for i in range(n_windows)]
+
+    # Leyenda detallada: cada ventana con sus períodos de train y test
+    has_dates = 'train_start' in df.columns and 'test_end' in df.columns
+    if has_dates:
+        legend_lines = []
+        for i, (_, row) in enumerate(df.iterrows()):
+            legend_lines.append(
+                f"V{i+1}: Train {row['train_start']} -> {row['train_end']}  |  "
+                f"Test {row['test_start']} -> {row['test_end']}"
+            )
+        legend_text = "\n".join(legend_lines)
     else:
-        window_labels = [str(w) for w in df.index.tolist()]
-
-    x_pos = list(range(len(window_labels)))
+        legend_text = ""
 
     for ax, col, title, color, threshold in [
         (axes[0], 'Sharpe Ratio',      'Sharpe Ratio por Ventana',
@@ -446,21 +460,33 @@ def _plot_walk_forward(df: pd.DataFrame,
          'tomato', None),
     ]:
         values = df[col].values
-        ax.bar(x_pos, values, color=color, alpha=0.75, edgecolor='white')
+        bars = ax.bar(x_pos, values, color=color, alpha=0.75, edgecolor='white')
+
+        # Valor numérico encima de cada barra
+        for bar, val in zip(bars, values):
+            y = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, y,
+                    f'{val:.2f}', ha='center', va='bottom' if y >= 0 else 'top',
+                    fontsize=8, fontweight='bold', color=color)
+
         ax.set_xticks(x_pos)
-        ax.set_xticklabels(window_labels, fontsize=7, rotation=0)
+        ax.set_xticklabels(x_labels, fontsize=9)
         if threshold is not None:
             ax.axhline(threshold, color='black', linestyle='--', alpha=0.5,
                        linewidth=1)
-        # Media
         mean_val = np.mean(values)
         ax.axhline(mean_val, color=color, linestyle='-', alpha=0.9,
                    linewidth=2, label=f'Media: {mean_val:.2f}')
         ax.set_title(title, fontsize=11, fontweight='bold')
-        ax.set_xlabel('Ventana de Validación')
-        ax.set_xticks(window_ids)
+        ax.set_xlabel('Ventana')
         ax.legend(fontsize=9)
         ax.grid(True, alpha=0.3, axis='y')
+
+    # Añadir leyenda detallada con períodos debajo de la gráfica
+    if legend_text:
+        fig.text(0.5, -0.08, legend_text, ha='center', va='top',
+                 fontsize=8, fontfamily='monospace',
+                 bbox=dict(boxstyle='round,pad=0.5', facecolor='#f0f0f0', alpha=0.8))
 
     plt.tight_layout()
     plt.savefig(path, dpi=120, bbox_inches='tight')
@@ -697,6 +723,13 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     PPO
         Modelo PPO entrenado (también guardado en models/best_model_academic/).
     """
+    # Borrar reportes anteriores para evitar mostrar datos incoherentes
+    # si el entrenamiento falla a mitad de ejecución.
+    for old_file in ['src/reports/training_diagnostics.png',
+                     'src/reports/overfitting_analysis.png']:
+        if os.path.exists(old_file):
+            os.remove(old_file)
+
     print("=" * 60)
     print("ENTRENAMIENTO ACADÉMICO CON VALIDACIÓN TEMPORAL")
     print("=" * 60)

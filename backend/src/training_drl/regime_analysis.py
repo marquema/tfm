@@ -266,6 +266,12 @@ def analyze_regimes(features_path: str = 'data/normalized_features.csv',
         Diccionario con claves: 'regimenes', 'Buy_and_Hold', 'Equal_Weight',
         'IA_PPO' (si hay modelo), y 'metricas_*' con DataFrames por estrategia.
     """
+    # Borrar reportes anteriores para evitar mostrar datos incoherentes
+    for old_file in ['src/reports/regime_analysis.png',
+                     'src/reports/regime_metrics.csv']:
+        if os.path.exists(old_file):
+            os.remove(old_file)
+
     # Carga de datos
     df_features = pd.read_csv(features_path, index_col=0)
     df_prices   = pd.read_csv(prices_path,   index_col=0)
