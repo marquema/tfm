@@ -480,3 +480,103 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
             col.image(file_path, use_container_width=True)
         else:
             col.info(f"Pendiente de generar.\n\n`{file_path}`")
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECCIÓN 6: Retornos Diarios del PPO
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("## 6. Retornos Diarios del Agente PPO")
+    st.markdown(
+        "Cada barra muestra el retorno porcentual de la cartera PPO en un día concreto. "
+        "**Verde** = día positivo, **rojo** = día negativo. "
+        "Una distribución con muchas barras verdes pequeñas y pocas rojas grandes indica "
+        "una estrategia con **asimetría positiva** (Sortino > Sharpe). "
+        "Si predominan las rojas, el agente está asumiendo demasiado riesgo."
+    )
+
+    ppo_series = all_series.get('IA_PPO')
+    if ppo_series is not None and len(ppo_series) > 2:
+        rets = ppo_series.pct_change().dropna()
+        colors = ['#00e676' if r >= 0 else '#ff5252' for r in rets]
+        # Generar fechas para el eje X
+        ret_dates = dates[1:len(rets)+1] if len(dates) > len(rets) else list(range(len(rets)))
+
+        fig_ret = go.Figure()
+        fig_ret.add_trace(go.Bar(
+            x=ret_dates, y=rets.values * 100,
+            marker_color=colors,
+            hovertemplate='%{x|%d %b %Y}<br>Retorno: %{y:.2f}%<extra></extra>',
+        ))
+        fig_ret.add_hline(y=0, line_color="white", opacity=0.3)
+        fig_ret.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
+                              yaxis_title="Retorno diario (%)", yaxis_ticksuffix="%",
+                              height=350, bargap=0.1)
+        st.plotly_chart(fig_ret, use_container_width=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECCIÓN 7: Volatilidad Rolling Comparativa
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("## 7. Volatilidad Rolling (20 días, anualizada)")
+    st.markdown(
+        "Cuánto oscila el valor de cada estrategia en una ventana de 20 días, "
+        "expresado en términos anuales. Picos de volatilidad coinciden con eventos de mercado "
+        "(correcciones, crisis). El PPO debería mostrar **menor volatilidad que Buy & Hold** "
+        "si aprendió a gestionar el riesgo. "
+        "**Haz clic en la leyenda** para aislar estrategias."
+    )
+
+    fig_vol = go.Figure()
+    for name, series in all_series.items():
+        if series is None or len(series) < 25:
+            continue
+        rets_s = series.pct_change().dropna()
+        rolling_vol = rets_s.rolling(20).std() * (252 ** 0.5) * 100
+        vol_dates = dates[1:len(rolling_vol)+1] if len(dates) > len(rolling_vol) else list(range(len(rolling_vol)))
+        fig_vol.add_trace(go.Scatter(
+            x=vol_dates[:len(rolling_vol)],
+            y=rolling_vol.values,
+            name=NOMBRES.get(name, name),
+            line=dict(color=COLORES.get(name, '#aaa'), width=2 if name == 'IA_PPO' else 1.2),
+            hovertemplate=f"<b>{NOMBRES.get(name, name)}</b><br>%{{x|%d %b %Y}}: %{{y:.1f}}%<extra></extra>",
+        ))
+    fig_vol.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha",
+                          yaxis_title="Volatilidad (%)", yaxis_ticksuffix="%",
+                          height=400)
+    st.plotly_chart(fig_vol, use_container_width=True)
+
+    # ════════════════════════════════════════════════════════════════════════
+    # SECCIÓN 8: Análisis de Regímenes de Volatilidad
+    # ════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("## 8. Análisis de Regímenes de Volatilidad")
+    st.markdown(
+        "Clasifica cada día del período de test en un régimen de volatilidad: "
+        "**calma** (verde), **transición** (naranja) o **crisis** (rojo). "
+        "La clasificación se basa en la volatilidad rolling de 20 días del activo de referencia (IVV) "
+        "comparada con percentiles del período de entrenamiento. "
+        "Permite evaluar si el agente PPO se comporta de forma diferente en cada régimen."
+    )
+
+    regimes_png = 'src/reports/regime_analysis.png'
+    if os.path.exists(regimes_png):
+        st.image(regimes_png, use_container_width=True)
+    else:
+        # Intentar generar el análisis de regímenes al vuelo
+        try:
+            from src.training_drl.regime_analysis import analyze_regimes
+            if model_ok:
+                with st.spinner("Generando análisis de regímenes..."):
+                    analyze_regimes(
+                        features_path='data/normalized_features.csv',
+                        prices_path='data/original_prices.csv',
+                        model_path=model_path,
+                    )
+                if os.path.exists(regimes_png):
+                    st.image(regimes_png, use_container_width=True)
+                else:
+                    st.info("No se pudo generar el análisis de regímenes.")
+            else:
+                st.info("Se necesita un modelo entrenado para el análisis de regímenes.")
+        except Exception as e:
+            st.info(f"Análisis de regímenes no disponible: {e}")

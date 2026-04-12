@@ -373,6 +373,10 @@ def walk_forward_validation(features_path: str,
         window_metrics['ventana'] = i + 1
         window_metrics['dias_train'] = split - start
         window_metrics['dias_test']  = end - split
+        window_metrics['train_start'] = date_start
+        window_metrics['train_end']   = date_split
+        window_metrics['test_start']  = date_split
+        window_metrics['test_end']    = date_end
         results.append(window_metrics)
 
         print(f"  Sharpe: {window_metrics['Sharpe Ratio']:.3f} | "
@@ -422,7 +426,16 @@ def _plot_walk_forward(df: pd.DataFrame,
     fig.suptitle('Walk-Forward Validation — Estabilidad de la Política',
                  fontsize=13, fontweight='bold')
 
-    window_ids = df.index.tolist()
+    # Etiquetas del eje X: mostrar período de test en vez de número de ventana
+    if 'test_start' in df.columns and 'test_end' in df.columns:
+        window_labels = [
+            f"{row['test_start'][5:]}\n{row['test_end'][5:]}"
+            for _, row in df.iterrows()
+        ]
+    else:
+        window_labels = [str(w) for w in df.index.tolist()]
+
+    x_pos = list(range(len(window_labels)))
 
     for ax, col, title, color, threshold in [
         (axes[0], 'Sharpe Ratio',      'Sharpe Ratio por Ventana',
@@ -433,7 +446,9 @@ def _plot_walk_forward(df: pd.DataFrame,
          'tomato', None),
     ]:
         values = df[col].values
-        ax.bar(window_ids, values, color=color, alpha=0.75, edgecolor='white')
+        ax.bar(x_pos, values, color=color, alpha=0.75, edgecolor='white')
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(window_labels, fontsize=7, rotation=0)
         if threshold is not None:
             ax.axhline(threshold, color='black', linestyle='--', alpha=0.5,
                        linewidth=1)
