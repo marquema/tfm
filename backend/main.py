@@ -19,7 +19,9 @@ import numpy as np
 
 from src.pipeline_getdata.data_downloader import descargar_dividendos, generar_dataset
 from src.training_drl.environment_trading import PortfolioEnv
-from src.training_drl.training_analysis import entrenar_academico, walk_forward_validation
+from src.training_drl.training_analysis import (
+    entrenar_academico, walk_forward_validation, expanding_window_validation
+)
 from src.unsupervised.speculative_agent import SpeculativeAgent
 from src.pipeline_getdata.asset_registry import get_universe
 from src.pipeline_getdata.market_screener import MarketScreener
@@ -150,14 +152,16 @@ async def ver_estado():
     # Se crea al lanzar y se borra al terminar.
     training_running = os.path.exists('models/.training.lock')
     wf_running       = os.path.exists('models/.walkforward.lock')
+    ew_running       = os.path.exists('models/.expanding.lock')
 
     return {
         "fase1_datos":          os.path.exists('data/normalized_features.csv'),
         "fase3_modelo_acad":    os.path.exists('models/best_model_academic/best_model.zip'),
         "fase3_training_done":  os.path.exists('models/best_model_academic/best_model.zip') and not training_running,
         "fase3_wf_done":        os.path.exists('src/reports/walk_forward_results.csv') and not wf_running,
+        "fase3_ew_done":        os.path.exists('src/reports/expanding_window_results.csv') and not ew_running,
         "fase4_especulativo":   os.path.exists('models/speculative_gmm.pkl'),
-        "background_running":   training_running or wf_running,
+        "background_running":   training_running or wf_running or ew_running,
     }
 
 
@@ -373,7 +377,46 @@ async def iniciar_walk_forward(background_tasks: BackgroundTasks,
         prices_path='data/original_prices.csv',
         total_timesteps=steps_por_ventana,
     )
-    return {"message": f"Walk-forward iniciado ({steps_por_ventana:,} pasos/ventana)."}
+    return {"message": f"Walk-forward (rolling) iniciado ({steps_por_ventana:,} pasos/ventana)."}
+
+
+@app.post("/admin/fase3/expanding-window", tags=["Admin"],
+          dependencies=[Depends(require_admin)])
+async def iniciar_expanding_window(background_tasks: BackgroundTasks,
+                                    steps_por_ventana: int = 100000,
+                                    min_train_days: int = 504,
+                                    test_days: int = 63):
+    """
+    Expanding Window Validation (solo admin).
+
+    A diferencia del walk-forward rolling (ventana fija), aquí el train empieza
+    siempre desde el día 0 y crece en cada ventana. Cada ventana entrena con
+    TODA la historia disponible hasta ese momento y evalúa en los siguientes
+    test_days días (63 = 3 meses por defecto, según indicación del tutor).
+
+    Genera más puntos de evaluación que el rolling: ~12 ventanas con 5 años
+    de datos vs ~3-4 del rolling.
+    """
+    _create_lock('models/.expanding.lock')
+
+    def ew_with_lock(**kwargs):
+        try:
+            expanding_window_validation(**kwargs)
+        finally:
+            _remove_lock('models/.expanding.lock')
+
+    background_tasks.add_task(
+        ew_with_lock,
+        features_path='data/normalized_features.csv',
+        prices_path='data/original_prices.csv',
+        min_train_days=min_train_days,
+        test_days=test_days,
+        total_timesteps=steps_por_ventana,
+    )
+    return {
+        "message": f"Expanding window iniciado ({steps_por_ventana:,} pasos/ventana, "
+                   f"train mínimo={min_train_days}d, test={test_days}d).",
+    }
 
 
 @app.post("/admin/fase4/ajustar-especulativo", tags=["Admin"])
