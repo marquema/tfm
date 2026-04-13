@@ -495,6 +495,158 @@ def _plot_walk_forward(df: pd.DataFrame,
 
 
 # ---------------------------------------------------------------------------
+# Expanding Window Validation
+# ---------------------------------------------------------------------------
+
+def expanding_window_validation(features_path: str,
+                                 prices_path: str,
+                                 min_train_days: int = 504,
+                                 test_days: int = 63,
+                                 total_timesteps: int = 100000) -> pd.DataFrame:
+    """
+    Validación Expanding Window: el train crece en cada ventana.
+
+    A diferencia del rolling window (tamaño fijo), aquí el entrenamiento empieza
+    siempre desde el día 0 del dataset y crece progresivamente. Cada ventana
+    entrena con TODA la historia disponible hasta ese momento y evalúa en los
+    siguientes test_days días.
+
+    Ejemplo con min_train=2 años, test=3 meses:
+      V1: Train [2019-01 -> 2021-01] (2.0 años)  → Test [2021-01 -> 2021-04]
+      V2: Train [2019-01 -> 2021-04] (2.25 años) → Test [2021-04 -> 2021-07]
+      V3: Train [2019-01 -> 2021-07] (2.5 años)  → Test [2021-07 -> 2021-10]
+      ...
+
+    Ventajas sobre rolling window:
+      - Simula producción real: "uso todo lo que sé hasta hoy para predecir mañana"
+      - El modelo ve más regímenes de mercado en cada iteración
+      - Genera más ventanas de evaluación (~12 con 5 años vs ~3-4 con rolling)
+      - El tribunal entiende el proceso intuitivamente
+
+    Desventajas:
+      - El entrenamiento es más largo en las últimas ventanas (más datos)
+      - Asume que los datos antiguos siguen siendo relevantes
+
+    Parameters
+    ----------
+    features_path   : ruta al CSV de features normalizadas
+    prices_path     : ruta al CSV de precios originales
+    min_train_days  : días mínimos de train para la primera ventana (504 = 2 años)
+    test_days       : días de test por ventana (63 = 3 meses, como sugiere el tutor)
+    total_timesteps : pasos de entrenamiento PPO por ventana
+
+    Returns
+    -------
+    pd.DataFrame con métricas por ventana (Sharpe, Retorno, MDD, fechas de train/test)
+
+    References
+    ----------
+    López de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
+    Recomendación del tutor del TFM: 2 años iniciales + test de 3 meses expandiendo.
+    """
+    # Borrar reportes anteriores
+    for old_file in ['src/reports/expanding_window_results.csv',
+                     'src/reports/expanding_window_analysis.png']:
+        if os.path.exists(old_file):
+            os.remove(old_file)
+
+    df_f    = pd.read_csv(features_path, index_col=0)
+    n_total = len(df_f)
+
+    if n_total < min_train_days + test_days:
+        raise ValueError(
+            f"Dataset demasiado pequeño ({n_total} dias). "
+            f"Necesita al menos {min_train_days + test_days} dias para expanding window."
+        )
+
+    # Calcular ventanas: train empieza siempre en 0 y crece
+    windows = []
+    split = min_train_days
+    while split + test_days <= n_total:
+        windows.append((0, split, split + test_days))
+        split += test_days  # avanza el split por cada período de test
+
+    n_windows = len(windows)
+
+    results = []
+    print(f"\n{'='*60}")
+    print(f"EXPANDING WINDOW VALIDATION")
+    print(f"Dataset: {n_total} dias ({n_total/252:.1f} anios) | "
+          f"Train minimo: {min_train_days}d ({min_train_days/252:.1f}a) | "
+          f"Test: {test_days}d ({test_days/252:.1f}a)")
+    print(f"Ventanas calculadas: {n_windows}")
+    print(f"{'='*60}")
+
+    for i, (start, split_idx, end) in enumerate(windows):
+        date_start = df_f.index[start][:10]
+        date_split = df_f.index[split_idx][:10]
+        date_end   = df_f.index[end - 1][:10]
+        train_size = split_idx - start
+
+        print(f"\n[Ventana {i+1}/{n_windows}] "
+              f"Train: {date_start} -> {date_split} ({train_size}d, {train_size/252:.1f}a) | "
+              f"Test: {date_split} -> {date_end} ({end-split_idx}d)")
+
+        # Entrenamiento con toda la historia hasta split_idx
+        train_env = PortfolioEnv(features_path, prices_path,
+                                 start_idx=start, end_idx=split_idx)
+        model = PPO(
+            "MlpPolicy", train_env,
+            learning_rate=3e-4, n_steps=512, batch_size=64,
+            clip_range=0.2, ent_coef=0.01,
+            policy_kwargs=dict(net_arch=[256, 256]),
+            verbose=0
+        )
+        model.learn(total_timesteps=total_timesteps)
+
+        # Evaluación out-of-sample
+        test_env = PortfolioEnv(features_path, prices_path,
+                                start_idx=split_idx, end_idx=end)
+        obs, _ = test_env.reset()
+        done   = False
+        values = [test_env.initial_balance]
+
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, _, done, _, info = test_env.step(action)
+            values.append(info['value'])
+
+        series = pd.Series(values)
+        window_metrics = calcular_metricas(series)
+        window_metrics['ventana'] = i + 1
+        window_metrics['dias_train'] = train_size
+        window_metrics['dias_test']  = end - split_idx
+        window_metrics['train_start'] = date_start
+        window_metrics['train_end']   = date_split
+        window_metrics['test_start']  = date_split
+        window_metrics['test_end']    = date_end
+        results.append(window_metrics)
+
+        print(f"  Sharpe: {window_metrics['Sharpe Ratio']:.3f} | "
+              f"Retorno: {window_metrics['Retorno Total (%)']:.1f}% | "
+              f"MDD: {window_metrics['Max Drawdown (%)']:.1f}%")
+
+    df_ew = pd.DataFrame(results).set_index('ventana')
+
+    print(f"\n{'='*60}")
+    print("RESUMEN EXPANDING WINDOW")
+    print(f"  Sharpe medio:    {df_ew['Sharpe Ratio'].mean():.3f}  "
+          f"(+-{df_ew['Sharpe Ratio'].std():.3f})")
+    print(f"  Retorno medio:   {df_ew['Retorno Total (%)'].mean():.1f}%")
+    print(f"  MDD medio:       {df_ew['Max Drawdown (%)'].mean():.1f}%")
+    print(f"  Ventanas con Sharpe > 0: "
+          f"{(df_ew['Sharpe Ratio'] > 0).sum()} / {n_windows}")
+    print(f"{'='*60}")
+
+    # Guardar resultados
+    os.makedirs('src/reports', exist_ok=True)
+    df_ew.to_csv('src/reports/expanding_window_results.csv')
+    _plot_walk_forward(df_ew, path='src/reports/expanding_window_analysis.png')
+
+    return df_ew
+
+
+# ---------------------------------------------------------------------------
 # Detección de sobreajuste: gap train vs eval
 # ---------------------------------------------------------------------------
 
