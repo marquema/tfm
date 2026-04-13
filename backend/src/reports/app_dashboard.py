@@ -459,7 +459,7 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
 - Sharpe decreciente en las ventanas más recientes → el modelo está sesgado hacia el pasado lejano
         """)
 
-    col_r1, col_r2, col_r3 = st.columns(3)
+    col_r1, col_r2 = st.columns(2)
     for col, file_path, title, desc in [
         (col_r1, 'src/reports/training_diagnostics.png',
          "1. Salud del entrenamiento",
@@ -469,10 +469,6 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
          "2. ¿Memorizó o aprendió?",
          "Reward en datos de train vs datos de evaluación nunca vistos. "
          "Si las dos curvas van juntas, el agente generalizó correctamente."),
-        (col_r3, 'src/reports/walk_forward_analysis.png',
-         "3. ¿Funciona en el tiempo?",
-         "Sharpe, retorno y drawdown en ventanas temporales independientes. "
-         "Resultados consistentes = estrategia robusta, no suerte de un período."),
     ]:
         col.markdown(f"**{title}**")
         col.caption(desc)
@@ -480,6 +476,36 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
             col.image(file_path, use_container_width=True)
         else:
             col.info(f"Pendiente de generar.\n\n`{file_path}`")
+
+    # Walk-Forward y Expanding Window a ancho completo (son más grandes)
+    col_wf1, col_wf2 = st.columns(2)
+
+    with col_wf1:
+        st.markdown("**3. Walk-Forward (Rolling Window)**")
+        st.caption(
+            "Ventana de entrenamiento fija que se desliza en el tiempo. "
+            "Cada ventana entrena con los últimos N días y evalúa en los siguientes. "
+            "Muestra si la estrategia funciona en distintos regímenes de mercado."
+        )
+        wf_png = 'src/reports/walk_forward_analysis.png'
+        if os.path.exists(wf_png):
+            st.image(wf_png, use_container_width=True)
+        else:
+            st.info("Pendiente. Ejecuta POST /admin/fase3/walk-forward")
+
+    with col_wf2:
+        st.markdown("**4. Expanding Window**")
+        st.caption(
+            "El entrenamiento empieza siempre desde el primer día y crece progresivamente. "
+            "Cada ventana usa TODA la historia disponible hasta ese momento y evalúa "
+            "en los siguientes 3 meses. Simula lo que harías en producción: "
+            "\"uso todo lo que sé hasta hoy para predecir mañana\"."
+        )
+        ew_png = 'src/reports/expanding_window_analysis.png'
+        if os.path.exists(ew_png):
+            st.image(ew_png, use_container_width=True)
+        else:
+            st.info("Pendiente. Ejecuta POST /admin/fase3/expanding-window")
 
     # ════════════════════════════════════════════════════════════════════════
     # SECCIÓN 6: Retornos Diarios del PPO
