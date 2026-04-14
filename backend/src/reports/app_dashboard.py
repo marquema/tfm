@@ -454,9 +454,29 @@ se entrena desde cero con datos anteriores y se evalúa en el período siguiente
 Es el equivalente financiero del **k-fold cross-validation** en machine learning.
 
 **¿Qué buscar?**
-- Sharpe positivo y consistente en la mayoría de ventanas → la estrategia funciona en distintos regímenes (crisis, rally, consolidación)
-- Alta varianza entre ventanas → el rendimiento depende de qué período toque: suerte, no habilidad
-- Sharpe decreciente en las ventanas más recientes → el modelo está sesgado hacia el pasado lejano
+- Sharpe positivo y consistente en la mayoría de ventanas -> la estrategia funciona en distintos regímenes (crisis, rally, consolidación)
+- Alta varianza entre ventanas -> el rendimiento depende de qué período toque: suerte, no habilidad
+- Sharpe decreciente en las ventanas más recientes -> el modelo está sesgado hacia el pasado lejano
+
+---
+
+### Gráfica 4 — Expanding Window: ¿Mejora con más datos?
+
+Similar a la gráfica 3, pero con una diferencia clave: el entrenamiento **empieza siempre
+desde el primer día** del dataset y crece progresivamente. Cada ventana usa TODA la
+historia disponible hasta ese momento para entrenar, y evalúa en los 3 meses siguientes.
+
+Esto simula lo que se haría en producción real: "uso todo lo que sé hasta hoy para
+predecir mañana". A medida que el agente ve más historia, debería mejorar.
+
+**¿Qué buscar?**
+- Sharpe que **mejora o se mantiene** conforme avanzan las ventanas -> el modelo aprovecha tener más datos
+- Sharpe que empeora con más datos -> los datos antiguos confunden al modelo (el mercado cambió estructuralmente)
+- Comparar con la gráfica 3 (rolling): si expanding da mejores resultados medios, usar toda la historia es beneficioso
+
+**La tabla debajo de cada gráfica** detalla los períodos exactos de train y test
+de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
+(COVID 2020, bear market 2022, rally 2023, corrección cripto 2025...).
         """)
 
     col_r1, col_r2 = st.columns(2)

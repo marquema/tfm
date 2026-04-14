@@ -58,6 +58,7 @@ class AcademicMonitorCallback(BaseCallback):
       - clip_fraction  : fracción de actualizaciones recortadas por PPO clip_range.
                          > 0.3 indica clip_range demasiado pequeño;
                          < 0.01 indica configuración innecesariamente conservadora.
+                         Si clip > 0.3, significa que el PPO está reteniendo innecesariamnete.
 
     Parameters
     ----------
@@ -247,6 +248,8 @@ class AcademicMonitorCallback(BaseCallback):
 # Walk-Forward Validation
 # ---------------------------------------------------------------------------
 
+LEANRING_RATE=1e-4
+CLIP_RANGE=0.1
 # todo: no habría data leakage aquí?
 def walk_forward_validation(features_path: str,
                             prices_path: str,
@@ -358,8 +361,8 @@ def walk_forward_validation(features_path: str,
                                  start_idx=start, end_idx=split)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=3e-4, n_steps=512, batch_size=64,
-            clip_range=0.2, ent_coef=0.01,
+            learning_rate=LEANRING_RATE, n_steps=1024, batch_size=64,
+            clip_range=CLIP_RANGE, ent_coef=0.01,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
         )
@@ -624,8 +627,8 @@ def expanding_window_validation(features_path: str,
                                  start_idx=start, end_idx=split_idx)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=3e-4, n_steps=512, batch_size=64,
-            clip_range=0.2, ent_coef=0.01,
+            learning_rate=LEANRING_RATE, n_steps=1024, batch_size=64,
+            clip_range=CLIP_RANGE, ent_coef=0.01,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
         )
@@ -970,10 +973,10 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     model = PPO(
         "MlpPolicy",
         train_env,
-        learning_rate=3e-4,
-        n_steps=1024,
-        batch_size=64,
-        clip_range=0.2,
+        learning_rate=LEANRING_RATE,       # Reducido de 3e-4: actualizaciones más graduales
+        n_steps=2048,             # Aumentado de 1024: más experiencia entre updates
+        batch_size=128,           # Aumentado de 64: gradientes más estables
+        clip_range=CLIP_RANGE,           # Reducido de 0.2: frena cambios bruscos (KL alto)
         ent_coef=0.01,
         vf_coef=0.5,
         max_grad_norm=0.5,
