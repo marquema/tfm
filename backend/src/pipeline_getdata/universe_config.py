@@ -9,7 +9,7 @@ de activos, se guarda un fichero JSON que actúa como "contrato":
 
 Cualquier componente posterior (entrenamiento, simulación, especulativo)
 valida que su universo de activos coincide con el del dataset actual.
-Si no coincide, lanza un error claro en lugar de crashear con KeyErrors
+Si no coincide, lanza un error claro en lugar de cascar con KeyErrors
 crípticos por columnas faltantes.
 
 Esto resuelve el problema de entrenar con 8 activos y simular con 15,

@@ -26,7 +26,7 @@ Fundamentación teórica:
        - Volatilidad en rango (5%-80%): filtro basado en la teoría de la relación
          señal-ruido. Activos con volatilidad < 5% anualizada (ej. money markets)
          no ofrecen suficiente dispersión de retornos para que PPO aprenda — la señal
-         es indistinguible del ruido. Activos con volatilidad > 80% (ej. meme stocks)
+         es indistinguible del ruido. Activos con volatilidad > 80% 
          tienen una ratio señal/ruido tan baja que el aprendizaje no converge.
 
        - Sharpe rolling positivo: proxy del factor de momentum (Jegadeesh & Titman, 1993).
@@ -186,7 +186,7 @@ class MarketScreener:
     (Grinold & Kahn, 2000): universo amplio → filtros cuantitativos → ranking → selección.
 
     Los filtros se aplican en orden de coste computacional creciente y restrictividad
-    decreciente (primero se eliminan los que no tienen datos, luego los ilíquidos, etc.),
+    decreciente (primero se eliminan los que no tienen datos, luego los sin líquidos, etc.),
     siguiendo el patrón de "embudo de selección" de la industria.
 
     Parameters
@@ -200,6 +200,8 @@ class MarketScreener:
         Fundamentación: por debajo de este umbral, el bid-ask spread y el
         market impact hacen que cualquier alpha teórico se pierda en costes
         de ejecución (Almgren & Chriss, 2001, "Optimal Execution").
+        bid-ask spread: diferencia entre el preocio más alto que el comprador está dispuesto a pagar,
+            y el precio más bajo que un vendedor está dispuesto a ofrecer.
     vol_range : tuple[float, float]
         Rango aceptable de volatilidad anualizada (por defecto 5%-80%).
         Fundamentación: la ratio señal/ruido (SNR) de un activo financiero

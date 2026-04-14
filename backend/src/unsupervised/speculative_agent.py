@@ -3,6 +3,8 @@ Agente especulativo basado en aprendizaje no supervisado.
 
 Estrategia:
   Combina la detección de régimen (HMM) con el clustering de activos (K-Means)
+    HMM:Hidden Markov Model
+    K-Means: cluster o clasificador de activos
   para generar pesos de cartera especulativos sin entrenamiento supervisado ni RL.
 
   Lógica de asignación:

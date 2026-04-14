@@ -64,23 +64,22 @@ class PortfolioEnv(gym.Env):
             end_idx = len(df_f)
 
         # Subconjunto temporal: permite crear entornos de train (0..split) y test (split..N)
-        # fillna(0) como segunda línea de defensa ante NaNs residuales introducidos en el slice
+        # fillna(0) parae NaNs del slice
         self.df_features = (df_f.iloc[start_idx:end_idx]
                                .reset_index(drop=True)
                                .fillna(0.0)
                                .astype(np.float32))
         # Para precios: forward-fill para propagar el último precio válido,
-        # luego backward-fill por si hay NaN al inicio, y finalmente 1.0 como último recurso.
-        # Nunca usar 0 directamente porque genera retornos infinitos (división por cero).
+        # luego backward-fill por si hay NaN al inicio, y finalmente 1.0 como último recurso.        
         self.df_prices = (df_p.iloc[start_idx:end_idx]
                              .reset_index(drop=True)
                              .replace([np.inf, -np.inf], np.nan)
                              .ffill()
                              .bfill()
-                             .fillna(1.0)
+                             .fillna(1.0)# Nunca 0 xq genera retornos infinitos (división por cero).
                              .astype(np.float32))
 
-        # Verificación de integridad: avisar si quedan NaN/inf tras el saneamiento
+        # Verificación de integridad: avisar si quedan NaN/inf 
         n_nan = self.df_features.isnull().values.sum()
         n_inf = np.isinf(self.df_features.values).sum()
         if n_nan > 0 or n_inf > 0:
@@ -102,7 +101,7 @@ class PortfolioEnv(gym.Env):
         # phi=0.5 con MDD=20% -> penalty=0.1 >> log_return=0.001 -> agente aprende a no hacer nada.
         # phi=0.02: un MDD del 20% penaliza 0.004, del mismo orden que un día positivo.
         self.phi   = phi    # penalización drawdown: 0.02
-        self.gamma = gamma  # penalización turnover: 0.01 (10x mayor que antes)
+        self.gamma = gamma  # penalización turnover: 0.01
                             # Con gamma=0.001, rotar toda la cartera costaba 0.002 en penalty
                             # vs ~0.001 de log_return -> salía "barato" operar constantemente.
                             # Con gamma=0.01, el coste de rotación completa es 0.02, lo que
@@ -143,11 +142,13 @@ class PortfolioEnv(gym.Env):
         np.ndarray
             Vector de observación de dimensión (n_market_features + n_assets + 1,).
         """
+        #datos de mercado
         market = np.nan_to_num(
             self.df_features.iloc[self.current_step].values,
             nan=0.0, posinf=0.0, neginf=0.0
         )
         # Retorno acumulado normalizado: 0 = sin cambio, +1 = dobló, -1 = perdió todo
+        #estado interno de cartera
         cumulative_return = np.clip(
             (self.portfolio_value - self.initial_balance) / (self.initial_balance + 1e-8),
             -1.0, 5.0
@@ -155,6 +156,7 @@ class PortfolioEnv(gym.Env):
         portfolio_state = np.append(
             self.weights.astype(np.float32), np.float32(cumulative_return)
         )
+        #Para que un agente aprenda correctamente, intentamos cumplir la Propiedad de Markov
         return np.concatenate([market, portfolio_state]).astype(np.float32)
 
     def reset(self, seed=None, options=None):
@@ -296,7 +298,7 @@ class PortfolioEnv(gym.Env):
             sharpe_norm - risk_penalty - turnover_penalty, -1.0, 1.0
         ))
 
-        # E. Condición de quiebra: pérdida del 90% del capital
+        # E. Condición de parada: pérdida de al menos el 90% del capital
         if self.portfolio_value < (self.initial_balance * 0.1):
             done = True
             reward = -1.0

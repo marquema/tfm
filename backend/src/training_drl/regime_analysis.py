@@ -3,7 +3,7 @@ Módulo de análisis de regímenes de volatilidad y cambios de mercado.
 
 Objetivo del TFM:
   Validar la robustez del agente DRL ante cambios de régimen:
-    - Régimen de ALTA volatilidad: correcciones bruscas en el mercado cripto (IBIT)
+    - Régimen de ALTA volatilidad: correcciones bruscas en el mercado cripto (IBIT, ETHUM)
     - Régimen de BAJA volatilidad: calma en renta fija y renta variable estable
 
 Metodología:
