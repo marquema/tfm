@@ -15,6 +15,51 @@ Nota sobre métricas clásicas de ML:
   - Walk-forward es el estándar académico para modelos financieros secuenciales.
     Ver: López de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
 """
+# todo: revusar esto
+"""
+El reward del agente mira los últimos 40 días en vez de 20 para calcular el Sharpe. 
+Efecto directo: Señal más suave: un día malo ya no cambia el Sharpe tanto 
+    (es 1/40 en vez de 1/20 del peso). 
+    Los gradientes oscilan menos → el clip fraction debería bajar de 66% a ~30-45%.
+    Reacción más lenta: el agente tarda más en detectar un cambio de régimen. 
+    Con ventana de 20 días, si el mercado se desploma hoy, en 5 días ya lo nota. Con 40, tarda 10-15 días. Eso puede ser bueno (no reacciona a ruido) o malo (no reacciona a una crisis real a tiempo).
+    Menos turnover: como la señal cambia menos frecuentemente, el agente opera menos → comisiones más bajas → mejor retorno neto. Esto podría ser la mejora más visible.
+    Posible caída de explained variance: con una señal más suave, la red neuronal tiene menos variación 
+        que predecir
+
+Para el TFM, documentar ambas configuraciones:
+
+"Se probaron ventanas de Sharpe rolling de 20 y 40 días. Con 20 días el clip fraction fue del 66% 
+pero la KL se mantuvo controlada (0.049). Con 40 días [resultado tras probar]. Se eligió la ventana de [X] por ofrecer mejor balance entre reactividad y estabilidad."
+
+Variar la función de recompensa a log return:
+Volver a log_return como reward significara reemplazar el Sharpe rolling por el retorno logarítmico 
+directo:
+
+    Ahora:   reward = Sharpe_rolling_20d - phi·MDD - gamma·Turnover
+    Con log: reward = log_return         - phi·MDD - gamma·Turnover
+Ventajas:
+Señal inmediata: el log_return de hoy depende solo de hoy. No hay ventana rolling → no hay oscilación 
+por datos que entran/salen de la ventana → clip fraction debería bajar drásticamente a ~15-25%.
+Ya lo probe: con los 8 activos originales y phi=0.5 tenías Sharpe 0.628. Ahora con phi=0.02,
+gamma=0.01 y los nuevos hiperparámetros (lr=1e-4, clip_range=0.1), debería ser mejor.
+Más fácil de explicar en la memoria: "el agente maximiza el retorno logarítmico diario penalizado por 
+drawdown y turnover" es más intuitivo que "maximiza un Sharpe rolling de 20 días".
+
+Desventajas:
+No penaliza la volatilidad directamente: el log_return premia ganar dinero sin importar cuánto oscila la 
+cartera. El Sharpe rolling penaliza la oscilación implícitamente (divido por std). Sin Sharpe, la volatilidad del PPO podría 
+ser más alta que con él. Más sensible al ruido diario: un día con retorno +3% seguido de -3% da reward 
+positivo y luego negativo. El Sharpe rolling suaviza esto.
+
+
+R_eval 0.617, explained variance 0.979 y KL controlada son resultados sólidos. 
+El clip fraction alto es documentable y justificable. Cambiar el reward ahora significa reentrenar, 
+re-validar walk-forward y expanding window — todo el pipeline de nuevo.
+
+Probar segundo experimento en la memoria: "se compararon dos funciones de recompensa: Sharpe rolling vs 
+log_return". Pero no como reemplazo del modelo actual.
+"""
 
 import os
 import numpy as np
