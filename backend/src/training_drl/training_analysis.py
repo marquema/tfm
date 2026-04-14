@@ -47,12 +47,14 @@ class AcademicMonitorCallback(BaseCallback):
                          Colapso rápido indica memorización del conjunto de entrenamiento.
       - value_loss     : error cuadrático del value function. Debe estabilizarse.
                          Divergencia significa que la red de valor no aprende la función de retorno.
+                         Predice cuánto se ganará en la posición actual, o desde ella.
       - explained_var  : fracción de varianza de los returns explicada por el value function.
                          Valores < 0 indican que el value function es peor que predecir la media.
-                         Objetivo: > 0.5 para una política bien calibrada.
-                         Entiende por qué gana dinero.
+                         Objetivo: > 0.5 para una política bien calibrada. 
+                         Significa en qué porcentaje entiende cómo van las cosas. Entiende por qué gana dinero.
       - approx_kl      : divergencia KL aproximada entre política vieja y nueva. que no haya un cambio grande entre politivas
                          Valores > 0.05 indican actualizaciones demasiado grandes (inestabilidad).
+                         cambia de método.
       - clip_fraction  : fracción de actualizaciones recortadas por PPO clip_range.
                          > 0.3 indica clip_range demasiado pequeño;
                          < 0.01 indica configuración innecesariamente conservadora.
@@ -430,65 +432,96 @@ def _plot_walk_forward(df: pd.DataFrame,
     None
     """
     n_windows = len(df)
-    fig, axes = plt.subplots(1, 3, figsize=(max(15, n_windows * 2.5), 6))
-    fig.suptitle('Walk-Forward Validation — Estabilidad de la Política',
-                 fontsize=13, fontweight='bold', y=1.02)
+    has_dates = 'train_start' in df.columns and 'test_end' in df.columns
 
-    # Eje X: "V1", "V2", "V3"...
+    # Layout: 3 gráficas arriba + tabla de ventanas debajo
+    # La altura crece con el número de ventanas para que la tabla sea legible
+    table_height_ratio = max(1.5, n_windows * 0.3)
+    fig_height = 5 + table_height_ratio
+    fig = plt.figure(figsize=(max(15, n_windows * 1.8), fig_height))
+    gs = fig.add_gridspec(2, 3, height_ratios=[5, table_height_ratio],
+                          hspace=0.4)
+
     x_pos = list(range(n_windows))
     x_labels = [f"V{i+1}" for i in range(n_windows)]
 
-    # Leyenda detallada: cada ventana con sus períodos de train y test
-    has_dates = 'train_start' in df.columns and 'test_end' in df.columns
-    if has_dates:
-        legend_lines = []
-        for i, (_, row) in enumerate(df.iterrows()):
-            legend_lines.append(
-                f"V{i+1}: Train {row['train_start']} -> {row['train_end']}  |  "
-                f"Test {row['test_start']} -> {row['test_end']}"
-            )
-        legend_text = "\n".join(legend_lines)
-    else:
-        legend_text = ""
-
-    for ax, col, title, color, threshold in [
-        (axes[0], 'Sharpe Ratio',      'Sharpe Ratio por Ventana',
-         'steelblue',  0.0),
-        (axes[1], 'Retorno Total (%)', 'Retorno Total (%) por Ventana',
-         'mediumseagreen', 0.0),
-        (axes[2], 'Max Drawdown (%)',  'Max Drawdown (%) por Ventana',
-         'tomato', None),
-    ]:
+    # ─── Fila 1: 3 gráficas de barras ────────────────────────────────────────
+    for col_idx, (col, title, color, threshold) in enumerate([
+        ('Sharpe Ratio',      'Sharpe Ratio',       'steelblue',      0.0),
+        ('Retorno Total (%)', 'Retorno Total (%)',   'mediumseagreen', 0.0),
+        ('Max Drawdown (%)',  'Max Drawdown (%)',    'tomato',         None),
+    ]):
+        ax = fig.add_subplot(gs[0, col_idx])
         values = df[col].values
         bars = ax.bar(x_pos, values, color=color, alpha=0.75, edgecolor='white')
 
-        # Valor numérico encima de cada barra
         for bar, val in zip(bars, values):
             y = bar.get_height()
             ax.text(bar.get_x() + bar.get_width() / 2, y,
                     f'{val:.2f}', ha='center', va='bottom' if y >= 0 else 'top',
-                    fontsize=8, fontweight='bold', color=color)
+                    fontsize=7 if n_windows > 8 else 8, fontweight='bold', color=color)
 
         ax.set_xticks(x_pos)
-        ax.set_xticklabels(x_labels, fontsize=9)
+        ax.set_xticklabels(x_labels, fontsize=8 if n_windows <= 10 else 6)
         if threshold is not None:
-            ax.axhline(threshold, color='black', linestyle='--', alpha=0.5,
-                       linewidth=1)
+            ax.axhline(threshold, color='black', linestyle='--', alpha=0.5, linewidth=1)
         mean_val = np.mean(values)
         ax.axhline(mean_val, color=color, linestyle='-', alpha=0.9,
                    linewidth=2, label=f'Media: {mean_val:.2f}')
         ax.set_title(title, fontsize=11, fontweight='bold')
-        ax.set_xlabel('Ventana')
-        ax.legend(fontsize=9)
+        ax.legend(fontsize=8)
         ax.grid(True, alpha=0.3, axis='y')
 
-    # Añadir leyenda detallada con períodos debajo de la gráfica
-    if legend_text:
-        fig.text(0.5, -0.08, legend_text, ha='center', va='top',
-                 fontsize=8, fontfamily='monospace',
-                 bbox=dict(boxstyle='round,pad=0.5', facecolor='#f0f0f0', alpha=0.8))
+    # ─── Fila 2: tabla de ventanas con períodos ──────────────────────────────
+    ax_table = fig.add_subplot(gs[1, :])
+    ax_table.axis('off')
 
-    plt.tight_layout()
+    if has_dates:
+        table_data = []
+        for i, (_, row) in enumerate(df.iterrows()):
+            table_data.append([
+                f"V{i+1}",
+                f"{row.get('train_start', '?')}",
+                f"{row.get('train_end', '?')}",
+                f"{int(row.get('dias_train', 0))}d",
+                f"{row.get('test_start', '?')}",
+                f"{row.get('test_end', '?')}",
+                f"{int(row.get('dias_test', 0))}d",
+                f"{row.get('Sharpe Ratio', 0):.3f}",
+                f"{row.get('Retorno Total (%)', 0):.1f}%",
+                f"{row.get('Max Drawdown (%)', 0):.1f}%",
+            ])
+
+        col_labels = ['', 'Train inicio', 'Train fin', 'Dias',
+                       'Test inicio', 'Test fin', 'Dias',
+                       'Sharpe', 'Retorno', 'MDD']
+
+        table = ax_table.table(
+            cellText=table_data,
+            colLabels=col_labels,
+            loc='center',
+            cellLoc='center',
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(8 if n_windows <= 8 else 7)
+        table.scale(1, 1.3)
+
+        # Estilo de la tabla
+        for (row_idx, col_idx), cell in table.get_celld().items():
+            cell.set_edgecolor('#cccccc')
+            if row_idx == 0:  # Header
+                cell.set_facecolor('#4a4a6a')
+                cell.set_text_props(color='white', fontweight='bold')
+            else:
+                cell.set_facecolor('#f8f8f8' if row_idx % 2 == 0 else '#ffffff')
+
+        ax_table.set_title('Detalle de ventanas', fontsize=10, fontweight='bold', pad=10)
+    else:
+        ax_table.text(0.5, 0.5, 'Sin información de fechas disponible',
+                      ha='center', va='center', fontsize=10, color='gray')
+
+    fig.suptitle('Walk-Forward Validation — Estabilidad de la Política',
+                 fontsize=14, fontweight='bold')
     plt.savefig(path, dpi=120, bbox_inches='tight')
     plt.close(fig)
     print(f"  Gráfica walk-forward guardada en {path}")
@@ -521,7 +554,6 @@ def expanding_window_validation(features_path: str,
       - Simula producción real: "uso todo lo que sé hasta hoy para predecir mañana"
       - El modelo ve más regímenes de mercado en cada iteración
       - Genera más ventanas de evaluación (~12 con 5 años vs ~3-4 con rolling)
-      - El tribunal entiende el proceso intuitivamente
 
     Desventajas:
       - El entrenamiento es más largo en las últimas ventanas (más datos)
@@ -532,7 +564,7 @@ def expanding_window_validation(features_path: str,
     features_path   : ruta al CSV de features normalizadas
     prices_path     : ruta al CSV de precios originales
     min_train_days  : días mínimos de train para la primera ventana (504 = 2 años)
-    test_days       : días de test por ventana (63 = 3 meses, como sugiere el tutor)
+    test_days       : días de test por ventana (63 = 3 meses, como sugiere Rubén)
     total_timesteps : pasos de entrenamiento PPO por ventana
 
     Returns
@@ -708,8 +740,7 @@ class OverfitDetectorCallback(BaseCallback):
             return True
 
         # Reward por step en train (ep_info_buffer contiene 'r'=total y 'l'=length).
-        # Normalizar por longitud del episodio evita que datasets más largos produzcan
-        # rewards acumulados mayores en magnitud y hagan incomparable la señal de mejora.
+        # Dividir por la longitud del episodio hace que sea comparable entre datasets de distinto tamaño.
         if hasattr(self.model, 'ep_info_buffer') and len(self.model.ep_info_buffer) > 0:
             reward_train = np.mean([
                 ep['r'] / max(ep['l'], 1) for ep in self.model.ep_info_buffer
@@ -718,6 +749,8 @@ class OverfitDetectorCallback(BaseCallback):
             reward_train = np.nan
 
         # Reward por step en eval (N episodios deterministas)
+        # Ejecuta el agente 3 veces en datos de evaluación (el 20% que nunca usó para aprender) y calcula el reward medio por paso. 
+        # Esta es la métrica real — si aquí va bien, el agente generaliza.
         rewards_eval = []
         for _ in range(self.n_eval_ep):
             obs, _ = self.eval_env.reset()
@@ -740,6 +773,7 @@ class OverfitDetectorCallback(BaseCallback):
         # Umbral de mejora: los rewards son por step (escala ~[-0.5, 0.5]),
         # así que usamos un umbral absoluto pequeño fijo (0.001) en lugar de
         # relativo al mejor valor, que con valores negativos grandes era demasiado exigente.
+        # Si el reward de evaluación es mejor que el mejor visto hasta ahora (con un margen mínimo de 0.001 para no contar ruido como mejora)
         improvement_threshold = 0.001
         if reward_eval > self.best_eval + improvement_threshold:
             self.best_eval = reward_eval

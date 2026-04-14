@@ -71,10 +71,13 @@ def classify_regimes(df_prices: pd.DataFrame,
     pd.Series
         Serie con régimen (0, 1, 2) para cada fecha, indexada igual que df_prices.
     """
-    # Selección automática del activo de referencia
+    # Selección automática del activo de referencia.
+    # Se usa IVV (S&P 500) como proxy del mercado, no IBIT (cripto).
+    # IBIT tiene volatilidad estructuralmente mayor que la renta variable,
+    # lo que sesgaría los percentiles: todo parecería "calma" relativo a IBIT.
     if reference_ticker is None:
-        ibit_cols = [c for c in df_prices.columns if 'IBIT' in c.upper()]
-        reference_ticker = ibit_cols[0] if ibit_cols else df_prices.columns[0]
+        ivv_cols = [c for c in df_prices.columns if 'IVV' in c.upper()]
+        reference_ticker = ivv_cols[0] if ivv_cols else df_prices.columns[0]
 
     if reference_ticker not in df_prices.columns:
         raise ValueError(
@@ -293,29 +296,17 @@ def analyze_regimes(features_path: str = 'data/normalized_features.csv',
 
     results = {'regimenes': test_regimes}
 
-    # Baselines simples (no requieren modelo)
+    # ─── Todas las estrategias ──────────────────────────────────────────────
     try:
-        from src.benchmarking.baselines import simulate_buy_and_hold, simulate_equal_weight
+        from src.benchmarking.baselines import run_baselines
     except ImportError:
-        from src.benchmarking.baselines import simulate_buy_and_hold, simulate_equal_weight
+        from src.benchmarking.baselines import run_baselines
 
-    series_bh = simulate_buy_and_hold(test_prices, initial_balance)
-    series_ew = simulate_equal_weight(test_prices, initial_balance)
-
-    results['Buy_and_Hold'] = series_bh
-    results['Equal_Weight'] = series_ew
-
-    print("\nMétricas por régimen — Buy & Hold:")
-    df_bh = metrics_by_regime(series_bh, test_regimes)
-    if not df_bh.empty:
-        print(df_bh.to_string())
-        results['metricas_bh'] = df_bh
-
-    print("\nMétricas por régimen — Equal-Weight:")
-    df_ew = metrics_by_regime(series_ew, test_regimes)
-    if not df_ew.empty:
-        print(df_ew.to_string())
-        results['metricas_ew'] = df_ew
+    # Ejecutar las 4 baselines
+    baselines = run_baselines(test_prices, initial_balance=initial_balance)
+    for name, series in baselines.items():
+        if series is not None and len(series) > 1:
+            results[name] = series
 
     # Agente DRL (solo si se proporciona el modelo)
     if model_path and os.path.exists(model_path):
@@ -329,16 +320,32 @@ def analyze_regimes(features_path: str = 'data/normalized_features.csv',
                 name='IA_PPO'
             )
             results['IA_PPO'] = series_ia
-
-            print("\nMétricas por régimen — Agente IA (PPO):")
-            df_ia = metrics_by_regime(series_ia, test_regimes)
-            if not df_ia.empty:
-                print(df_ia.to_string())
-                results['metricas_ia'] = df_ia
         except Exception as e:
-            print(f"  [AVISO] No se pudo ejecutar el agente: {e}")
+            print(f"  [AVISO] No se pudo ejecutar el agente PPO: {e}")
 
-    # todo: faltará implementar comparativa frente al agente especulativo?
+    # Agente especulativo (si existe)
+    spec_path = 'models/speculative_gmm.pkl'
+    if os.path.exists(spec_path):
+        try:
+            import pickle
+            with open(spec_path, 'rb') as f:
+                spec_agent = pickle.load(f)
+            df_f_test = df_features.iloc[split_idx:]
+            spec_series = spec_agent.backtest(df_f_test, test_prices,
+                                              initial_balance=initial_balance)
+            results['Especulativo_HMM'] = spec_series
+        except Exception as e:
+            print(f"  [AVISO] No se pudo ejecutar el especulativo: {e}")
+
+    # Calcular métricas por régimen para cada estrategia
+    strategy_names = [k for k in results.keys() if k != 'regimenes']
+    for name in strategy_names:
+        series = results[name]
+        print(f"\nMétricas por régimen — {name}:")
+        df_metrics = metrics_by_regime(series, test_regimes)
+        if not df_metrics.empty:
+            print(df_metrics.to_string())
+            results[f'metricas_{name}'] = df_metrics
     
     # Visualización
     _plot_regimes(results, test_regimes, test_prices)
@@ -416,47 +423,61 @@ def _plot_regimes(results: dict, test_regimes: pd.Series,
 
     ax1, ax2 = axes
 
-    # -- Panel superior: evolución de carteras --
+    # -- Panel superior: evolución de carteras (todas las estrategias) --
     strategy_styles = {
-        'IA_PPO':          ('#1f77b4', '-',  2.5),
-        'Buy_and_Hold':    ('#ff7f0e', '--', 1.5),
-        'Equal_Weight':    ('#2ca02c', '--', 1.5),
-        'Cartera_60_40':   ('#9467bd', '--', 1.5),
-        'Markowitz_MV':    ('#8c564b', ':',  1.5),
+        'IA_PPO':               ('#00d4ff', '-',  2.5, 'IA PPO (DRL)'),
+        'Equal_Weight_Mensual': ('#f0a500', '--', 1.5, 'Equal Weight'),
+        'Buy_and_Hold':         ('#7ed957', '--', 1.5, 'Buy & Hold'),
+        'Cartera_60_40':        ('#ff6b6b', '--', 1.5, 'Cartera 60/40'),
+        'Markowitz_MV':         ('#c77dff', ':',  1.5, 'Markowitz MV'),
+        'Especulativo_HMM':     ('#ff9f1c', '-.',  1.5, 'Especulativo (GMM)'),
     }
 
-    for name, (color, style, width) in strategy_styles.items():
+    for name, (color, style, width, label) in strategy_styles.items():
         if name in results and results[name] is not None:
             series = results[name]
+            # Asegurar que el índice es DatetimeIndex — algunas estrategias
+            # (Especulativo, PPO) pueden devolver RangeIndex numérico
+            if not isinstance(series.index, pd.DatetimeIndex):
+                # Alinear con las fechas del test, truncando si es necesario
+                series = pd.Series(
+                    series.values[:len(test_prices)],
+                    index=test_prices.index[:len(series)],
+                    name=name,
+                )
+                results[name] = series  # actualizar para metrics_by_regime
             ax1.plot(series.index, series.values,
-                     label=name, color=color, linestyle=style, linewidth=width)
+                     label=label, color=color, linestyle=style, linewidth=width)
 
     # Fondo sombreado por régimen
     _shade_backgrounds(ax1, test_regimes)
 
-    # Leyenda de regímenes
-    patches = [
-        mpatches.Patch(color=_REGIME_COLORS[k], alpha=0.5, label=_REGIME_NAMES[k])
+    # Leyenda combinada: estrategias + regímenes
+    regime_patches = [
+        mpatches.Patch(color=_REGIME_COLORS[k], alpha=0.4, label=_REGIME_NAMES[k])
         for k in sorted(_REGIME_COLORS.keys())
     ]
-    ax1.legend(
-        handles=ax1.get_legend_handles_labels()[0] + patches,
-        labels=ax1.get_legend_handles_labels()[1] + [p.get_label() for p in patches],
-        loc='upper left', fontsize=9
-    )
-    ax1.set_title('Análisis de Regímenes de Volatilidad — Conjunto Out-of-Sample',
-                  fontsize=13, fontweight='bold')
+    all_handles = ax1.get_legend_handles_labels()[0] + regime_patches
+    all_labels  = ax1.get_legend_handles_labels()[1] + [p.get_label() for p in regime_patches]
+    ax1.legend(handles=all_handles, labels=all_labels,
+               loc='upper left', fontsize=8, ncol=2)
+
+    ax1.set_title(
+        'Análisis de Regímenes de Volatilidad — Período Out-of-Sample\n'
+        'Referencia: IVV (S&P 500). Zonas coloreadas = régimen de volatilidad del mercado.',
+        fontsize=12, fontweight='bold')
     ax1.set_ylabel('Valor de Cartera ($)')
     ax1.grid(True, alpha=0.3)
 
-    # -- Panel inferior: indicador de régimen --
-    regime_colors = [_REGIME_COLORS.get(int(v), 'gray')
-                     for v in test_regimes.values]
+    # -- Panel inferior: indicador de régimen con explicación --
+    regime_bar_colors = [_REGIME_COLORS.get(int(v), 'gray') for v in test_regimes.values]
     ax2.bar(test_regimes.index, test_regimes.values,
-            color=regime_colors, width=1, alpha=0.8)
+            color=regime_bar_colors, width=1, alpha=0.8)
     ax2.set_yticks([0, 1, 2])
-    ax2.set_yticklabels(['Baja', 'Media', 'Alta'])
-    ax2.set_title('Indicador de Régimen (0=Baja, 1=Media, 2=Alta Volatilidad)')
+    ax2.set_yticklabels(['Calma', 'Transición', 'Crisis'], fontsize=9)
+    ax2.set_title(
+        'Régimen del mercado (basado en volatilidad rolling 20d del IVV vs percentiles del período de train)',
+        fontsize=10)
     ax2.set_ylabel('Régimen')
     ax2.grid(True, alpha=0.3, axis='x')
 
@@ -485,10 +506,10 @@ def _save_metrics(results: dict) -> None:
     output_path = 'src/reports/regime_metrics.csv'
     tables = []
 
-    for key in ['metricas_ia', 'metricas_bh', 'metricas_ew']:
-        if key in results and not results[key].empty:
-            strategy_name = key.replace('metricas_', '').upper()
-            df = results[key].copy()
+    for key, val in results.items():
+        if key.startswith('metricas_') and isinstance(val, pd.DataFrame) and not val.empty:
+            strategy_name = key.replace('metricas_', '')
+            df = val.copy()
             df.insert(0, 'Estrategia', strategy_name)
             tables.append(df)
 
@@ -503,15 +524,3 @@ def _save_metrics(results: dict) -> None:
 clasificar_regimenes = classify_regimes
 metricas_por_regimen = metrics_by_regime
 analizar_regimenes = analyze_regimes
-
-
-# ---------------------------------------------------------------------------
-# Ejecución directa
-# ---------------------------------------------------------------------------
-
-#if __name__ == "__main__":
-#    resultados = analyze_regimes(
-#        features_path='data/normalized_features.csv',
-#        prices_path='data/original_prices.csv',
-#        model_path='models/best_model/best_model.zip',
-#    )

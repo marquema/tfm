@@ -605,4 +605,6 @@ Es el equivalente financiero del **k-fold cross-validation** en machine learning
             else:
                 st.info("Se necesita un modelo entrenado para el análisis de regímenes.")
         except Exception as e:
-            st.info(f"Análisis de regímenes no disponible: {e}")
+            st.error(f"Error al generar análisis de regímenes: {e}")
+            import traceback
+            st.code(traceback.format_exc())
