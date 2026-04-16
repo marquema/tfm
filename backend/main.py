@@ -22,6 +22,7 @@ from src.training_drl.environment_trading import PortfolioEnv
 from src.training_drl.training_analysis import (
     entrenar_academico, walk_forward_validation, expanding_window_validation
 )
+from src.training_drl.sensitivity_analysis import run_sensitivity_analysis
 from src.unsupervised.speculative_agent import SpeculativeAgent
 from src.pipeline_getdata.asset_registry import get_universe
 from src.pipeline_getdata.market_screener import MarketScreener
@@ -111,7 +112,7 @@ def _remove_lock(path: str):
 # ─── ENDPOINTS PÚBLICOS ──────────────────────────────────────────────────────
 
 @app.get("/universo", tags=["Público"])
-async def ver_universo(level: str = 'core'):
+async def get_universe_endpoint(level: str = 'core'):
     """Diccionario de activos con metadatos completos."""
     df = get_universe(level)
     return df.reset_index().to_dict(orient='records')
@@ -145,8 +146,131 @@ async def get_walk_forward_results():
     }
 
 
+@app.get("/resultados/tabla-final", tags=["Público"])
+async def get_final_table(db: Session = Depends(get_db)):
+    """
+    Tabla conclusiva del TFM: PPO vs todas las estrategias.
+
+    Devuelve toda la información necesaria para la memoria:
+      - Contexto: fechas, activos, perfil de riesgo del modelo
+      - Métricas: Sharpe, Retorno, MDD, CAGR, Volatilidad, Sortino, Valor Final
+      - Comparativa: PPO vs cada baseline (gana/pierde por métrica)
+      - Resumen: conclusión en una frase
+    """
+    from src.investor.simulation_service import run_simulation
+    from src.training_drl.risk_profiles import RISK_PROFILES
+
+    result = run_simulation(capital=10000, commission=0.001)
+
+    if "error" in result:
+        return {"available": False, "error": result["error"]}
+
+    metrics = result.get("metrics", {})
+    if not metrics:
+        return {"available": False, "error": "No se pudieron calcular métricas."}
+
+    # ─── Contexto del entrenamiento ───────────────────────────────────────────
+    # Leer universo activo y modelo de la BD para saber con qué se entrenó
+    universe = universe_repo.get_active_universe(db)
+    model_record = universe_repo.get_latest_model(db, model_type="ppo")
+
+    # Perfil de riesgo usado en el entrenamiento
+    risk_profile_id = None
+    risk_profile_info = None
+    if model_record and model_record.train_metrics:
+        risk_profile_id = model_record.train_metrics.get('risk_profile', 'balanced')
+        risk_profile_info = RISK_PROFILES.get(risk_profile_id)
+
+    training_context = {
+        "universe": {
+            "tickers": universe.tickers if universe else [],
+            "n_assets": universe.n_assets if universe else 0,
+            "data_start": universe.start_date if universe else None,
+            "data_end": universe.end_date if universe else None,
+            "n_days_total": universe.n_days if universe else 0,
+            "n_features": universe.n_features if universe else 0,
+        },
+        "model": {
+            "risk_profile": risk_profile_id or 'balanced',
+            "risk_profile_name": risk_profile_info['name'] if risk_profile_info else 'Equilibrado',
+            "phi": risk_profile_info['phi'] if risk_profile_info else 0.02,
+            "gamma": risk_profile_info['gamma'] if risk_profile_info else 0.01,
+            "steps": model_record.steps if model_record else None,
+            "trained_at": str(model_record.created_at)[:19] if model_record else None,
+        },
+        "test_period": result.get("test_period"),
+        "commission": "0.1%",
+        "initial_capital": "$10,000",
+        "split": "80% train / 20% test",
+    }
+
+    # ─── Mejor estrategia por métrica ─────────────────────────────────────────
+    best_sharpe = max(metrics.items(), key=lambda x: x[1].get('Sharpe Ratio', -999))
+    best_retorno = max(metrics.items(), key=lambda x: x[1].get('Retorno Total (%)', -999))
+    best_mdd = max(metrics.items(), key=lambda x: x[1].get('Max Drawdown (%)', -999))
+    best_sortino = max(metrics.items(), key=lambda x: x[1].get('Sortino Ratio', -999))
+
+    # ─── PPO vs cada baseline ─────────────────────────────────────────────────
+    ppo = metrics.get('IA_PPO', {})
+    comparisons = {}
+    for name, m in metrics.items():
+        if name == 'IA_PPO':
+            continue
+        comparisons[name] = {
+            'ppo_wins_sharpe': bool(ppo.get('Sharpe Ratio', 0) > m.get('Sharpe Ratio', 0)),
+            'ppo_wins_retorno': bool(ppo.get('Retorno Total (%)', 0) > m.get('Retorno Total (%)', 0)),
+            'ppo_wins_mdd': bool(ppo.get('Max Drawdown (%)', 0) > m.get('Max Drawdown (%)', 0)),
+            'ppo_wins_sortino': bool(ppo.get('Sortino Ratio', 0) > m.get('Sortino Ratio', 0)),
+            'sharpe_diff': float(round(ppo.get('Sharpe Ratio', 0) - m.get('Sharpe Ratio', 0), 3)),
+            'retorno_diff': float(round(ppo.get('Retorno Total (%)', 0) - m.get('Retorno Total (%)', 0), 2)),
+        }
+
+    n_baselines = len(comparisons)
+    n_wins_sharpe = sum(1 for c in comparisons.values() if c['ppo_wins_sharpe'])
+    n_wins_retorno = sum(1 for c in comparisons.values() if c['ppo_wins_retorno'])
+    n_wins_sortino = sum(1 for c in comparisons.values() if c['ppo_wins_sortino'])
+
+    # ─── Resumen textual ──────────────────────────────────────────────────────
+    test_info = result.get("test_period", {})
+    summary_lines = [
+        f"Período de test: {test_info.get('start', '?')} a {test_info.get('end', '?')} ({test_info.get('days', '?')} días).",
+        f"Universo: {len(universe.tickers) if universe else '?'} activos.",
+        f"Perfil de riesgo: {risk_profile_info['name'] if risk_profile_info else 'Equilibrado'}.",
+        f"PPO supera en Sharpe a {n_wins_sharpe}/{n_baselines} estrategias.",
+        f"PPO supera en Retorno a {n_wins_retorno}/{n_baselines} estrategias.",
+        f"PPO supera en Sortino a {n_wins_sortino}/{n_baselines} estrategias.",
+        f"Mejor Sharpe global: {best_sharpe[0]} ({best_sharpe[1].get('Sharpe Ratio'):.3f}).",
+    ]
+
+    return {
+        "available": True,
+        "training_context": training_context,
+        "metrics": metrics,
+        "best_by_metric": {
+            "sharpe": {"strategy": best_sharpe[0], "value": float(best_sharpe[1].get('Sharpe Ratio', 0))},
+            "retorno": {"strategy": best_retorno[0], "value": float(best_retorno[1].get('Retorno Total (%)', 0))},
+            "mdd": {"strategy": best_mdd[0], "value": float(best_mdd[1].get('Max Drawdown (%)', 0))},
+            "sortino": {"strategy": best_sortino[0], "value": float(best_sortino[1].get('Sortino Ratio', 0))},
+        },
+        "ppo_vs_baselines": comparisons,
+        "summary": summary_lines,
+    }
+
+
+@app.get("/risk-profiles", tags=["Público"])
+async def get_risk_profiles():
+    """
+    Lista los perfiles de riesgo disponibles para el entrenamiento PPO.
+
+    Cada perfil define phi (penalización drawdown) y gamma (penalización turnover)
+    de la función de recompensa del agent.
+    """
+    from src.training_drl.risk_profiles import list_profiles
+    return list_profiles()
+
+
 @app.get("/estado", tags=["Público"])
-async def ver_estado():
+async def get_system_status():
     """Estado del sistema: qué fases están completadas."""
     # Un fichero .lock indica que hay un background task corriendo.
     # Se crea al lanzar y se borra al terminar.
@@ -169,7 +293,7 @@ async def ver_estado():
 # Todos requieren JWT con role='admin'
 
 @app.post("/admin/fase1/screener", tags=["Admin"])
-async def ejecutar_screener(
+async def run_screener(
     start_date: str = "2020-01-01",
     end_date: str = "2026-04-01",
     top_n: int = 15,
@@ -217,7 +341,7 @@ async def ejecutar_screener(
 
 
 @app.post("/admin/fase1/preparar-datos", tags=["Admin"])
-async def preparar_datos(config: DownloadConfig = None,
+async def prepare_data(config: DownloadConfig = None,
                           admin: User = Depends(require_admin),
                           db: Session = Depends(get_db)):
     """
@@ -280,7 +404,7 @@ async def preparar_datos(config: DownloadConfig = None,
 
 @app.get("/admin/fase2/validar-datos", tags=["Admin"],
          dependencies=[Depends(require_admin)])
-async def validar_datos():
+async def validate_data():
     """Valida integridad de los CSVs generados (solo admin)."""
     if not os.path.exists('data/normalized_features.csv'):
         return {"ok": False, "error": "Ejecuta primero /admin/fase1/preparar-datos"}
@@ -307,22 +431,38 @@ async def validar_datos():
 
 
 @app.post("/admin/fase3/entrenar-academico", tags=["Admin"])
-async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
+async def start_training(background_tasks: BackgroundTasks,
                                  steps: int = 500000, patience: int = 8,
+                                 risk_profile: str = 'balanced',
                                  admin: User = Depends(require_admin),
                                  db: Session = Depends(get_db)):
-    """Entrena PPO con validación académica completa (solo admin)."""
+    """
+    Entrena PPO con validación académica completa (solo admin).
+
+    risk_profile: perfil de riesgo que determina phi y gamma del reward.
+      - balanced:     phi=0.02, gamma=0.01 (equilibrio)
+      - conservative: phi=0.05, gamma=0.01 (preservar capital)
+      - low_turnover: phi=0.02, gamma=0.02 (mínima rotación, mejor Sharpe)
+      - aggressive:   phi=0.01, gamma=0.005 (máxima libertad)
+    """
+    from src.training_drl.risk_profiles import get_profile
+
+    # Validar perfil
+    try:
+        profile = get_profile(risk_profile)
+    except ValueError as e:
+        return {"error": str(e)}
+
     universe = universe_repo.get_active_universe(db)
     if universe is None:
         return {"error": "Ejecuta primero /admin/fase1/preparar-datos"}
 
-    # Registrar modelo en BD vinculado al universo activo
+    # Registrar modelo en BD con el perfil usado
     model_record = universe_repo.register_model(
         db, universe_id=universe.id, model_type="ppo",
         model_path="models/best_model_academic/best_model.zip", steps=steps,
     )
 
-    # Crear lock para que el frontend sepa que hay un entrenamiento corriendo
     _create_lock('models/.training.lock')
 
     def train_and_update_status(model_id: int, **kwargs):
@@ -330,8 +470,10 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
             entrenar_academico(**kwargs)
             db_session = SessionLocal()
             try:
-                universe_repo.update_model_status(db_session, model_id, "ready")
-                print(f"  [BD] Modelo PPO id={model_id} marcado como 'ready'.")
+                universe_repo.update_model_status(db_session, model_id, "ready",
+                                                  metrics={"risk_profile": risk_profile})
+                print(f"  [BD] Modelo PPO id={model_id} marcado como 'ready' "
+                      f"(perfil: {risk_profile}).")
             finally:
                 db_session.close()
         except Exception as e:
@@ -349,18 +491,22 @@ async def iniciar_entrenamiento(background_tasks: BackgroundTasks,
         model_id=model_record.id,
         total_timesteps=steps,
         patience=patience,
+        risk_profile=risk_profile,
     )
     return {
-        "message": f"Entrenamiento iniciado (máx. {steps:,} pasos, patience={patience}).",
+        "message": f"Entrenamiento iniciado (máx. {steps:,} pasos, patience={patience}, "
+                   f"perfil: {profile['name']}).",
+        "risk_profile": risk_profile,
+        "phi": profile['phi'],
+        "gamma": profile['gamma'],
         "universe_id": universe.id,
         "model_id": model_record.id,
-        "tickers": universe.tickers,
     }
 
 
 @app.post("/admin/fase3/walk-forward", tags=["Admin"],
           dependencies=[Depends(require_admin)])
-async def iniciar_walk_forward(background_tasks: BackgroundTasks,
+async def start_walk_forward(background_tasks: BackgroundTasks,
                                 steps_por_ventana: int = 100000):
     """Walk-forward validation temporal (solo admin)."""
     _create_lock('models/.walkforward.lock')
@@ -382,7 +528,7 @@ async def iniciar_walk_forward(background_tasks: BackgroundTasks,
 
 @app.post("/admin/fase3/expanding-window", tags=["Admin"],
           dependencies=[Depends(require_admin)])
-async def iniciar_expanding_window(background_tasks: BackgroundTasks,
+async def start_expanding_window(background_tasks: BackgroundTasks,
                                     steps_por_ventana: int = 100000,
                                     min_train_days: int = 504,
                                     test_days: int = 63):
@@ -419,8 +565,38 @@ async def iniciar_expanding_window(background_tasks: BackgroundTasks,
     }
 
 
+@app.post("/admin/fase3/sensitivity-analysis", tags=["Admin"],
+          dependencies=[Depends(require_admin)])
+async def start_sensitivity_analysis(background_tasks: BackgroundTasks,
+                                        steps_por_config: int = 200000):
+    """
+    Análisis de sensibilidad: entrena 4 configuraciones del reward PPO
+    y genera tabla comparativa (solo admin).
+
+    Configuraciones: A (actual), B (más MDD), C (más turnover), D (agresivo).
+    Genera: src/reports/sensitivity_analysis.csv y .png
+
+    Tarda ~4x el tiempo de un entrenamiento normal.
+    """
+    _create_lock('models/.sensitivity.lock')
+
+    def sa_with_lock(**kwargs):
+        try:
+            run_sensitivity_analysis(**kwargs)
+        finally:
+            _remove_lock('models/.sensitivity.lock')
+
+    background_tasks.add_task(
+        sa_with_lock,
+        total_timesteps=steps_por_config,
+    )
+    return {
+        "message": f"Análisis de sensibilidad iniciado ({steps_por_config:,} pasos × 4 configs).",
+    }
+
+
 @app.post("/admin/fase4/ajustar-especulativo", tags=["Admin"])
-async def ajustar_especulativo(split_pct: float = 0.8,
+async def fit_speculative_agent(split_pct: float = 0.8,
                                 admin: User = Depends(require_admin),
                                 db: Session = Depends(get_db)):
     """Ajusta agente especulativo GMM + K-Means (solo admin)."""
@@ -432,13 +608,13 @@ async def ajustar_especulativo(split_pct: float = 0.8,
     df_p = pd.read_csv('data/original_prices.csv', index_col=0)
 
     split_idx = int(len(df_f) * split_pct)
-    agente = SpeculativeAgent(n_regimes=3, n_clusters=3, cluster_window=60)
-    agente.fit(df_f.iloc[:split_idx], df_p.iloc[:split_idx])
+    agent = SpeculativeAgent(n_regimes=3, n_clusters=3, cluster_window=60)
+    agent.fit(df_f.iloc[:split_idx], df_p.iloc[:split_idx])
 
     import pickle
     os.makedirs('models', exist_ok=True)
     with open('models/speculative_gmm.pkl', 'wb') as f:
-        pickle.dump(agente, f)
+        pickle.dump(agent, f)
 
     # Registrar modelo como ready (es síncrono — ya terminó)
     model_record = universe_repo.register_model(
@@ -447,7 +623,7 @@ async def ajustar_especulativo(split_pct: float = 0.8,
     )
     universe_repo.update_model_status(db, model_record.id, "ready")
 
-    equity = agente.backtest(df_f.iloc[split_idx:], df_p.iloc[split_idx:])
+    equity = agent.backtest(df_f.iloc[split_idx:], df_p.iloc[split_idx:])
     ret = (equity.iloc[-1] / equity.iloc[0] - 1) * 100
 
     return {

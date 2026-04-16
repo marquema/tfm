@@ -930,8 +930,9 @@ class OverfitDetectorCallback(BaseCallback):
 def train_academic(features_path: str = 'data/normalized_features.csv',
                    prices_path: str   = 'data/original_prices.csv',
                    total_timesteps: int = 500000,
-                   split_pct: float= 0.8,
-                   patience: int = 8) -> PPO:
+                   split_pct: float = 0.8,
+                   patience: int = 8,
+                   risk_profile: str = 'balanced') -> PPO:
     """
     Entrenamiento con monitorización académica completa.
 
@@ -951,14 +952,23 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
         Fracción de datos para entrenamiento (el resto se usa para evaluación).
     patience : int
         Evaluaciones base sin mejora antes de considerar early stopping.
+    risk_profile : str
+        Perfil de riesgo: 'balanced', 'conservative', 'low_turnover', 'aggressive'.
+        Determina phi (penalización drawdown) y gamma (penalización turnover)
+        de la función de recompensa. Ver risk_profiles.py para detalle de cada uno.
 
     Returns
     -------
     PPO
         Modelo PPO entrenado (también guardado en models/best_model_academic/).
     """
+    from src.training_drl.risk_profiles import get_profile, get_phi_gamma
+
+    # Resolver perfil de riesgo
+    profile = get_profile(risk_profile)
+    phi, gamma = get_phi_gamma(risk_profile)
+
     # Borrar reportes anteriores para evitar mostrar datos incoherentes
-    # si el entrenamiento falla a mitad de ejecución.
     for old_file in ['src/reports/training_diagnostics.png',
                      'src/reports/overfitting_analysis.png']:
         if os.path.exists(old_file):
@@ -966,13 +976,17 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
 
     print("=" * 60)
     print("ENTRENAMIENTO ACADÉMICO CON VALIDACIÓN TEMPORAL")
+    print(f"  Perfil de riesgo: {profile['name']} ({risk_profile})")
+    print(f"  phi={phi}, gamma={gamma}")
     print("=" * 60)
 
     df_f = pd.read_csv(features_path, index_col=0)
     split_idx = int(len(df_f) * split_pct)
 
-    train_env = PortfolioEnv(features_path, prices_path, end_idx=split_idx)
-    eval_env  = PortfolioEnv(features_path, prices_path, start_idx=split_idx)
+    train_env = PortfolioEnv(features_path, prices_path,
+                             end_idx=split_idx, phi=phi, gamma=gamma)
+    eval_env  = PortfolioEnv(features_path, prices_path,
+                             start_idx=split_idx, phi=phi, gamma=gamma)
 
     # eval_freq adaptativo: evaluar cada ~20 episodios completos de entrenamiento.
     # Con dataset largo (split_idx=2000 steps/ep), eval_freq=10000 -> solo 5 episodios
