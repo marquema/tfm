@@ -251,6 +251,7 @@ def get_user_simulations(db: Session, user_id: int) -> list[Simulation]:
 
 def save_screener_result(db: Session, candidates: list, start_date: str,
                          end_date: str, filters: dict = None,
+                         details: list = None,
                          created_by: str = None) -> ScreenerResult:
     """
     Guarda el resultado de un screener y lo marca como activo.
@@ -279,6 +280,7 @@ def save_screener_result(db: Session, candidates: list, start_date: str,
         start_date=start_date,
         end_date=end_date,
         filters_used=filters,
+        details=details,
         is_active=True,
         created_by=created_by,
     )

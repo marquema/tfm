@@ -26,6 +26,45 @@ try:
 except ImportError:
     from src.benchmarking.baselines import ejecutar_baselines, calcular_metricas, tabla_comparativa
 
+from src.training_drl.risk_profiles import RISK_PROFILES
+
+
+@st.cache_data(ttl=60)
+def get_trained_model_info():
+    """
+    Consulta la BD para recuperar el perfil de riesgo del último PPO entrenado.
+
+    Devuelve dict con: risk_profile, phi, gamma, steps, trained_at.
+    Si no hay modelo en BD, devuelve None.
+    """
+    try:
+        from src.auth.models import SessionLocal
+        from src.auth import universe_repository as universe_repo
+    except Exception:
+        return None
+
+    db = SessionLocal()
+    try:
+        model = universe_repo.get_latest_model(db, model_type="ppo")
+        if model is None:
+            return None
+        metrics = model.train_metrics or {}
+        profile_id = metrics.get('risk_profile', 'balanced')
+        profile = RISK_PROFILES.get(profile_id, RISK_PROFILES['balanced'])
+        return {
+            'risk_profile': profile_id,
+            'name': profile['name'],
+            'phi': profile['phi'],
+            'gamma': profile['gamma'],
+            'description': profile['description'],
+            'steps': model.steps,
+            'trained_at': str(model.created_at)[:19] if model.created_at else None,
+        }
+    except Exception:
+        return None
+    finally:
+        db.close()
+
 
 # ─── Configuración de página ─────────────────────────────────────────────────
 st.set_page_config(
@@ -72,6 +111,22 @@ st.sidebar.markdown(f"{'✅' if features_ok else '❌'} Features CSV")
 st.sidebar.markdown(f"{'✅' if prices_ok   else '❌'} Precios CSV")
 st.sidebar.markdown(f"{'✅' if model_ok    else '❌'} Modelo PPO")
 
+# ─── Perfil de riesgo del PPO entrenado ──────────────────────────────────────
+model_info = get_trained_model_info()
+st.sidebar.markdown("---")
+st.sidebar.markdown("**Perfil de riesgo PPO**")
+if model_info:
+    st.sidebar.markdown(
+        f"🎯 **{model_info['name']}** (`{model_info['risk_profile']}`)"
+    )
+    st.sidebar.caption(
+        f"φ = {model_info['phi']} · γ = {model_info['gamma']}  \n"
+        f"Pasos: {model_info['steps']:,}  \n"
+        f"Entrenado: {model_info['trained_at']}"
+    )
+else:
+    st.sidebar.caption("Sin info en BD (modelo legacy o sin registrar).")
+
 
 # ─── Carga de datos ───────────────────────────────────────────────────────────
 @st.cache_data
@@ -101,6 +156,16 @@ st.info(
     f"Período de test: **{df_p_test.index[0][:10]}** → **{df_p_test.index[-1][:10]}**"
     f" | {len(df_p_test)} días de trading | {len(tickers)} activos"
 )
+
+# Banner con el perfil de riesgo del modelo cargado
+if model_info:
+    col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 2])
+    col_a.metric("Perfil de riesgo", model_info['name'])
+    col_b.metric("φ (drawdown)", model_info['phi'])
+    col_c.metric("γ (turnover)", model_info['gamma'])
+    col_d.metric("Pasos entrenamiento", f"{model_info['steps']:,}" if model_info['steps'] else "?")
+    with st.expander("¿Qué significa este perfil?"):
+        st.markdown(model_info['description'])
 
 
 # ─── Constantes visuales ──────────────────────────────────────────────────────
