@@ -89,6 +89,7 @@ class ScreenerResult(Base):
     start_date   = Column(String(10), nullable=False)
     end_date     = Column(String(10), nullable=False)
     filters_used = Column(JSON, nullable=True)       # {top_n, max_per_sector, ...}
+    details      = Column(JSON, nullable=True)       # [{ticker, sector, sharpe_rolling, annual_vol, avg_volume_usd, ...}]
     is_active    = Column(Boolean, default=True)
     created_at   = Column(DateTime, default=datetime.utcnow)
     created_by   = Column(String(255), nullable=True)
@@ -181,6 +182,32 @@ def init_db():
     """
     os.makedirs(os.path.dirname(os.path.abspath(_DB_PATH)), exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _migrate_add_missing_columns()
+
+
+def _migrate_add_missing_columns():
+    """
+    Migración ligera sin Alembic: añade columnas nuevas a tablas ya creadas.
+
+    Usamos PRAGMA table_info para detectar la estructura actual y ALTER TABLE
+    para incorporar columnas nuevas preservando los datos. Solo añadimos
+    columnas nullable, nunca las removemos.
+    """
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+
+    tables_with_new_cols = {
+        'screener_results': [('details', 'JSON')],
+    }
+
+    with engine.begin() as conn:
+        for table, cols in tables_with_new_cols.items():
+            if table not in inspector.get_table_names():
+                continue
+            existing = {c['name'] for c in inspector.get_columns(table)}
+            for col_name, col_type in cols:
+                if col_name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"))
 
 
 def get_db():
