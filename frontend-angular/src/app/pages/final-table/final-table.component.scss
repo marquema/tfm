@@ -1,0 +1,203 @@
+.final-table-page {
+  padding: 1.5rem 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+
+  h1 { margin: 0 0 0.25rem 0; }
+  .page-subtitle { margin: 0; color: #64748b; font-size: 0.9rem; }
+}
+
+.loading-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #64748b;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e2e8f0;
+
+  h2 {
+    margin-top: 0;
+    margin-bottom: 0.9rem;
+    font-size: 1.1rem;
+    color: #1e293b;
+  }
+}
+
+/* ─── Contexto ────────────────────────────────────────────────────────── */
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.ctx-block {
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+
+  h3 {
+    margin-top: 0;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+  }
+
+  p {
+    margin: 0.25rem 0;
+    color: #1e293b;
+  }
+
+  .ctx-small {
+    font-size: 0.82rem;
+    color: #475569;
+  }
+}
+
+.ticker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+
+.ticker-chip {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  background: #dbeafe;
+  color: #1e40af;
+  border-radius: 999px;
+  font-family: 'Consolas', monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* ─── Tabla ───────────────────────────────────────────────────────────── */
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.table-sm {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+
+  th, td {
+    padding: 0.55rem 0.75rem;
+    text-align: right;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  th:first-child, td:first-child {
+    text-align: left;
+  }
+
+  th {
+    background: #f1f5f9;
+    color: #475569;
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+}
+
+.row-ppo {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0));
+  font-weight: 600;
+}
+
+.badge-ppo {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  background: #3b82f6;
+  color: #fff;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  letter-spacing: 0.5px;
+}
+
+.best-metric {
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+}
+
+.table-hint {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+/* ─── vs Baselines ────────────────────────────────────────────────────── */
+.vs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.85rem;
+}
+
+.vs-card {
+  padding: 0.85rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+
+  h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.9rem;
+    color: #1e293b;
+  }
+}
+
+.vs-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  border-bottom: 1px dashed #e2e8f0;
+
+  &:last-child { border-bottom: none; }
+
+  &.win { color: #166534; font-weight: 600; }
+  &.lose { color: #991b1b; }
+}
+
+/* ─── Resumen ─────────────────────────────────────────────────────────── */
+.summary-list {
+  margin: 0;
+  padding-left: 1.2rem;
+
+  li {
+    margin: 0.35rem 0;
+    color: #334155;
+    line-height: 1.5;
+  }
+}
+
+.alert-error {
+  padding: 1rem 1.25rem;
+  background: #fee2e2;
+  color: #991b1b;
+  border-radius: 8px;
+  border-left: 4px solid #dc2626;
+}

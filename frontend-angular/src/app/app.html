@@ -65,6 +65,18 @@
             <span class="nav-label">Resultados</span>
           }
         </a>
+        <a routerLink="/resultados/tabla-final" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F3C6;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Tabla Final</span>
+          }
+        </a>
+        <a routerLink="/validacion" routerLinkActive="active" class="nav-item">
+          <span class="nav-icon">&#x1F4C8;</span>
+          @if (!sidebarCollapsed) {
+            <span class="nav-label">Validación</span>
+          }
+        </a>
         <a routerLink="/universo" routerLinkActive="active" class="nav-item">
           <span class="nav-icon">&#x1F30D;</span>
           @if (!sidebarCollapsed) {

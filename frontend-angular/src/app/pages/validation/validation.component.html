@@ -1,0 +1,141 @@
+<div class="validation-page">
+  <div class="page-header">
+    <div>
+      <h1>Validación Temporal</h1>
+      <p class="page-subtitle">
+        Walk-Forward (ventana fija deslizante) vs Expanding Window (train creciente).
+        Comprueba que el agente PPO no dependa de un periodo concreto de test.
+      </p>
+    </div>
+    <button class="btn btn-outline-sm" (click)="load()" [disabled]="loading">
+      @if (loading) { <span class="spinner-sm"></span> } @else { Actualizar }
+    </button>
+  </div>
+
+  @if (loading) {
+    <div class="loading-state">
+      <span class="spinner-lg"></span>
+      <p>Cargando resultados...</p>
+    </div>
+  }
+
+  @if (errorMessage && !loading) {
+    <div class="alert alert-error">{{ errorMessage }}</div>
+  }
+
+  @if ((wf || ew) && !loading) {
+    <!-- Selector de modo -->
+    <div class="mode-tabs">
+      <button class="mode-tab"
+              [class.active]="mode === 'wf'"
+              [disabled]="!wf"
+              (click)="setMode('wf')">
+        Walk-Forward (rolling)
+        @if (!wf) { <span class="mode-unavail">— no ejecutado</span> }
+      </button>
+      <button class="mode-tab"
+              [class.active]="mode === 'ew'"
+              [disabled]="!ew"
+              (click)="setMode('ew')">
+        Expanding Window
+        @if (!ew) { <span class="mode-unavail">— no ejecutado</span> }
+      </button>
+    </div>
+
+    @if (active) {
+      <!-- Resumen -->
+      <section class="card">
+        <h2>Resumen — {{ activeLabel }}</h2>
+        <div class="summary-grid">
+          <div class="summary-item">
+            <span class="summary-label">Ventanas</span>
+            <span class="summary-value">{{ active.n_windows }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Sharpe medio</span>
+            <span class="summary-value">{{ active.summary?.sharpe_mean | number:'1.2-3' }}</span>
+            <span class="summary-sub">± {{ active.summary?.sharpe_std | number:'1.2-3' }}</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Retorno medio</span>
+            <span class="summary-value">{{ active.summary?.retorno_mean | number:'1.1-2' }}%</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">MDD medio</span>
+            <span class="summary-value">{{ active.summary?.mdd_mean | number:'1.1-2' }}%</span>
+          </div>
+          <div class="summary-item">
+            <span class="summary-label">Ventanas con Sharpe > 0</span>
+            <span class="summary-value">
+              {{ active.summary?.windows_positive_sharpe }} / {{ active.n_windows }}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Gráficas -->
+      <section class="card">
+        <h2>Sharpe por ventana</h2>
+        <app-plotly-chart
+          [data]="sharpeChartData"
+          [layout]="sharpeChartLayout"
+          chartId="validation-sharpe">
+        </app-plotly-chart>
+      </section>
+
+      <section class="card">
+        <h2>Retorno por ventana</h2>
+        <app-plotly-chart
+          [data]="returnChartData"
+          [layout]="returnChartLayout"
+          chartId="validation-return">
+        </app-plotly-chart>
+      </section>
+
+      <!-- Tabla detallada -->
+      <section class="card">
+        <h2>Detalle por ventana</h2>
+        <div class="table-wrapper">
+          <table class="table-sm">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Train</th>
+                <th>Test</th>
+                <th>Sharpe</th>
+                <th>Retorno (%)</th>
+                <th>MDD (%)</th>
+                <th>Vol. anual (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (w of active.windows; track $index) {
+                <tr>
+                  <td><strong>{{ $index + 1 }}</strong></td>
+                  <td class="text-muted">
+                    @if (w.train_start) {
+                      {{ w.train_start | slice:0:10 }} → {{ w.train_end | slice:0:10 }}
+                    }
+                  </td>
+                  <td class="text-muted">
+                    @if (w.test_start) {
+                      {{ w.test_start | slice:0:10 }} → {{ w.test_end | slice:0:10 }}
+                    }
+                  </td>
+                  <td [class.positive]="w['Sharpe Ratio'] >= 0" [class.negative]="w['Sharpe Ratio'] < 0">
+                    {{ w['Sharpe Ratio'] | number:'1.2-3' }}
+                  </td>
+                  <td [class.positive]="w['Retorno Total (%)'] >= 0" [class.negative]="w['Retorno Total (%)'] < 0">
+                    {{ w['Retorno Total (%)'] | number:'1.1-2' }}
+                  </td>
+                  <td>{{ w['Max Drawdown (%)'] | number:'1.1-2' }}</td>
+                  <td>{{ w['Volatilidad Anualizada (%)'] | number:'1.1-2' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+  }
+</div>

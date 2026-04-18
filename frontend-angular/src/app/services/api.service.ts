@@ -67,6 +67,16 @@ export class ApiService {
     return this.http.get(`${this.baseUrl}/universo`, { params: { level } });
   }
 
+  /** GET /risk-profiles — Perfiles de riesgo disponibles para PPO */
+  getRiskProfiles(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/risk-profiles`);
+  }
+
+  /** GET /screener/last — Último screener persistido con detalles */
+  getLastScreener(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/screener/last`);
+  }
+
   // ─── Inversor (requiere JWT) ───────────────────────────────────────────────
 
   /** GET /investor/strategies — Estrategias disponibles */
@@ -112,11 +122,17 @@ export class ApiService {
   }
 
   /** POST /admin/fase3/entrenar-academico — Entrenar modelo DRL */
-  postEntrenar(steps: number): Observable<any> {
+  postEntrenar(steps: number, riskProfile: string = 'balanced'): Observable<any> {
     return this.http.post(
       `${this.baseUrl}/admin/fase3/entrenar-academico`,
       null,
-      { ...this.authHeaders(), params: { steps: steps.toString() } }
+      {
+        ...this.authHeaders(),
+        params: {
+          steps: steps.toString(),
+          risk_profile: riskProfile,
+        },
+      }
     ).pipe(timeout(600000));
   }
 
@@ -127,6 +143,51 @@ export class ApiService {
       null,
       { ...this.authHeaders(), params: { steps_por_ventana: steps.toString() } }
     ).pipe(timeout(600000));
+  }
+
+  /** POST /admin/fase3/expanding-window — Expanding window validation */
+  postExpandingWindow(stepsPerWindow: number, minTrainDays: number = 504, testDays: number = 63): Observable<any> {
+    return this.http.post(
+      `${this.baseUrl}/admin/fase3/expanding-window`,
+      null,
+      {
+        ...this.authHeaders(),
+        params: {
+          steps_por_ventana: stepsPerWindow.toString(),
+          min_train_days: minTrainDays.toString(),
+          test_days: testDays.toString(),
+        }
+      }
+    ).pipe(timeout(600000));
+  }
+
+  /** GET /expanding-window/results — Resultados del último expanding window */
+  getExpandingWindowResults(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/expanding-window/results`);
+  }
+
+  /** POST /admin/fase3/sensitivity-analysis — Análisis de sensibilidad (4 configs) */
+  postSensitivityAnalysis(stepsPerConfig: number): Observable<any> {
+    return this.http.post(
+      `${this.baseUrl}/admin/fase3/sensitivity-analysis`,
+      null,
+      { ...this.authHeaders(), params: { steps_por_config: stepsPerConfig.toString() } }
+    ).pipe(timeout(600000));
+  }
+
+  /** GET /sensitivity/results — Tabla de resultados del análisis de sensibilidad */
+  getSensitivityResults(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/sensitivity/results`);
+  }
+
+  /** GET /walk-forward/results — Resultados del último walk-forward */
+  getWalkForwardResults(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/walk-forward/results`);
+  }
+
+  /** GET /resultados/tabla-final — Tabla conclusiva del TFM */
+  getFinalTable(): Observable<any> {
+    return this.http.get(`${this.baseUrl}/resultados/tabla-final`, this.authHeaders());
   }
 
   /** POST /admin/fase4/ajustar-especulativo — Ajustar agente especulativo */

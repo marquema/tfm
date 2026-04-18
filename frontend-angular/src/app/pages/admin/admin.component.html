@@ -73,6 +73,12 @@
       } @else if (defaultTickers.length > 0 && screenerCandidates.length === 0) {
         <div class="default-tickers-box">
           <h3>Universo actual ({{ defaultTickers.length }} activos)</h3>
+          @if (lastScreenerMeta) {
+            <p class="screener-meta">
+              Último screener: {{ lastScreenerMeta.start }} → {{ lastScreenerMeta.end }}
+              · ejecutado {{ lastScreenerMeta.created_at }}
+            </p>
+          }
           <div class="ticker-chips">
             @for (ticker of defaultTickers; track ticker) {
               <span class="ticker-chip">{{ ticker }}</span>
@@ -101,7 +107,14 @@
       <!-- Resultados del screener -->
       @if (screenerCandidates.length > 0) {
         <div class="screener-results mt-1">
-          <h3>Candidatos seleccionados ({{ screenerCandidates.length }})</h3>
+          <h3>
+            Candidatos seleccionados ({{ screenerCandidates.length }})
+            @if (lastScreenerMeta) {
+              <span class="subtitle-meta">
+                — {{ lastScreenerMeta.start }} → {{ lastScreenerMeta.end }} · {{ lastScreenerMeta.created_at }}
+              </span>
+            }
+          </h3>
           <div class="table-wrapper">
             <table class="table-sm">
               <thead>
@@ -160,7 +173,36 @@
           <input id="wfSteps" type="number" [(ngModel)]="wfSteps"
                  min="10000" step="10000" [disabled]="locked" />
         </div>
+        <div class="form-group">
+          <label for="ewSteps">Steps expanding window</label>
+          <input id="ewSteps" type="number" [(ngModel)]="ewSteps"
+                 min="10000" step="10000" [disabled]="locked" />
+        </div>
       </div>
+
+      <!-- Selector de perfil de riesgo -->
+      @if (riskProfiles.length > 0) {
+        <div class="form-group risk-profile-group">
+          <label for="riskProfile">Perfil de riesgo (reward PPO)</label>
+          <select id="riskProfile" [(ngModel)]="selectedRiskProfile" [disabled]="locked">
+            @for (p of riskProfiles; track p.id) {
+              <option [value]="p.id">{{ p.name }} — phi={{ p.phi }}, gamma={{ p.gamma }}</option>
+            }
+          </select>
+          @if (selectedProfileInfo) {
+            <div class="risk-profile-card">
+              <div class="risk-profile-header">
+                <span class="risk-profile-name">{{ selectedProfileInfo.name }}</span>
+                <div class="risk-profile-params">
+                  <span class="param-chip"><b>&phi;</b> {{ selectedProfileInfo.phi }}</span>
+                  <span class="param-chip"><b>&gamma;</b> {{ selectedProfileInfo.gamma }}</span>
+                </div>
+              </div>
+              <p class="risk-profile-desc">{{ selectedProfileInfo.description }}</p>
+            </div>
+          }
+        </div>
+      }
 
       <div class="button-group">
         <button class="btn btn-primary" (click)="runEntrenar()" [disabled]="locked">
@@ -177,6 +219,13 @@
             Walk-Forward
           }
         </button>
+        <button class="btn btn-secondary" (click)="runExpandingWindow()" [disabled]="locked">
+          @if (activeOperation === 'Expanding Window') {
+            <span class="spinner"></span> Ejecutando...
+          } @else {
+            Expanding Window
+          }
+        </button>
         <button class="btn btn-outline" (click)="runEspeculativo()" [disabled]="locked">
           @if (activeOperation === 'Agente Especulativo') {
             <span class="spinner"></span> Ajustando...
@@ -185,6 +234,93 @@
           }
         </button>
       </div>
+    </section>
+
+    <!-- ─── Análisis de Sensibilidad ──────────────────────────────────── -->
+    <section class="admin-section card">
+      <h2>Análisis de Sensibilidad</h2>
+      <p class="section-desc">
+        Entrena las <strong>4 configuraciones</strong> del reward PPO
+        (A: equilibrada, B: más MDD, C: menos turnover, D: agresiva) y
+        compara sus métricas en el mismo periodo de test.<br>
+        <strong>Nota:</strong> Tarda ~4× el tiempo de un entrenamiento normal.
+      </p>
+
+      <div class="train-params">
+        <div class="form-group">
+          <label for="saSteps">Steps por configuración</label>
+          <input id="saSteps" type="number" [(ngModel)]="saSteps"
+                 min="10000" step="10000" [disabled]="locked" />
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-primary" (click)="runSensitivityAnalysis()" [disabled]="locked">
+          @if (activeOperation === 'Análisis de Sensibilidad') {
+            <span class="spinner"></span> Ejecutando...
+          } @else {
+            Lanzar Sensitivity Analysis
+          }
+        </button>
+        <button class="btn btn-outline-sm" (click)="loadSensitivityResults()" [disabled]="sensitivityLoading">
+          @if (sensitivityLoading) {
+            <span class="spinner-sm"></span>
+          } @else {
+            Refrescar resultados
+          }
+        </button>
+      </div>
+
+      <!-- Resultados -->
+      @if (sensitivityData && sensitivityData.configs?.length > 0) {
+        <div class="sensitivity-results mt-1">
+          <h3>Resultados ({{ sensitivityData.n_configs }} configuraciones)</h3>
+          <div class="table-wrapper">
+            <table class="table-sm">
+              <thead>
+                <tr>
+                  <th>Config</th>
+                  <th>&phi;</th>
+                  <th>&gamma;</th>
+                  <th>Sharpe</th>
+                  <th>Retorno (%)</th>
+                  <th>MDD (%)</th>
+                  <th>Vol. anual (%)</th>
+                  <th>Valor Final ($)</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (c of sensitivityData.configs; track c.Config) {
+                  <tr>
+                    <td><strong>{{ c.Config }}</strong></td>
+                    <td>{{ c.phi }}</td>
+                    <td>{{ c.gamma }}</td>
+                    <td [class.best-metric]="isBestConfig(c.Config, 'sharpe')">
+                      {{ c['Sharpe Ratio'] | number:'1.2-3' }}
+                    </td>
+                    <td [class.best-metric]="isBestConfig(c.Config, 'retorno')">
+                      {{ c['Retorno Total (%)'] | number:'1.1-2' }}
+                    </td>
+                    <td [class.best-metric]="isBestConfig(c.Config, 'mdd')">
+                      {{ c['Max Drawdown (%)'] | number:'1.1-2' }}
+                    </td>
+                    <td>{{ c['Volatilidad Anualizada (%)'] | number:'1.1-2' }}</td>
+                    <td>{{ c['Valor Final ($)'] | number:'1.0-0' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <p class="sensitivity-hint">
+            Celdas resaltadas: mejor configuración por métrica.
+            Gráfica comparativa: <code>src/reports/sensitivity_analysis.png</code>.
+          </p>
+        </div>
+      } @else if (!sensitivityLoading) {
+        <p class="text-muted mt-1">
+          No hay resultados todavía. Lanza el análisis para generarlos.
+        </p>
+      }
     </section>
   </div>
 

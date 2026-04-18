@@ -43,6 +43,18 @@ export const routes: Routes = [
     canActivate: [authGuard]
   },
   {
+    path: 'resultados/tabla-final',
+    loadComponent: () =>
+      import('./pages/final-table/final-table.component').then(m => m.FinalTableComponent),
+    canActivate: [authGuard]
+  },
+  {
+    path: 'validacion',
+    loadComponent: () =>
+      import('./pages/validation/validation.component').then(m => m.ValidationComponent),
+    canActivate: [authGuard]
+  },
+  {
     path: 'admin',
     loadComponent: () =>
       import('./pages/admin/admin.component').then(m => m.AdminComponent),

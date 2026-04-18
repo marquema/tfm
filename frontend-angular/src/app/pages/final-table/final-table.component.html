@@ -1,0 +1,163 @@
+<div class="final-table-page">
+  <div class="page-header">
+    <div>
+      <h1>Resultados Conclusivos — TFM</h1>
+      <p class="page-subtitle">
+        Comparativa definitiva del agente PPO frente a las estrategias de referencia
+        en el periodo de test.
+      </p>
+    </div>
+    <button class="btn btn-outline-sm" (click)="load()" [disabled]="loading">
+      @if (loading) {
+        <span class="spinner-sm"></span>
+      } @else {
+        Actualizar
+      }
+    </button>
+  </div>
+
+  @if (loading && !data) {
+    <div class="loading-state">
+      <span class="spinner-lg"></span>
+      <p>Cargando tabla final...</p>
+    </div>
+  }
+
+  @if (errorMessage) {
+    <div class="alert alert-error">
+      {{ errorMessage }}
+      <br><br>
+      <a routerLink="/investor/simulator" class="btn btn-primary btn-sm">
+        Ir al simulador para generar datos
+      </a>
+    </div>
+  }
+
+  @if (data) {
+    <!-- Contexto del entrenamiento -->
+    <section class="card">
+      <h2>Contexto del entrenamiento</h2>
+      <div class="context-grid">
+        <div class="ctx-block">
+          <h3>Universo</h3>
+          <p><strong>{{ data.training_context?.universe?.n_assets || '?' }}</strong> activos</p>
+          <p class="ctx-small">
+            {{ data.training_context?.universe?.data_start || '?' }} → {{ data.training_context?.universe?.data_end || '?' }}
+          </p>
+          <p class="ctx-small">
+            {{ data.training_context?.universe?.n_days_total || 0 }} días · {{ data.training_context?.universe?.n_features || 0 }} features
+          </p>
+          <div class="ticker-chips">
+            @for (t of data.training_context?.universe?.tickers || []; track t) {
+              <span class="ticker-chip">{{ t }}</span>
+            }
+          </div>
+        </div>
+
+        <div class="ctx-block">
+          <h3>Modelo PPO</h3>
+          <p>Perfil: <strong>{{ data.training_context?.model?.risk_profile_name || 'Equilibrado' }}</strong></p>
+          <p class="ctx-small">&phi; = {{ data.training_context?.model?.phi }} · &gamma; = {{ data.training_context?.model?.gamma }}</p>
+          <p class="ctx-small">
+            {{ (data.training_context?.model?.steps || 0) | number:'1.0-0' }} pasos
+          </p>
+          <p class="ctx-small">Entrenado: {{ data.training_context?.model?.trained_at || '?' }}</p>
+        </div>
+
+        <div class="ctx-block">
+          <h3>Periodo de test</h3>
+          <p>
+            <strong>{{ data.training_context?.test_period?.start || '?' }}</strong>
+            →
+            <strong>{{ data.training_context?.test_period?.end || '?' }}</strong>
+          </p>
+          <p class="ctx-small">{{ data.training_context?.test_period?.days || 0 }} días</p>
+          <p class="ctx-small">Capital inicial: {{ data.training_context?.initial_capital }}</p>
+          <p class="ctx-small">Comisión: {{ data.training_context?.commission }}</p>
+          <p class="ctx-small">Split: {{ data.training_context?.split }}</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabla comparativa -->
+    <section class="card">
+      <h2>Métricas por estrategia</h2>
+      <div class="table-wrapper">
+        <table class="table-sm">
+          <thead>
+            <tr>
+              <th>Estrategia</th>
+              @for (col of metricColumns; track col.key) {
+                <th>{{ col.label }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (strat of strategies; track strat) {
+              <tr [class.row-ppo]="isPPO(strat)">
+                <td>
+                  <strong>{{ strat }}</strong>
+                  @if (isPPO(strat)) {
+                    <span class="badge-ppo">DRL</span>
+                  }
+                </td>
+                @for (col of metricColumns; track col.key) {
+                  <td [class.best-metric]="isBest(strat, col.key)">
+                    {{ metric(strat, col.key) | number: col.format }}
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="table-hint">
+        Celdas resaltadas = mejor estrategia por métrica.
+        Fila destacada = modelo PPO (propuesta del TFM).
+      </p>
+    </section>
+
+    <!-- PPO vs baselines -->
+    @if (baselineNames.length > 0) {
+      <section class="card">
+        <h2>PPO vs baselines</h2>
+        <div class="vs-grid">
+          @for (b of baselineNames; track b) {
+            @let cmp = comparison(b);
+            <div class="vs-card">
+              <h4>vs {{ b }}</h4>
+              <div class="vs-row" [class.win]="cmp?.ppo_wins_sharpe" [class.lose]="!cmp?.ppo_wins_sharpe">
+                <span>Sharpe</span>
+                <span>{{ cmp?.sharpe_diff > 0 ? '+' : '' }}{{ cmp?.sharpe_diff | number:'1.2-3' }}</span>
+              </div>
+              <div class="vs-row" [class.win]="cmp?.ppo_wins_retorno" [class.lose]="!cmp?.ppo_wins_retorno">
+                <span>Retorno</span>
+                <span>{{ cmp?.retorno_diff > 0 ? '+' : '' }}{{ cmp?.retorno_diff | number:'1.1-2' }}%</span>
+              </div>
+              <div class="vs-row" [class.win]="cmp?.ppo_wins_mdd" [class.lose]="!cmp?.ppo_wins_mdd">
+                <span>MDD</span>
+                <span>{{ cmp?.ppo_wins_mdd ? 'Mejor' : 'Peor' }}</span>
+              </div>
+              <div class="vs-row" [class.win]="cmp?.ppo_wins_sortino" [class.lose]="!cmp?.ppo_wins_sortino">
+                <span>Sortino</span>
+                <span>{{ cmp?.ppo_wins_sortino ? 'Mejor' : 'Peor' }}</span>
+              </div>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- Resumen -->
+    @if (data.summary?.length > 0) {
+      <section class="card">
+        <h2>Resumen ejecutivo</h2>
+        <ul class="summary-list">
+          @for (line of data.summary; track $index) {
+            <li>{{ line }}</li>
+          }
+        </ul>
+      </section>
+    }
+  }
+</div>

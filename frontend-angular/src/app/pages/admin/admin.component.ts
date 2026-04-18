@@ -29,6 +29,7 @@ export class AdminComponent implements OnInit, OnDestroy {
   // ─── Universo actual (tickers por defecto) ─────────────────────────────────
   defaultTickers: string[] = [];
   defaultTickersLoading = false;
+  lastScreenerMeta: { start: string; end: string; created_at: string } | null = null;
 
   // ─── Parámetros de fechas (compartidos entre screener y preparar datos) ────
   startDate = '2019-01-01';
@@ -47,6 +48,16 @@ export class AdminComponent implements OnInit, OnDestroy {
   // ─── Parámetros de entrenamiento ───────────────────────────────────────────
   trainSteps = 100000;
   wfSteps = 50000;
+  ewSteps = 100000;
+  saSteps = 200000;
+
+  // ─── Perfiles de riesgo ────────────────────────────────────────────────────
+  riskProfiles: any[] = [];
+  selectedRiskProfile = 'balanced';
+
+  // ─── Resultados de sensitivity analysis ───────────────────────────────────
+  sensitivityData: any = null;
+  sensitivityLoading = false;
 
   // ─── Log de mensajes ───────────────────────────────────────────────────────
   messages: { text: string; type: 'success' | 'error' | 'info'; time: Date }[] = [];
@@ -56,6 +67,8 @@ export class AdminComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.loadUsers();
     this.loadDefaultUniverse();
+    this.loadRiskProfiles();
+    this.loadSensitivityResults();
 
     // Recuperar operación de background activa (persiste entre navegaciones)
     const saved = localStorage.getItem('admin_active_op');
@@ -63,6 +76,67 @@ export class AdminComponent implements OnInit, OnDestroy {
       this.activeOperation = saved;
       this.log(`Operación en segundo plano: ${saved}. Pulsa "Desbloquear" cuando termine.`, 'info');
     }
+  }
+
+  loadRiskProfiles(): void {
+    this.api.getRiskProfiles().subscribe({
+      next: (data) => {
+        this.riskProfiles = Array.isArray(data) ? data : [];
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.riskProfiles = [];
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  get selectedProfileInfo(): any {
+    return this.riskProfiles.find(p => p.id === this.selectedRiskProfile);
+  }
+
+  // ─── Sensitivity analysis ──────────────────────────────────────────────────
+
+  loadSensitivityResults(): void {
+    this.sensitivityLoading = true;
+    this.api.getSensitivityResults().subscribe({
+      next: (data) => {
+        this.sensitivityLoading = false;
+        this.sensitivityData = data?.available ? data : null;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.sensitivityLoading = false;
+        this.sensitivityData = null;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  runSensitivityAnalysis(): void {
+    this.lockBackground('Análisis de Sensibilidad');
+    this.log(
+      `Análisis de sensibilidad lanzado (${this.saSteps.toLocaleString()} pasos × 4 configs). ` +
+      `Tarda ~4× un entrenamiento normal.`,
+      'info'
+    );
+
+    this.api.postSensitivityAnalysis(this.saSteps).subscribe({
+      next: (res) => {
+        this.activeOperation = 'Análisis de Sensibilidad (segundo plano)';
+        this.log(res.message || 'Análisis lanzado. Se desbloqueará automáticamente.', 'info');
+        this.startPolling('fase3_sa_done', () => this.loadSensitivityResults());
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.unlock();
+        this.log(err.error?.detail || 'Error al lanzar análisis de sensibilidad.', 'error');
+      }
+    });
+  }
+
+  isBestConfig(configName: string, metric: 'sharpe' | 'retorno' | 'mdd'): boolean {
+    return this.sensitivityData?.best_by_metric?.[metric]?.config === configName;
   }
 
   get locked(): boolean {
@@ -93,6 +167,32 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   loadDefaultUniverse(): void {
     this.defaultTickersLoading = true;
+
+    // Intentamos primero el último screener persistido (con métricas reales).
+    // Si no hay ninguno todavía, caemos al universo core como fallback.
+    this.api.getLastScreener().subscribe({
+      next: (data) => {
+        this.defaultTickersLoading = false;
+        if (data?.available && data.candidates?.length) {
+          this.defaultTickers = data.candidates;
+          this.screenerCandidates = data.details || [];
+          this.lastScreenerMeta = {
+            start: data.start_date,
+            end: data.end_date,
+            created_at: data.created_at,
+          };
+        } else {
+          this.loadFallbackUniverse();
+        }
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.loadFallbackUniverse();
+      }
+    });
+  }
+
+  private loadFallbackUniverse(): void {
     this.api.getUniverso('core').subscribe({
       next: (data) => {
         this.defaultTickersLoading = false;
@@ -101,6 +201,7 @@ export class AdminComponent implements OnInit, OnDestroy {
         } else if (data?.tickers) {
           this.defaultTickers = data.tickers;
         }
+        this.lastScreenerMeta = null;
         this.cdr.detectChanges();
       },
       error: () => {
@@ -180,9 +281,14 @@ export class AdminComponent implements OnInit, OnDestroy {
 
   runEntrenar(): void {
     this.lockBackground('Entrenamiento PPO');
-    this.log(`Entrenamiento PPO lanzado (${this.trainSteps.toLocaleString()} pasos). Corre en segundo plano — pulsa "Desbloquear" cuando veas que terminó en la terminal.`, 'info');
+    const profileName = this.selectedProfileInfo?.name || this.selectedRiskProfile;
+    this.log(
+      `Entrenamiento PPO lanzado (${this.trainSteps.toLocaleString()} pasos, perfil: ${profileName}). ` +
+      `Corre en segundo plano — se desbloqueará automáticamente.`,
+      'info'
+    );
 
-    this.api.postEntrenar(this.trainSteps).subscribe({
+    this.api.postEntrenar(this.trainSteps, this.selectedRiskProfile).subscribe({
       next: (res) => {
         this.activeOperation = 'Entrenamiento PPO (segundo plano)';
         this.log(res.message || 'Entrenamiento lanzado. Se desbloqueará automáticamente al terminar.', 'info');
@@ -212,6 +318,30 @@ export class AdminComponent implements OnInit, OnDestroy {
       error: (err) => {
         this.unlock();
         this.log(err.error?.detail || 'Error en walk-forward.', 'error');
+      }
+    });
+  }
+
+  // ─── Expanding Window (background — auto-detecta finalización) ────────────
+
+  runExpandingWindow(): void {
+    this.lockBackground('Expanding Window');
+    this.log(
+      `Expanding Window lanzado (${this.ewSteps.toLocaleString()} pasos/ventana, ` +
+      `min 504 días train, 63 días test). Se desbloqueará automáticamente.`,
+      'info'
+    );
+
+    this.api.postExpandingWindow(this.ewSteps).subscribe({
+      next: (res) => {
+        this.activeOperation = 'Expanding Window (segundo plano)';
+        this.log(res.message || 'Expanding Window lanzado.', 'info');
+        this.startPolling('fase3_ew_done');
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.unlock();
+        this.log(err.error?.detail || 'Error en expanding window.', 'error');
       }
     });
   }
@@ -255,7 +385,7 @@ export class AdminComponent implements OnInit, OnDestroy {
    * background task termina. Cuando el campo vigilado pasa a true,
    * desbloquea automáticamente sin intervención del usuario.
    */
-  private startPolling(field: string): void {
+  private startPolling(field: string, onComplete?: () => void): void {
     this.stopPolling();
     this.pollField = field;
 
@@ -269,6 +399,7 @@ export class AdminComponent implements OnInit, OnDestroy {
             this.stopPolling();
             this.unlock();
             this.log(`Operación completada: ${this.activeOperation || initialStatus}`, 'success');
+            if (onComplete) onComplete();
             this.cdr.detectChanges();
           }
         },

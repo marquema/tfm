@@ -74,6 +74,104 @@
   flex-direction: column;
 }
 
+.risk-profile-group {
+  margin-top: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.risk-profile-card {
+  margin-top: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+  border: 1px solid #e0e7ff;
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.risk-profile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.risk-profile-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.risk-profile-params {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.param-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.55rem;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: #475569;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
+.param-chip b {
+  color: #3b82f6;
+  font-weight: 700;
+}
+
+.risk-profile-desc {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: #475569;
+  text-align: justify;
+}
+
+.best-metric {
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+}
+
+.screener-meta {
+  margin: 0.25rem 0 0.6rem 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.subtitle-meta {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 400;
+  font-style: italic;
+  margin-left: 0.4rem;
+}
+
+.sensitivity-hint {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.sensitivity-hint code {
+  background: #f1f5f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
 /* ---- Users table ---- */
 .users-section {
   margin-top: 1.25rem;
