@@ -118,6 +118,33 @@ async def get_universe_endpoint(level: str = 'core'):
     return df.reset_index().to_dict(orient='records')
 
 
+@app.get("/screener/last", tags=["Público"])
+async def get_last_screener(db: Session = Depends(get_db)):
+    """
+    Retorna el último screener activo con sus métricas por activo.
+
+    A diferencia de /universo (que devuelve el CORE_UNIVERSE hardcodeado),
+    este endpoint refleja los candidatos reales seleccionados por el
+    screener — incluyendo sector, Sharpe rolling, volumen y volatilidad
+    calculados sobre los datos de mercado en el periodo usado.
+    """
+    screener = universe_repo.get_active_screener(db)
+    if screener is None:
+        return {"available": False, "candidates": [], "details": []}
+
+    return {
+        "available": True,
+        "candidates": screener.candidates or [],
+        "n_candidates": screener.n_candidates,
+        "start_date": screener.start_date,
+        "end_date": screener.end_date,
+        "filters": screener.filters_used,
+        "details": screener.details or [],
+        "created_at": str(screener.created_at)[:19] if screener.created_at else None,
+        "created_by": screener.created_by,
+    }
+
+
 @app.get("/walk-forward/results", tags=["Público"])
 async def get_walk_forward_results():
     """
@@ -257,6 +284,65 @@ async def get_final_table(db: Session = Depends(get_db)):
     }
 
 
+@app.get("/expanding-window/results", tags=["Público"])
+async def get_expanding_window_results():
+    """
+    Retorna los resultados del último expanding window ejecutado.
+
+    Mismo formato que /walk-forward/results pero con train desde el día 0
+    (train crece en cada ventana, test de 3 meses).
+    """
+    csv_path = 'src/reports/expanding_window_results.csv'
+    if not os.path.exists(csv_path):
+        return {"available": False, "error": "Expanding window no ejecutado aún."}
+
+    df = pd.read_csv(csv_path, index_col=0)
+    windows = df.to_dict(orient='records')
+    return {
+        "available": True,
+        "n_windows": len(windows),
+        "windows": windows,
+        "summary": {
+            "sharpe_mean": round(df['Sharpe Ratio'].mean(), 3),
+            "sharpe_std": round(df['Sharpe Ratio'].std(), 3),
+            "retorno_mean": round(df['Retorno Total (%)'].mean(), 1),
+            "mdd_mean": round(df['Max Drawdown (%)'].mean(), 1),
+            "windows_positive_sharpe": int((df['Sharpe Ratio'] > 0).sum()),
+        }
+    }
+
+
+@app.get("/sensitivity/results", tags=["Público"])
+async def get_sensitivity_results():
+    """
+    Retorna la tabla de resultados del análisis de sensibilidad.
+
+    Lee src/reports/sensitivity_analysis.csv generado por run_sensitivity_analysis
+    y lo devuelve como JSON listo para el frontend.
+    """
+    csv_path = 'src/reports/sensitivity_analysis.csv'
+    if not os.path.exists(csv_path):
+        return {"available": False, "error": "Análisis de sensibilidad no ejecutado aún."}
+
+    df = pd.read_csv(csv_path, index_col=0)
+    configs = df.reset_index().to_dict(orient='records')
+
+    best_sharpe_row = df['Sharpe Ratio'].idxmax()
+    best_return_row = df['Retorno Total (%)'].idxmax()
+    best_mdd_row = df['Max Drawdown (%)'].idxmax()  # menos negativo = mejor
+
+    return {
+        "available": True,
+        "n_configs": len(configs),
+        "configs": configs,
+        "best_by_metric": {
+            "sharpe": {"config": best_sharpe_row, "value": float(df.loc[best_sharpe_row, 'Sharpe Ratio'])},
+            "retorno": {"config": best_return_row, "value": float(df.loc[best_return_row, 'Retorno Total (%)'])},
+            "mdd": {"config": best_mdd_row, "value": float(df.loc[best_mdd_row, 'Max Drawdown (%)'])},
+        },
+    }
+
+
 @app.get("/risk-profiles", tags=["Público"])
 async def get_risk_profiles():
     """
@@ -277,6 +363,7 @@ async def get_system_status():
     training_running = os.path.exists('models/.training.lock')
     wf_running       = os.path.exists('models/.walkforward.lock')
     ew_running       = os.path.exists('models/.expanding.lock')
+    sa_running       = os.path.exists('models/.sensitivity.lock')
 
     return {
         "fase1_datos":          os.path.exists('data/normalized_features.csv'),
@@ -284,8 +371,9 @@ async def get_system_status():
         "fase3_training_done":  os.path.exists('models/best_model_academic/best_model.zip') and not training_running,
         "fase3_wf_done":        os.path.exists('src/reports/walk_forward_results.csv') and not wf_running,
         "fase3_ew_done":        os.path.exists('src/reports/expanding_window_results.csv') and not ew_running,
+        "fase3_sa_done":        os.path.exists('src/reports/sensitivity_analysis.csv') and not sa_running,
         "fase4_especulativo":   os.path.exists('models/speculative_gmm.pkl'),
-        "background_running":   training_running or wf_running or ew_running,
+        "background_running":   training_running or wf_running or ew_running or sa_running,
     }
 
 
@@ -321,6 +409,11 @@ async def run_screener(
         force_include=['IVV', 'BND', 'IBIT', 'ETHA']
     )
 
+    details_records = (
+        result['details'].to_dict(orient='records')
+        if not result['details'].empty else []
+    )
+
     # Guardar resultado en BD para que preparar-datos lo use como default
     universe_repo.save_screener_result(
         db,
@@ -328,13 +421,14 @@ async def run_screener(
         start_date=start_date,
         end_date=end_date,
         filters={"top_n": top_n, "max_per_sector": max_per_sector},
+        details=details_records,
         created_by=admin.email,
     )
 
     return {
         "candidates": result['candidates'],
         "n_candidates": len(result['candidates']),
-        "details": result['details'].to_dict(orient='records') if not result['details'].empty else [],
+        "details": details_records,
         "filtered_out": result['filtered_out'],
         "info": "Estos tickers se usarán por defecto en /admin/fase1/preparar-datos",
     }
