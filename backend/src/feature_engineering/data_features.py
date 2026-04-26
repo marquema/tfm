@@ -1,29 +1,42 @@
 """
-Modulo de ingenieria de caracteristicas financieras.
+Módulo de ingeniería de características financieras.
 
-Reciben DataFrames y devuelven DataFrames transformados.
+Es la fase 2 del pipeline TFM: recibe los datos crudos OHLCV de cada activo
+(que vienen de data_downloader.py) y genera las features que verá el agente
+PPO en cada paso. Cada función recibe DataFrames y devuelve DataFrames
+transformados, sin efectos colaterales.
 
-Caracteristicas generadas por activo:
-  - Retornos logaritmicos (garantizan aditividad temporal):ln(precio_hoy / precio_ayer)
-        ln mejor que porcentaje, que es más propenso a errores y mete ruído a las neuronas.
-  - Momentum a multiples horizontes (5d, 20d, 60d): Cuánto ha subido o bajado el precio en los últimos 5, 20 y 60 días de trading
+Características generadas por activo:
+  - Retornos logarítmicos (garantizan aditividad temporal): ln(precio_hoy / precio_ayer).
+        Los retornos logarítmicos suman entre sí en lugar de multiplicarse (los
+        simples requieren productos de (1+r)), lo que estabiliza numéricamente
+        las redes neuronales y evita los sesgos de las escalas porcentuales.
+  - Momentum a multiples horizontes (5d, 20d, 60d): Cuánto ha subido o bajado el precio en los últimos 5, 20 
+        y 60 días de trading
         5 días (1 semana): ruido de corto plazo — ¿hay presión compradora/vendedora inmediata?
         20 días (1 mes): señal de medio plazo — ¿el activo está en tendencia alcista o bajista?
         60 días (1 trimestre): tendencia estructural — ¿el mercado ha cambiado de dirección?
-        Si los tres son positivos simultáneamente, el activo tiene momentum fuerte en todas las escalas temporales. Si el de 5 días es negativo pero el de 60 es positivo, puede ser un retroceso temporal dentro de una tendencia alcista — oportunidad de compra para el agente.
+        Si los tres son positivos simultáneamente, el activo tiene momentum fuerte en todas las escalas 
+        temporales. Si el de 5 días es negativo pero el de 60 es positivo, puede ser un retroceso temporal 
+        dentro de una tendencia alcista — oportunidad de compra para el agente.
 
   - Volatilidad, asimetria y curtosis rolling (captura de colas pesadas y memoria larga):
-        Volatilidad: la oscilación, la dispersión del movimiento. Subidas sostenidas del 1% todos los días serán volatilidad 0. Uno que alterna +3% y -3% tiene volatilidad 
-            alta aunque su media sea 0%.
-        Asimetría - Skew negativo (ej. -1.5): la mayoría de días son ligeramente positivos, pero de vez en cuando hay una caída grande. Es el patrón típico de las acciones — suben lento y caen rápido (efecto "escalera arriba, ascensor abajo").
-        Asimetría - Skew positivo (ej. +2.0): la mayoría de días son ligeramente negativos, pero de vez en cuando hay un rally explosivo. Patrón típico de opciones o criptomonedas.
-        El agente puede aprender que un activo con skew negativo creciente está acumulando riesgo de caída brusca. 
-        
+        Volatilidad: la oscilación, la dispersión del movimiento. Subidas sostenidas del 1% todos los días 
+            serán volatilidad 0. Uno que alterna +3% y -3% tiene volatilidad  alta aunque su media sea 0%.
+        Asimetría - Skew negativo (ej. -1.5): la mayoría de días son ligeramente positivos, pero de vez en 
+            cuando hay una caída grande. Es el patrón típico de las acciones — suben lento y caen rápido 
+            (efecto "escalera arriba, ascensor abajo").
+        Asimetría - Skew positivo (ej. +2.0): la mayoría de días son ligeramente negativos, pero de vez en
+            cuando hay un rally explosivo. Patrón típico de opciones o criptomonedas. El agente puede aprender 
+            que un activo con skew negativo creciente está acumulando riesgo de caída brusca.         
         Detector de colas pesadas - Curtosis ≈ 3: distribución normal — las sorpresas extremas son muy raras
-        Detector de colas pesadas - Curtosis >> 3 (ej. 10, 20): leptocúrtica — días de ±5% ocurren con mucha más frecuencia de lo que una distribución normal predice. Es el mundo real de los mercados financieros.
-        La "memoria larga" se refiere a que usar ventanas amplias (60 días) captura si este patrón de colas pesadas es reciente o lleva meses instalado.
+        Detector de colas pesadas - Curtosis >> 3 (ej. 10, 20): días de ±5% ocurren con mucha más frecuencia de lo 
+        que una distribución normal predice. Es el mundo real de los mercados financieros.
+        La "memoria larga" se refiere a que usar ventanas amplias (60 días) captura si este patrón de colas pesadas
+        es reciente o lleva meses instalado.
                     
-  - Drawdown desde el maximo de la ventana larga (proxy de riesgo reciente): Cuánto ha caído el precio respecto a su máximo de los últimos 60 días. 
+  - Drawdown desde el maximo de la ventana larga (proxy de riesgo reciente): Cuánto ha caído el precio respecto a 
+        su máximo de los últimos 60 días. 
         Siempre es negativo o cero:
             0%: el precio está en máximos de la ventana
             -15%: ha caído un 15% desde su pico reciente
@@ -36,13 +49,39 @@ Caracteristicas generadas por activo:
             Mide la proporción de días alcistas vs bajistas recientes:
             RSI > 70: "sobrecomprado" — el precio ha subido mucho, hay presión de venta latente
             RSI < 30: "sobrevendido" — el precio ha caído mucho, posible rebote
-            Es la señal más usada en trading técnico desde los años 70 (Wilder, 1978)
+            Documentación: Es la señal más usada en trading técnico desde los años 70 (Wilder, 1978)
         MACD diff (Moving Average Convergence Divergence) — 
             Diferencia entre dos medias móviles exponenciales (rápida de 12 días, 
             lenta de 26 días). Cuando la rápida cruza por encima de la lenta, es señal 
             alcista; cuando cruza por debajo, bajista. El "diff" es la distancia entre 
             la línea MACD y su propia señal (media de 9 días) — captura la aceleración 
             de la tendencia.
+            Para tontos: la EMA es como la opinión sobre el clima. Si lleva 30 días de sol y mañana llueve, 
+                no decimos "bah, da igual, la media es soleado". Le das más peso al cambio reciente. Eso es 
+                exactamente lo que hace la EMA.
+                El MACD — la diferencia entre dos EMAs. El MACD es una sola operación: restar dos EMAs distintas, 
+                una más rápida (sensible) y otra más lenta (estable):
+                MACD = EMA_12_dias  −  EMA_26_dias
+                            ↑              ↑
+                        rápida         lenta
+                    (reacciona     (reacciona
+                        rápido)        despacio)
+                    Qué significa el resultado
+                    MACD positivo → la EMA rápida está por encima de la lenta → el precio reciente es mayor que el promedio de 
+                        largo plazo → tendencia alcista ("el precio está subiendo recientemente más rápido de lo 
+                        normal").
+                    MACD negativo → la rápida por debajo de la lenta → tendencia bajista.
+                    MACD cruzando de negativo a positivo = "señal alcista" (Golden cross). El momentum cambia.
+                    MACD cruzando de positivo a negativo = "señal bajista" (Death cross).
+
+                Qué dice el diff
+                Si el MACD está por encima de su línea de señal → la tendencia se está acelerando en la dirección 
+                    actual. Si era alcista, está cogiendo más fuerza.
+                Si el MACD está por debajo de su señal → la tendencia se está desacelerando. Si era alcista, 
+                    empieza a perder fuerza (posible reversión).
+                Resumen: el MACD te dice "vas hacia arriba o hacia abajo". El diff te dice "estás acelerando o 
+                    frenando en esa dirección".
+
         ATR (Average True Range) — rango medio real. 
             No mide dirección, solo cuánto se mueve el precio en un día típico 
             (incluyendo gaps entre cierre y apertura). Un ATR alto significa que el 
@@ -76,11 +115,83 @@ from ta import add_all_ta_features
 DEFAULT_WINDOWS = [5, 20, 60]
 
 # Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos
+# en vez de medir correlaciones a lo loco entre todos los activos, eliges 3 pares con historia que contar al agente. Le das la información concentrada y útil.
 DEFAULT_CORRELATION_PAIRS = [
     ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable — activo de riesgo o refugio?
     ('IBIT', 'BND'),  # Bitcoin vs Bonos — diversificador o activo especulativo?
     ('IVV',  'BND'),  # Renta Variable vs Bonos — correlacion clasica de cartera
 ]
+
+#todo: implmenentar esto y verlo con Ruben!!!!
+#¿Tienen sentido los 3 pares actuales en TFM?
+#Sí, los tres son defendibles, pero respondo solo a 2 de las 3 preguntas centrales del 
+# TFM:
+#Par actual	Pregunta financiera	Relevancia TFM
+#IBIT-IVV	"¿Bitcoin actúa como activo de riesgo o como refugio?"	Alta — central a la tesis "criptoactivos en inversión tradicional"
+#IBIT-BND	"¿Bitcoin descorrelaciona con bonos?"	Media — interesante pero la dinámica histórica BTC-bonos es débil
+#IVV-BND	"¿Sigue funcionando la 60/40 clásica?"	Alta — el benchmark del TFM lleva una variante 60/40
+
+#El problema que — ETHA está ausente
+#Y es un problema gordo, considerando que para TFM: "Integrando Criptoactivos en la Inversión Tradicional" 
+# Cripto-ETFs obligatorios (IBIT + ETHA) precisamente para diferenciarlos como clases de 
+# activo distintas.
+
+# ETHA no aparece en NINGÚN par. El agente no recibe ninguna señal de correlación dinámica 
+# de Ethereum. Eso significa:
+# No aprende la diferencia entre "Bitcoin actúa como reserva de valor" vs "Ethereum actúa 
+# como activo tecnológico/DeFi".
+# No detecta cuándo ETHA y IBIT divergen (información clave para diversificación cripto).
+# No mide cómo ETHA se comporta frente a renta variable o bonos.
+# Es una incoherencia académica entre el ALCANCE del TFM y los datos que recibe el modelo.
+# Pares que faltan, por orden de prioridad
+# Críticos 
+# ('ETHA', 'IBIT'),  # Ethereum vs Bitcoin — ¿son la misma cosa o se mueven distinto?
+# Por qué: es el par más TFM-relevante de todos. Si ambos cripto-ETFs siempre correlacionan 
+# a 0.95, el TFM defiende algo trivial ("añadir cripto a la cartera" = "añadir Bitcoin"). 
+# Si la correlación oscila (0.7 en bonanza, 0.95 en crisis), demuestro que diferenciar 
+# entre criptos aporta valor real al modelo. Es el argumento que justifica por qué tengo
+# 2 cripto-ETFs y no solo 1.
+# 
+# Importantes. Validar tutor.
+# ('ETHA', 'IVV'),   # Ethereum vs Renta Variable — perfil idéntico al de IBIT-IVV
+# Por qué: paraleliza el análisis que hago con IBIT. Sin este par, el modelo "ve" 
+# cómo Bitcoin se relaciona con la bolsa pero no Ethereum — inconsistente con la tesis.
+
+# Posibles, pero weno, no relevantes
+# ('ETHA', 'BND'),   # Ethereum vs Bonos
+# Por qué dudo: misma debilidad que IBIT-BND — la dinámica histórica cripto-bonos es 
+# ruido en gran medida?? Lo añadiría x simetría con el análisis de IBIT.
+#
+# Más features?? no siempre es mejor:
+
+#DEFAULT_CORRELATION_PAIRS = [
+#    # Bloque "cripto vs tradicional" — ¿son las criptos activos de riesgo o refugio?
+#    ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable
+#    ('ETHA', 'IVV'),  # Ethereum vs Renta Variable
+#    # Bloque "cripto vs renta fija" — ¿descorrelacionan con bonos?
+#    ('IBIT', 'BND'),
+#    # Bloque "intra-cripto" — ¿BTC y ETH son la misma cosa o se diferencian?
+#    ('ETHA', 'IBIT'),  # CLAVE para defender la elección de 2 cripto-ETFs
+#    # Cartera clásica
+#    ('IVV',  'BND'),  # 60/40 — ¿sigue funcionando?
+#]
+
+#Justificación para la memoria del TFM: "Se seleccionaron 5 pares de correlación dinámica 
+# que cubren tres ejes analíticos: cripto-vs-tradicional, intra-cripto, y la cartera 
+# clásica 60/40. Esta selección permite al agente detectar cambios de régimen en cada uno
+# de los pilares de la tesis (criptoactivos como diversificadores, diferenciación entre 
+# Bitcoin y Ethereum, robustez de la 60/40 ante mercados modernos)."
+
+#Riesgo a vigilar
+# ETHA solo existe desde julio 2024. Para backtests sobre 2018-2024, las correlaciones 
+# que involucren ETHA serán NaN la mayor parte del periodo. El pipeline ya contempla eso 
+# (limpieza columnar en generate_dataset), pero conviene saber que:
+# Si entreno con dataset largo (ej. 2018-2026), las features de ETHA tendrán datos 
+# válidos solo en los últimos 2 años.
+# Si la ventana rolling de 60d empieza antes de julio 2024, generará NaN durante los 
+# primeros 60d posteriores al listado.
+# mencionarlo en la memoria como "limitación de datos" cuando expliques estas correlaciones.
+
 
 
 # ─────────────────────────────────────────────
@@ -91,7 +202,7 @@ def compute_price_features(df_ohlcv: pd.DataFrame, ticker: str,
                            windows: list = None) -> pd.DataFrame:
     """
     Calcula el conjunto completo de features estadisticas y tecnicas para un activo.
-    Esta función son los "ojos" de nuestro modelo.
+    Esta función son los "ojos" de mi modelo.
 
     Genera retornos logaritmicos, momentum a multiples horizontes, estadisticos
     de orden superior (volatilidad, asimetria, curtosis), drawdown, indicadores
@@ -184,9 +295,11 @@ def compute_price_features(df_ohlcv: pd.DataFrame, ticker: str,
     df_feat[f'{ticker}_vol_relativo'] = df_ohlcv['Volume'] / (vol_mean_20 + 1e-8)
 
     # ── Iliquidez de Amihud ────────────────────────────────────────────────────
-    # |retorno diario| / volumen en dolares. Mide el impacto de precio por unidad de volumen.
-    # Alta iliquidez -> mayor slippage -> mayor riesgo de ejecucion. El precio "salta" con poco dinero.
-    # peligro de entrar salir con mucho capital
+    # |retorno diario| / volumen en dólares. Mide el impacto sobre el precio
+    # por cada dólar negociado (Amihud, 2002). Alta iliquidez → el precio
+    # "salta" con poco dinero → mayor slippage al ejecutar órdenes grandes.
+    # Aviso para el agente: entrar/salir con mucho capital en este activo
+    # erosionará el alpha esperado por costes de ejecución.
     dollar_volume = df_ohlcv['Volume'] * df_ohlcv['Close']
     df_feat[f'{ticker}_amihud'] = returns.abs() / (dollar_volume + 1e-8)
 
@@ -309,12 +422,19 @@ def compute_calendar_features(index: pd.DatetimeIndex) -> pd.DataFrame:
     Capturan anomalias estacionales documentadas en finanzas:
       - Efecto lunes: retornos historicamente negativos los lunes.
       - Efecto enero: mayor rentabilidad en el primer mes del ano.
-      - Efecto fin de trimestre: window dressing institucional en Q4, maquillaje.
+      - Efecto fin de trimestre: "window dressing" — los gestores ajustan
+        carteras para que el reporte trimestral muestre las posiciones
+        que querrían que sus clientes vieran (maquillaje contable).
       - Efecto fin de mes: flujos de rebalanceo sistematico.
 
-    Al ser features deterministas (sin lookahead), no introducen data leakage.
-        Data leakage: fuga de datos. Permitir ve el 100% del dataset y luego precedir....desastre.
-        Lookahead: es un data leakage.
+    Al ser features deterministas (calculadas desde la fecha del calendario,
+    no desde estadísticos de mercado), no introducen data leakage.
+        Data leakage: "fuga de datos". El modelo ve durante el entrenamiento
+            información que no debería conocer (ej. estadísticos calculados
+            con datos del futuro). Infla métricas in-sample y hunde el
+            rendimiento real en producción.
+        Lookahead bias: caso particular de data leakage donde la fuga viene
+            del eje temporal — el modelo "ve hacia el futuro".
 
     Parameters
     ----------

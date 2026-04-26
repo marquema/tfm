@@ -1,30 +1,40 @@
 """
 Pipeline principal de descarga y preprocesamiento de datos financieros.
 
-Orquesta la ingesta desde Yahoo Finance, la ingeniería de características
-y el guardado de los CSVs resultantes en el directorio data/.
+Orquesta la ingesta desde Yahoo Finance, la ingeniería de características y
+el guardado de los CSVs resultantes en el directorio data/. Es la "fase 1"
+del TFM: traduce un universo de tickers a los dos CSVs que después
+consume el entorno PortfolioEnv para entrenar al PPO.
 
-Fases del pipeline:
-  1. Descarga de datos OHLCV por ticker (con sesión resiliente para proxies SSL)
-  2. Cálculo de features estadísticas y técnicas por activo
-  3. Correlaciones dinámicas entre pares de activos: para ver si estamos en un activo refugio o no
-  4. Indicadores de régimen de volatilidad
-  4b. Beta rolling respecto al mercado (sensibilidad sistémica):
-    rolling: ventana deslizante, o proceso que se actualiza en de forma recurrente, diaria, etc.
-  4c. Features de calendario (anomalías estacionales)
-  5. Features de dividendos (calidad del pago: crecimiento, estabilidad, riesgo de cola):
-        z-score: valor - media/ desv_estandar. Para llevarlo todo a estacala comparable.
-  6. Limpieza, normalización Z-Score (solo estadísticas de train) y guardado:
-        Solo estadísticas de train, para no ver los datos de "test" y ver el futuro.
+Fases del pipeline (alineadas con los bloques numerados en generate_dataset):
+  1. Descarga de datos OHLCV por ticker (con sesión resiliente para proxies SSL).
+  2. Cálculo de features estadísticas y técnicas por activo (ver data_features.py).
+  3. Correlaciones dinámicas entre pares: detectan si un activo está actuando
+     como refugio o como activo de riesgo según el régimen de mercado.
+  4. Indicadores de régimen de volatilidad (binario: alta/baja vol).
+  5. Beta rolling respecto al mercado (sensibilidad sistémica al S&P 500).
+     "Rolling" = cálculo en ventana deslizante, se actualiza día a día.
+     Quiero rolling, no expanding: "¿Cómo se está moviendo HOY este activo respecto al 
+     mercado?" No: "¿Cuál es el promedio de su comportamiento desde el día 0?".
+     
+  6. Features de calendario (anomalías estacionales: efecto lunes, fin de mes).
+  7. Features de dividendos (crecimiento, estabilidad, riesgo de cola del pago).
+  8. Limpieza, normalización Z-Score y guardado en disco.
+     Z-Score = (valor − media) / desviación. Lleva todas las features a una
+     escala comparable. CRÍTICO: media y std se calculan SOLO con datos de
+     train (80 % inicial) para evitar lookahead bias — si las calculásemos
+     con todo el dataset, el agente vería implícitamente estadísticos del
+     futuro durante el entrenamiento, inflando métricas in-sample.
 
 Los CSVs se guardan en orden ASCENDENTE (fecha más antigua primero).
 Esto garantiza que el split temporal 80/20 en el entorno de entrenamiento
-funcione correctamente: el 80% inicial corresponde al pasado y el 20% final
-al período de test out-of-sample.
+funcione correctamente: el 80 % inicial corresponde al pasado y el 20 %
+final al período de test out-of-sample.
 
 Robusto para cualquier rango de fechas: datasets cortos (< 1 año), medianos
-(1-5 años) o largos (5-25 años). Las ventanas rolling se adaptan y la limpieza
-columnar previene CSVs vacíos independientemente del tamaño del dataset.
+(1-5 años) o largos (5-25 años). Las ventanas rolling se adaptan al tamaño
+disponible y la limpieza columnar previene CSVs vacíos cuando alguna ventana
+no tiene suficientes días para calcularse.
 """
 
 import os
@@ -68,10 +78,7 @@ DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 
-# ─────────────────────────────────────────────
 # Sesión HTTP resiliente (proxies corporativos)
-# ─────────────────────────────────────────────
-
 def _create_session():
     """
     Crea una sesión HTTP que sortea proxies SSL corporativos.
@@ -101,14 +108,23 @@ def download_prices(tickers: list, start_date: str, end_date: str) -> dict:
     """
     Descarga datos OHLCV de Yahoo Finance para cada ticker.
 
+    NOTA: esta función NO se llama actualmente desde el flujo principal —
+    `generate_dataset` usa data_source.HistoricalSource (abstracción que
+    permite cambiar de fuente sin tocar el pipeline). Se mantiene como
+    fallback y como utilidad para scripts de exploración.
+        Fallback: si en algún momento la abstracción data_source falla o se quiere 
+        desactivar (ej. probar algo rápido), tengo esta función directa que va contra 
+        Yahoo Finance sin pasar por la capa intermedia.
+        Utilidad para scripts de exploración: si quiero abrir un Jupyter notebook y 
+        descargar datos rápidamente "a ver cómo se ve IBIT en 2024".
     Maneja errores de forma individual: si un ticker falla, el pipeline
     continúa con los restantes. Solo retorna tickers con datos válidos.
 
     Parameters
     ----------
-    tickers    : lista de símbolos (ej. ['IVV', 'BND', 'IBIT'])
+    tickers : lista de símbolos (ej. ['IVV', 'BND', 'IBIT'])
     start_date : fecha de inicio en formato 'YYYY-MM-DD'
-    end_date   : fecha de fin en formato 'YYYY-MM-DD'
+    end_date : fecha de fin en formato 'YYYY-MM-DD'
 
     Returns
     -------
@@ -135,32 +151,46 @@ def download_prices(tickers: list, start_date: str, end_date: str) -> dict:
     return data
 
 
-# ─────────────────────────────────────────────
+# ───────────────────────────────────────
 # Features de dividendos
-# ─────────────────────────────────────────────
+# ──────────────────────────────────────────
 
 def download_dividends(tickers: list, start_date: str, end_date: str) -> pd.DataFrame:
     """
     Descarga y calcula features de calidad del dividendo para cada ticker.
 
     La dinámica del dividendo aporta información más alla del importe pagado:
-      - div_growth:     cambio porcentual entre pagos consecutivos (tendencia)
+      - div_growth:  cambio porcentual entre pagos consecutivos (tendencia)
       - div_volatility: desviación estándar rolling (4 pagos - 1 año) → estabilidad
-      - div_kurtosis:   curtosis rolling (8 pagos - 2 años) → riesgo de cola
-                        Alta curtosis = recortes raros pero extremos
-      - div_skewness:   asimetría rolling (8 pagos) → sesgo en los cambios
+      - div_kurtosis: curtosis rolling (8 pagos - 2 años) → riesgo de cola
+                        Alta curtosis = recortes raros pero extremos.
+            Qué mide: cómo de "extremas" son las colas de una distribución. Para tontos: 
+            la curtosis avisa de empresas que parecen seguras 99 % del tiempo pero 
+            pueden dar un susto enorme en el 1 % restante. Datos diarios no la detectan; 
+            el agente sí, mirándola.
+      - div_skewness: asimetría rolling (8 pagos) → sesgo en los cambios.
+            Qué mide: si los movimientos tienden más a un lado que al otro.
+            
+            Skew negativo (cola larga a la izquierda): la mayoría de cambios son 
+                ligeramente positivos, pero las sorpresas grandes son recortes. Ej.: una 
+                empresa madura que sube su dividendo 1 % cada trimestre durante años, y de 
+                repente lo recorta un 30 % en una crisis.
+
+            Skew positivo (cola larga a la derecha): la mayoría de cambios son neutros o 
+            ligeramente negativos, pero las sorpresas grandes son subidas inesperadas 
+            (especiales, dividendos extra).
 
     Las series trimestrales se expanden a frecuencia diaria con forward fill
     para que el agente tenga la información en cada paso de trading.
 
     Min 4 pagos requeridos por ticker: con menos, las estadísticas rolling
-    serían casi enteramente NaN y añadirían basurilla
+    serían casi enteramente NaN y aportarían ruido sin información útil.
 
     Parameters
     ----------
-    tickers    : lista de símbolos
+    tickers : lista de símbolos
     start_date : fecha de inicio 'YYYY-MM-DD'
-    end_date   : fecha de fin 'YYYY-MM-DD'
+    end_date : fecha de fin 'YYYY-MM-DD'
 
     Returns
     -------
@@ -217,9 +247,10 @@ def download_dividends(tickers: list, start_date: str, end_date: str) -> pd.Data
     return result
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Pipeline principal
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
+
 def generate_dataset(tickers: list,
                      start_date: str,
                      end_date: str,
@@ -240,13 +271,14 @@ def generate_dataset(tickers: list,
 
     Parameters
     ----------
-    tickers           : lista de símbolos del universo de inversión
-    start_date        : fecha de inicio 'YYYY-MM-DD'
-    end_date          : fecha de fin 'YYYY-MM-DD'
-    windows           : tamaños de ventana rolling para features (por defecto [5, 20, 60]). Son días
-    correlation_pairs : pares (ticker_a, ticker_b) para correlaciones dinámicas
+    tickers  : lista de símbolos del universo de inversión
+    start_date : fecha de inicio 'YYYY-MM-DD'
+    end_date  : fecha de fin 'YYYY-MM-DD'
+    windows: tamaños de ventana rolling para features (por defecto [5, 20, 60]). Son días
+    correlation_pairs : pares (ticker_a, ticker_b) para correlaciones dinámicas.
+        es la lista de parejas de activos cuya correlación queremos vigilar a lo largo del tiempo.
     include_dividends : si True, añade features de calidad del dividendo
-    source            : instancia de DataSource. None → HistoricalSource (Yahoo Finance EOD).
+    source : instancia de DataSource. None → HistoricalSource (Yahoo Finance EOD).
                         Pasar LiveSource() para datos en tiempo real.
 
     Returns
@@ -268,7 +300,7 @@ def generate_dataset(tickers: list,
             from src.pipeline_getdata.data_source import HistoricalSource
         source = HistoricalSource()
 
-    # ── Fase 1: Descarga de datos OHLCV ──────────────────────────────────────
+    # ── Fase 1: Descarga de datos OHLCV 
     print(f"\n=== FASE 1: Descarga de datos de mercado [{source.nombre()}] ===")
     raw_data = {}
     for ticker in tickers:
@@ -288,7 +320,7 @@ def generate_dataset(tickers: list,
     if not valid_tickers:
         raise ValueError("No se pudo descargar ningún ticker. Verifica la conexión y los símbolos.")
 
-    # ── Fase 2: Features estadísticas y técnicas por activo ──────────────────
+    # ── Fase 2: Features estadísticas y técnicas por activo 
     print(f"\n=== FASE 2: Ingeniería de características ({len(valid_tickers)} activos) ===")
     feature_list = []
     close_prices = pd.DataFrame()
@@ -302,30 +334,37 @@ def generate_dataset(tickers: list,
 
     dataset = pd.concat(feature_list, axis=1)
 
-    # ── Fase 3: Correlaciones dinámicas entre activos ────────────────────────
-    # Correlaciones rolling entre pares capturan la diversificación cambiante: pares de valores en intervalos
-    # de tiempos
-    # Cuando corr(IBIT, IVV) sube → Bitcoin se comporta como activo de riesgo.
-    # Cuando baja → actúa como diversificador. El agente aprende a reducir
-    # exposición a IBIT cuando la correlación con renta variable aumenta.
+    # ── Fase 3: Correlaciones dinámicas entre activos 
+    # Correlaciones rolling entre pares de activos en ventanas deslizantes.
+    # Capturan la diversificación cambiante a lo largo del tiempo:
+    #   Cuando corr(IBIT, IVV) sube → Bitcoin se comporta como activo de riesgo.
+    #   Cuando baja → actúa como diversificador real.
+    # El agente aprende a reducir exposición a IBIT cuando la correlación con
+    # renta variable aumenta — porque entonces no aporta diversificación.
     print(f"\n=== FASE 3: Correlaciones dinámicas entre activos ===")
     df_corr = calcular_correlaciones_dinamicas(dataset, correlation_pairs, windows=[20, 60])
     dataset = pd.concat([dataset, df_corr], axis=1)
     print(f"  {len(df_corr.columns)} columnas de correlación añadidas.")
 
-    # ── Fase 4: Indicadores de régimen de volatilidad ────────────────────────
-    # Indicador binario: ¿la vol de corto plazo supera 1.5× la de largo plazo?
-    # Permite al agente reducir exposición a activos volátiles ANTES de un crash.
-    # significa un evento inesperado, y ojito, peluigro
-    print(f"\n=== FASE 4: Indicadores de régimen de volatilidad. Peligro potencial ===")
+    # ── Fase 4: Indicadores de régimen de volatilidad 
+    # Indicador binario: ¿la volatilidad de corto plazo supera 1.5× la de largo plazo?
+    # Cuando es así, el mercado está en régimen turbulento — el agente puede
+    # reducir exposición a activos volátiles ANTES de que se concrete un crash,
+    # en lugar de reaccionar a posteriori.
+    print(f"\n=== FASE 4: Indicadores de régimen de volatilidad ===")
     df_reg  = calcular_regimen_volatilidad(dataset, valid_tickers)
     dataset = pd.concat([dataset, df_reg], axis=1)
     print(f"  {len(df_reg.columns)} indicadores de régimen añadidos.")
 
-    # ── Fase 4b: Beta rolling respecto al mercado (IVV como proxy) ───────────
+    # ── Fase 4b: Beta rolling respecto al mercado (IVV como proxy) 
     # Beta = Cov(r_activo, r_mercado) / Var(r_mercado)
     # Beta alta → el activo amplifica las caídas del mercado.
     # Beta negativa → cobertura natural (relevante para BND en crisis).
+    
+    # Para tontos: Beta alta = "se mueve más fuerte que el mercado en ambas direcciones". 
+    # Buena en bonanza, mala en crisis. Beta negativa = "se mueve al contrario del mercado
+    # Es como tener un paraguas: aburrido los días soleados, vital cuando llueve.
+
     market_ticker = 'IVV' if 'IVV' in valid_tickers else valid_tickers[0]
     df_beta = calcular_beta_rolling(dataset, valid_tickers, market_ticker=market_ticker)
     if not df_beta.empty:
@@ -340,7 +379,7 @@ def generate_dataset(tickers: list,
     dataset = pd.concat([dataset, df_cal], axis=1)
     print(f"  {len(df_cal.columns)} features de calendario añadidas.")
 
-    # ── Fase 5: Features de dividendos (opcional) ────────────────────────────
+    # ── Fase 5: Features de dividendos (opcional) 
     if include_dividends:
         print(f"\n=== FASE 5: Features de dividendos ===")
         df_divs = download_dividends(valid_tickers, start_date, end_date)
@@ -349,7 +388,7 @@ def generate_dataset(tickers: list,
             dataset = pd.concat([dataset, df_divs_aligned], axis=1)
             print(f"  {len(df_divs_aligned.columns)} features de dividendos incorporadas.")
 
-    # ── Fase 6: Limpieza, normalización y guardado ───────────────────────────
+    # ── Fase 6: Limpieza, normalización y guardado 
     print(f"\n=== FASE 6: Limpieza, normalización y guardado ===")
 
     # Paso 1: Eliminar columnas enteramente NaN.
@@ -408,11 +447,7 @@ def generate_dataset(tickers: list,
 
     return dataset_norm, close_prices
 
-
-# ─────────────────────────────────────────────
-# Aliases retrocompatibles (usados por main.py)
-# ─────────────────────────────────────────────
-
+# Alias (usados por main.py)
 descargar_precios    = download_prices
 descargar_dividendos = download_dividends
 generar_dataset      = generate_dataset
