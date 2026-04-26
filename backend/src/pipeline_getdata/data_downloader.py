@@ -361,7 +361,7 @@ def generate_dataset(tickers: list,
     # Beta alta → el activo amplifica las caídas del mercado.
     # Beta negativa → cobertura natural (relevante para BND en crisis).
     
-    # Para tontos: Beta alta = "se mueve más fuerte que el mercado en ambas direcciones". 
+    # Es decir: Beta alta = "se mueve más fuerte que el mercado en ambas direcciones". 
     # Buena en bonanza, mala en crisis. Beta negativa = "se mueve al contrario del mercado
     # Es como tener un paraguas: aburrido los días soleados, vital cuando llueve.
 
