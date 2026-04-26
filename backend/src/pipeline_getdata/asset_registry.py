@@ -1,60 +1,70 @@
 """
 Registro centralizado de activos del universo de inversión.
 
+Rol del módulo en el pipeline actual:
+  El universo real con el que se entrena cada modelo lo decide el MarketScreener
+  en tiempo de ejecución (filtra el S&P 500 por liquidez, historia y volatilidad).
+  Este módulo NO es la fuente de verdad operativa, sino un registro de metadatos:
+
+    - Diccionario consultable de información humana (nombre, sector, categoría,
+      descripción) para que dashboard, frontend y memoria del TFM puedan mostrar
+      cualquier ticker con un nombre legible y una descripción cualitativa.
+    - CORE_UNIVERSE actúa además como fallback estático cuando aún no se ha
+      ejecutado ningún screener (universe_repository.get_default_tickers).
+    - Garantiza que IBIT y ETHA siempre estén descritos: aunque no estén en el
+      S&P 500, son requisito del TFM ("Integrando Criptoactivos en la Inversión
+      Tradicional") y se fuerzan en el screener.
+
 Fundamentación teórica:
-  La construcción del universo de inversión es una decisión crítica que condiciona
-  todos los resultados posteriores del modelo (Fabozzi et al., 2007, "Robust Portfolio
-  Optimization and Management"). Un universo mal diseñado introduce sesgos que ningún
-  algoritmo de optimización puede corregir:
+  Documentación: La construcción del universo es una decisión crítica que condiciona los
+  resultados posteriores (Fabozzi et al., 2007, "Robust Portfolio Optimization
+  and Management"). Un universo mal diseñado introduce sesgos que ningún
+  algoritmo puede corregir:
 
-    - Sesgo de supervivencia (survivorship bias): si solo incluimos activos que existen
-      hoy, ignoramos los que quebraron o fueron deslistados — inflando artificialmente
-      el rendimiento histórico (Brown et al., 1992).
-
-    - Sesgo de selección: elegir activos "a dedo" basándose en su buen rendimiento
-      pasado (data snooping) produce resultados no reproducibles out-of-sample
+    - Sesgo de supervivencia (survivorship bias): incluir solo activos que
+      existen hoy infla artificialmente el rendimiento histórico (Brown et al., 1992).
+    - Sesgo de selección: elegir activos "a dedo" por su buen rendimiento pasado
+      (data snooping) produce resultados no reproducibles out-of-sample
       (White, 2000, "A Reality Check for Data Snooping").
 
-  El CORE_UNIVERSE de este TFM mitiga estos riesgos con una selección basada en
-  criterios de diversificación estructural (no de rendimiento pasado):
-    - 1 proxy de mercado (IVV): benchmark y cálculo de beta
-    - 1 renta fija (BND): correlación históricamente negativa con equities en crisis
-    - 1 activo digital (IBIT): alta volatilidad, correlación variable — test del agente
-    - 5 acciones de sectores distintos: dividendo (MO), defensivo (JNJ), utilities (AWK),
-      seguros (CB), alternativo (SCU) — diversificación sectorial
-
-  El EXTENDED_UNIVERSE añade clases de activos ausentes en el core (materias primas,
-  REITs, renta fija alternativa, volatilidad) para demostrar que la arquitectura
-  escala sin modificar el pipeline.
+  El TFM mitiga estos sesgos delegando la selección al screener (criterios
+  cuantitativos sobre el S&P 500), no a CORE_UNIVERSE. CORE_UNIVERSE solo
+  mantiene una composición mínima representativa para situaciones de bootstrap.
 
 Uso:
   from src.pipeline_getdata.asset_registry import get_universe, get_asset_info, get_tickers
 
-  tickers = get_tickers('core')       # ['AWK', 'BND', 'CB', 'IBIT', 'IVV', 'JNJ', 'MO', 'SCU']
+  tickers = get_tickers('core')       # ['AWK', 'BND', 'CB', 'ETHA', 'IBIT', 'IVV', 'JNJ', 'MO', 'SCU']
   info    = get_asset_info('IVV')     # {'name': 'iShares Core S&P 500', 'category': 'Equity', ...}
-  df      = get_universe('extended')  # DataFrame con core + extendido
+  df      = get_universe('extended')  # DataFrame con core + activos adicionales
 """
 
 import pandas as pd
 
 
 # ─────────────────────────────────────────────
-# Universo core — 8 activos del TFM
+# Universo core — 9 activos de referencia
 # ─────────────────────────────────────────────
-# La selección sigue el principio de "cartera representativa" (Sharpe, 1964, CAPM):
-# incluir activos de distintas clases para que el agente PPO aprenda a gestionar
-# la diversificación entre categorías con dinámicas de retorno fundamentalmente
-# distintas (equity vs fixed income vs crypto vs defensivos vs cíclicos).
+# Conjunto mínimo "de respaldo" que garantiza una cartera representativa
+# cuando aún no se ha ejecutado ningún screener (primer arranque). Sigue
+# el principio de "cartera representativa" (Documentación: Sharpe, 1964, CAPM): clases de
+# activo con dinámicas de retorno fundamentalmente distintas (equity vs
+# fixed income vs crypto vs defensivos vs cíclicos), no selección por
+# rendimiento pasado.
 #
-# Cada activo cumple un rol específico en la cartera:
-#   - IVV: proxy del mercado (factor de mercado del CAPM)
-#   - BND: cobertura en crisis (correlación negativa histórica con equities)
-#   - IBIT: activo de alta volatilidad (test de gestión de riesgo del agente)
-#   - MO: retorno por dividendo dominante (income investing)
-#   - JNJ: activo defensivo de baja beta (protección en drawdowns)
-#   - SCU: activo alternativo descorrelado (diversificación real)
-#   - AWK: utility regulada (ingresos predecibles, baja vol)
-#   - CB: financiero anticíclico (sensibilidad a tipos de interés)
+# Cada activo cumple un rol específico:
+#   - IVV:  proxy del mercado (factor de mercado del CAPM)
+#   - BND:  cobertura en crisis (correlación negativa histórica con equities)
+#   - IBIT: Bitcoin ETF — alta volatilidad, reserva de valor digital
+#   - ETHA: Ethereum ETF — exposición a smart contracts/DeFi (perfil distinto a IBIT)
+#   - MO:   retorno por dividendo dominante (income investing)
+#   - JNJ:  activo defensivo de baja beta (protección en drawdowns)
+#   - SCU:  activo alternativo descorrelado (diversificación real)
+#   - AWK:  utility regulada (ingresos predecibles, baja vol)
+#   - CB:   financiero anticíclico (sensibilidad a tipos de interés)
+#
+# IBIT y ETHA se mantienen siempre, también en universos generados por screener,
+# porque son requisito del TFM ("Integrando Criptoactivos en la Inversión Tradicional").
 
 CORE_UNIVERSE = {
     'IVV': {
@@ -170,18 +180,23 @@ CORE_UNIVERSE = {
 
 
 # ─────────────────────────────────────────────
-# Universo extendido — para fases futuras
+# Universo extendido — registro de metadatos adicionales
 # ─────────────────────────────────────────────
-# Completa las clases de activos ausentes en el core según la taxonomía
-# de asignación estratégica de activos (Strategic Asset Allocation, Ibbotson & Kaplan, 2000):
-#   - Equity internacional: desarrollados (VEA) y emergentes (VWO) para exposición global
-#   - Renta fija alternativa: bonos largos (TLT) sensibles a tipos, high yield (HYG) con riesgo crédito
-#   - Materias primas: oro (GLD) como refugio inflacionario, petróleo (USO) como activo cíclico
-#   - REITs: inmobiliario cotizado (VNQ) — clase de activo con baja correlación con equity pura
-#   - Volatilidad: VIX (VIXY) — el único activo que sube cuando todo baja (cobertura de cola)
+# Completa las clases de activos ausentes en CORE_UNIVERSE según la taxonomía
+# de asignación estratégica de activos (Documentación: Strategic Asset Allocation,
+# Ibbotson & Kaplan, 2000):
+#   - Equity internacional: desarrollados (VEA) y emergentes (VWO)
+#   - Renta fija alternativa: bonos largos (TLT), high yield (HYG)
+#   - Materias primas: oro (GLD), petróleo (USO)
+#   - REITs: inmobiliario cotizado (VNQ)
+#   - Volatilidad: VIX (VIXY) — cobertura de cola
 #
-# Estos activos no se usan en el TFM actual pero demuestran que la arquitectura
-# escala sin modificar el pipeline ni el entorno de entrenamiento.
+# Estos tickers se exponen como referencia consultable a través del endpoint
+# /universo?level=extended (frontend, dashboard) y desde get_asset_info() para
+# que cualquier ticker no-core que aparezca en un screener tenga al menos un
+# nombre y descripción. La arquitectura del PPO admite cualquier número de
+# activos, así que añadirlos al universo de entrenamiento es solo cuestión de
+# que el screener los seleccione — no se necesita cambio de pipeline.
 
 EXTENDED_UNIVERSE = {
     # Renta variable internacional
@@ -225,9 +240,11 @@ def get_tickers(level: str = 'core') -> list:
     Parameters
     ----------
     level : str
-        'core' → los 8 activos del TFM
-        'extended' → core + activos adicionales para fases futuras
-        'all' → sinónimo de 'extended'
+        'core' → conjunto mínimo de respaldo (9 activos representativos
+                  + criptos obligatorias)
+        'extended' → core + clases adicionales (internacional, REITs, oro,
+                  high yield, volatilidad)
+        'all' → alias de 'extended'
 
     Returns
     -------
