@@ -15,11 +15,10 @@ lo importa automáticamente para mantener retrocompatibilidad.
 
 import os
 import json
-from datetime import datetime
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from src.auth.models import Universe, TrainedModel, Simulation, User, ScreenerResult
+from src.auth.models import Universe, TrainedModel, Simulation, ScreenerResult
 
 
 _LEGACY_CONFIG_PATH = os.path.join('data', 'universe_config.json')
@@ -38,12 +37,12 @@ def create_universe(db: Session, tickers: list, start_date: str, end_date: str,
 
     Parameters
     ----------
-    db          : sesión de SQLAlchemy
-    tickers     : lista de tickers ['IVV', 'BND', ...]
+    db  : sesión de SQLAlchemy
+    tickers  : lista de tickers ['IVV', 'BND', ...]
     start_date  : fecha inicio del dataset 'YYYY-MM-DD'
-    end_date    : fecha fin del dataset
+    end_date: fecha fin del dataset
     n_features  : columnas en normalized_features.csv
-    n_days      : filas (días de trading)
+    n_days : filas (días de trading)
     created_by  : email del admin que ejecutó la preparación de datos
 
     Returns
@@ -100,7 +99,7 @@ def get_universe_history(db: Session) -> list[Universe]:
     return db.query(Universe).order_by(Universe.created_at.desc()).all()
 
 
-# ─── Modelos entrenados ───────────────────────────────────────────────────────
+# ─── Modelos entrenados
 
 def register_model(db: Session, universe_id: int, model_type: str,
                    model_path: str, steps: int = None) -> TrainedModel:
@@ -110,9 +109,9 @@ def register_model(db: Session, universe_id: int, model_type: str,
     Parameters
     ----------
     universe_id : ID del universo con el que se entrenó
-    model_type  : 'ppo' o 'speculative'
-    model_path  : ruta al fichero del modelo
-    steps       : pasos de entrenamiento (solo para PPO)
+    model_type : 'ppo' o 'speculative'
+    model_path : ruta al fichero del modelo
+    steps : pasos de entrenamiento (solo para PPO)
 
     Returns
     -------
@@ -152,9 +151,8 @@ def get_latest_model(db: Session, model_type: str,
 
     Parameters
     ----------
-    model_type  : 'ppo' o 'speculative'
-    universe_id : si se especifica, solo busca modelos de ese universo.
-                  Si None, busca en el universo activo.
+    model_type: 'ppo' o 'speculative'
+    universe_id: si se especifica, solo busca modelos de ese universo. Si None, busca en el universo activo.
     """
     query = db.query(TrainedModel).filter(
         TrainedModel.model_type == model_type,
@@ -261,11 +259,11 @@ def save_screener_result(db: Session, candidates: list, start_date: str,
 
     Parameters
     ----------
-    db          : sesión de SQLAlchemy
+    db: sesión de SQLAlchemy
     candidates  : lista de tickers seleccionados por el screener
-    start_date  : fecha inicio usada en el screener
-    end_date    : fecha fin usada
-    filters     : parámetros del screener (top_n, max_per_sector, etc.)
+    start_date: fecha inicio usada en el screener
+    end_date : fecha fin usada
+    filters : parámetros del screener (top_n, max_per_sector, etc.)
     created_by  : email del admin
 
     Returns

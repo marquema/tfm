@@ -10,7 +10,7 @@ Implementa las cuatro estrategias de referencia definidas en el TFM:
   4. Markowitz Media-Varianza: maximizacion del Ratio de Sharpe con ventana de estimacion
      de 252 dias (~12 meses), reoptimizacion mensual con scipy.optimize.
         Retorno esperado, volatilidad y correlación entre ellos. Frontera eficiente: no puedo ganar mas sin más riesgo.
-        La idea central: no mires activos individuales, mira cómo se combinan
+        La idea central: no miramos activos individuales, miramos cómo se combinan
      Sharpe = (retorno_anual - tasa_libre_de_riesgo) / volatilidad_anual
         ¿cuánto me pagan por cada unidad de riesgo que asumo?
         
@@ -85,9 +85,9 @@ def _is_month_start(today: pd.Timestamp, yesterday: pd.Timestamp) -> bool:
     return today.month != yesterday.month
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Baseline 1: Equal-Weight con rebalanceo mensual
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def simulate_equal_weight(df_prices: pd.DataFrame,
                           initial_balance: float = 10000,
@@ -148,9 +148,9 @@ def simulate_equal_weight(df_prices: pd.DataFrame,
     return pd.Series(values, index=df_prices.index, name='Equal_Weight_Mensual')
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Baseline 2: Cartera 60/40
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def simulate_60_40(df_prices: pd.DataFrame,
                    ticker_equity: str = 'IVV_Close',
@@ -220,9 +220,9 @@ def simulate_60_40(df_prices: pd.DataFrame,
     return pd.Series(values, index=p.index, name='Cartera_60_40')
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Baseline 3: Buy & Hold
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 def simulate_buy_and_hold(df_prices: pd.DataFrame,
                           initial_balance: float = 10000) -> pd.Series:
     """
@@ -258,9 +258,9 @@ def simulate_buy_and_hold(df_prices: pd.DataFrame,
     return pd.Series(values.values, index=df_prices.index, name='Buy_and_Hold')
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Baseline 4: Markowitz Media-Varianza
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def _maximize_sharpe(historical_returns: pd.DataFrame, annual_rf: float = 0.04) -> np.ndarray:
     """
@@ -315,7 +315,7 @@ def _maximize_sharpe(historical_returns: pd.DataFrame, annual_rf: float = 0.04) 
             w = np.clip(res.x, 0.0, 1.0)
             return w / (w.sum() + 1e-8)
     except Exception:
-        pass  # Fallback silencioso a igual ponderacion
+        pass  # Fallback  a igual ponderacion
 
     return w0  # Fallback: Equal-Weight si la optimizacion no converge
 
@@ -402,9 +402,9 @@ def simulate_markowitz(df_prices: pd.DataFrame,
     return pd.Series(values, index=index, name='Markowitz_MV')
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Ejecucion conjunta de baselines
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def run_baselines(df_prices: pd.DataFrame,
                   initial_balance: float = 10000,
@@ -457,20 +457,21 @@ def run_baselines(df_prices: pd.DataFrame,
     return results
 
 
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Metricas financieras
-# ─────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def compute_metrics(series: pd.Series, annual_rf: float = 0.04) -> dict:
     """
-    Calcula el conjunto estandar de metricas de rendimiento financiero.
+    Calcula el conjunto estandar de metricas de rendimiento financiero. 
+    Se calculan retornos diarios y se escalan a unidades anuales.
 
     Metricas calculadas:
       - Retorno Total (%):(V_final / V_inicial - 1) x 100
       - CAGR (%): Tasa de crecimiento anual compuesta
-      - Volatilidad Anualizada (%): Desviacion estandar diaria x sqrt(252)
+      - Volatilidad Anualizada (%): Desviacion estandar diaria x sqrt(252). Mira cuanto oscila el valor diariamente.
       - Sharpe Ratio: Exceso de retorno / Volatilidad total
-      - Sortino Ratio: exceso de retorno / Volatilidad a la baja
+      - Sortino Ratio: exceso de retorno / Volatilidad negativa
                         (solo penaliza los retornos negativos)
       - Max Drawdown (%):  Mayor caida acumulada desde un maximo historico
       - Valor Final ($): Valor absoluto final de la cartera
@@ -516,13 +517,13 @@ def compute_metrics(series: pd.Series, annual_rf: float = 0.04) -> dict:
     max_dd  = drawdown.min()
 
     return {
-        'Retorno Total (%)':          round(total_return * 100, 2),
-        'CAGR (%)':                   round(cagr * 100, 2),
+        'Retorno Total (%)':  round(total_return * 100, 2),
+        'CAGR (%)':round(cagr * 100, 2),
         'Volatilidad Anualizada (%)': round(annual_vol * 100, 2),
-        'Sharpe Ratio':               round(sharpe, 3),
-        'Sortino Ratio':              round(sortino, 3),
-        'Max Drawdown (%)':           round(max_dd * 100, 2),
-        'Valor Final ($)':            round(float(series.iloc[-1]), 2),
+        'Sharpe Ratio': round(sharpe, 3),
+        'Sortino Ratio': round(sortino, 3),
+        'Max Drawdown (%)': round(max_dd * 100, 2),
+        'Valor Final ($)': round(float(series.iloc[-1]), 2),
     }
 
 
