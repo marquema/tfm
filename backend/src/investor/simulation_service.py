@@ -84,8 +84,11 @@ def run_simulation(capital: float = 10000,
     Esta restricción existe porque el modelo PPO fue entrenado con un observation
     space específico que depende del número y orden de activos del dataset.
 
+    # todo: fase futura
     Para simulaciones con activos personalizados, habría que reentrenar el modelo
-    (Fase futura: meta-agente con screener dinámico).
+    (Fase futura: meta-agente con screener dinámico). Es decir, Flexibilidad en simulación 
+        "inversor, pide cualquier combinación de activos en el momento y te los gestiono sin 
+        reentrenar".
 
     Parameters
     ----------
@@ -102,6 +105,7 @@ def run_simulation(capital: float = 10000,
       - weights_ppo: [[w1, w2, ...], ...] pesos del PPO por día
       - tickers: lista de activos
     """
+    # todo: path en duro....
     features_path = 'data/normalized_features.csv'
     prices_path   = 'data/original_prices.csv'
     model_path    = 'models/best_model_academic/best_model.zip'
@@ -130,7 +134,7 @@ def run_simulation(capital: float = 10000,
     tickers_raw = df_p.columns.tolist()
     tickers     = [t.replace('_Close', '') for t in tickers_raw]
 
-    # ── PPO ──────────────────────────────────────────────────────────────────
+    # ── PPO 
     env_test = PortfolioEnv(
         features_path, prices_path,
         start_idx=split_idx,
@@ -153,7 +157,7 @@ def run_simulation(capital: float = 10000,
 
     ppo_series = pd.Series(ppo_equity, name='IA_PPO')
 
-    # ── Baselines ────────────────────────────────────────────────────────────
+    # ── Baselines 
     baseline_results = run_baselines(
         df_p_test,
         initial_balance=capital,
