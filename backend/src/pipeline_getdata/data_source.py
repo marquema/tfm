@@ -1,24 +1,49 @@
 """
 Abstracción de fuentes de datos para el pipeline de features.
 
-Desacopla la lógica de features del origen concreto de los datos,
-permitiendo cambiar de datos históricos EOD a datos en tiempo real
-sin modificar ni el entorno de entrenamiento ni los baselines.
+Qué es este módulo en una frase:
+    Es la "capa de aislamiento" entre el origen físico de los datos
+    (Yahoo Finance, ficheros CSV, una API en tiempo real) y el resto del
+    pipeline TFM. Implementa el patrón Strategy: cualquier componente
+    posterior trabaja contra la misma interfaz (`get_ohlcv`), sin
+    importar de dónde vengan los datos en realidad.
+
+Por qué existe esta abstracción:
+    Sin ella, `data_downloader.py` llamaría directamente a `yfinance` y
+    cambiar de fuente exigiría reescribir el pipeline. Con ella, basta
+    con instanciar otra clase que cumpla el contrato. Tiene tres ventajas
+    académicas defendibles ante el tribunal:
+
+      1. EXTENSIBILIDAD: añadir un proveedor en tiempo real solo requiere
+         crear una subclase de LiveSource. El entrenamiento, los baselines
+         y la simulación funcionan sin cambios.
+      2. TESTABILIDAD: los tests pueden inyectar CsvSource con datos
+         fijos para reproducibilidad (sin depender de la red ni de Yahoo).
+      3. ROBUSTEZ ARQUITECTÓNICA: si Yahoo Finance cierra su API gratuita
+         o cambia su contrato (algo que ya ha pasado), el impacto se
+         contiene en una sola clase.
 
 Fuentes disponibles:
-  - HistoricalSource : Yahoo Finance (yfinance) — datos EOD. Modo actual.
-  - LiveSource       : placeholder para datos en tiempo real (WebSocket / REST).
-  - CsvSource        : carga desde CSVs locales (tests y reproducibilidad).
+  - HistoricalSource : Yahoo Finance (yfinance) — datos EOD. Fuente actual
+                       del pipeline. Usa curl_cffi para sortear proxies SSL
+                       corporativos cuando está disponible.
+  - LiveSource: placeholder para datos en tiempo real (WebSocket o
+                       REST). Documentado pero no implementado — queda como
+                       "trabajo futuro" en la memoria del TFM.
+  - CsvSource: carga desde CSVs locales. No se usa hoy en producción,
+                       pero es el camino estándar para tests unitarios o
+                       trabajar offline con datos previamente descargados.
 
 Interfaz común (todas las clases implementan el mismo método):
 
     get_ohlcv(ticker, start_date, end_date) -> pd.DataFrame
         Retorna DataFrame con columnas: Open, High, Low, Close, Volume
-        Índice: DatetimeIndex en orden ascendente
+        Índice: DatetimeIndex en orden ascendente.
 
-Para activar una fuente en el pipeline, pasar source=LiveSource(...) a
-generate_dataset(). El resto del pipeline (features, entorno, baselines)
-no necesita modificarse.
+Cómo cambiar de fuente en el pipeline:
+    generate_dataset(tickers, start, end, source=MiLiveSource(...))
+    El resto del pipeline (features, entorno, baselines) no necesita
+    modificarse — esa es exactamente la ventaja del patrón Strategy.
 """
 
 import pandas as pd
@@ -26,11 +51,21 @@ import numpy as np
 from abc import ABC, abstractmethod
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Interfaz base
-# ─────────────────────────────────────────────────────────────────────────────
 class DataSource(ABC):
-    """Contrato que toda fuente de datos debe cumplir."""
+    """
+    Contrato abstracto que toda fuente de datos del TFM debe cumplir.
+
+    Heredando de ABC (Abstract Base Class) y marcando los métodos con
+    @abstractmethod, garantizamos que ninguna subclase pueda instanciarse
+    sin implementar `get_ohlcv` y `name`. Si alguien crea una clase mal
+    formada e intenta usarla, Python lanza TypeError EN TIEMPO DE
+    INSTANCIACIÓN, no en runtime cuando ya es demasiado tarde.
+
+    Es la forma en Python de definir interfaces (a diferencia
+    de Java, donde existe la palabra clave 'interface'; en Python se
+    expresa con ABC).
+    """
 
     @abstractmethod
     def get_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
@@ -39,9 +74,9 @@ class DataSource(ABC):
 
         Parameters
         ----------
-        ticker     : símbolo del activo (ej. 'IVV')
+        ticker : símbolo del activo (ej. 'IVV')
         start_date : fecha de inicio en formato 'YYYY-MM-DD'
-        end_date   : fecha de fin en formato 'YYYY-MM-DD'
+        end_date: fecha de fin en formato 'YYYY-MM-DD'
 
         Returns
         -------
@@ -55,7 +90,7 @@ class DataSource(ABC):
         """Identificador legible de la fuente, usado en logs del pipeline."""
         ...
 
-    # Aliases retrocompatibles (el pipeline actual usa estos nombres)
+    # Alias retrocompatibles (el pipeline actual usa estos nombres)
     def obtener_ohlcv(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
         """Alias de get_ohlcv() para retrocompatibilidad con el pipeline."""
         return self.get_ohlcv(ticker, start_date, end_date)
@@ -65,21 +100,34 @@ class DataSource(ABC):
         return self.name()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Fuente 1: Datos históricos EOD (Yahoo Finance)
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 class HistoricalSource(DataSource):
     """
     Fuente de datos históricos End-Of-Day desde Yahoo Finance.
 
-    Usa curl_cffi si está disponible (entornos corporativos con proxy SSL);
-    si no, usa la sesión estándar de yfinance.
+    Es la fuente activa por defecto en el pipeline TFM. EOD significa
+    "end of day": un único registro por activo y día con los precios de
+    apertura, máximo, mínimo y cierre + el volumen total. Suficiente para
+    un entorno DRL que decide a frecuencia diaria.
 
-    Esta es la fuente por defecto del pipeline. Soporta cualquier rango de
-    fechas: si un ticker no tiene datos en parte del rango (ej. IBIT antes
-    de 2024), retorna solo los datos disponibles y el pipeline se encarga
-    de rellenar los huecos con bfill/ffill.
+    Estrategia HTTP — sesión resiliente:
+        En entornos corporativos los proxies SSL bloquean librerías típicas
+        (requests, urllib). curl_cffi se hace pasar por Chrome (incluyendo
+        TLS fingerprinting) y sortea ese bloqueo. Si la librería no está
+        instalada, caemos a la sesión estándar de yfinance — el pipeline
+        sigue funcionando, solo pierde la robustez extra ante proxies.
+
+    Notas técnicas relevantes:
+      - `auto_adjust=True` (en get_ohlcv): yfinance ajusta automáticamente
+        los precios por splits y dividendos. Sin esto, un split 2-por-1
+        haría que el precio cayera a la mitad de un día para otro y el
+        agente lo interpretaría como un crash falso.
+      - Cualquier rango de fechas es aceptable: si un ticker no existía
+        en parte del rango (ej. IBIT antes de enero 2024), retorna solo
+        los datos disponibles y el pipeline rellena huecos con bfill/ffill.
     """
 
     def __init__(self):
@@ -100,9 +148,9 @@ class HistoricalSource(DataSource):
 
         Parameters
         ----------
-        ticker     : símbolo del activo
+        ticker : símbolo del activo
         start_date : fecha de inicio 'YYYY-MM-DD'
-        end_date   : fecha de fin 'YYYY-MM-DD'
+        end_date  : fecha de fin 'YYYY-MM-DD'
 
         Returns
         -------
@@ -127,9 +175,9 @@ class HistoricalSource(DataSource):
         return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Fuente 2: Datos en tiempo real (placeholder)
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 class LiveSource(DataSource):
     """
@@ -194,9 +242,9 @@ class LiveSource(DataSource):
         )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 # Fuente 3: CSV local (tests y reproducibilidad)
-# ─────────────────────────────────────────────────────────────────────────────
+# # # # # # # # # # # # # # # # # # # # # # # # # 
 
 class CsvSource(DataSource):
     """
