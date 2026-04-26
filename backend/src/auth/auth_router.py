@@ -24,7 +24,7 @@ from src.auth.auth_service import (
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
-# ─── Modelos de request/response ─────────────────────────────────────────────
+# ─── Modelos de request/response 
 
 class RegisterRequest(BaseModel):
     email: str
@@ -47,7 +47,7 @@ class UserResponse(BaseModel):
     last_login: str | None
 
 
-# ─── Endpoints públicos ──────────────────────────────────────────────────────
+# ─── Endpoints públicos 
 
 @router.post("/login", response_model=TokenResponse)
 def login(form: OAuth2PasswordRequestForm = Depends(),
@@ -105,7 +105,7 @@ def get_me(user: User = Depends(get_current_user)):
     )
 
 
-# ─── Endpoints de admin ──────────────────────────────────────────────────────
+# ─── Endpoints de admin 
 
 @router.get("/users", response_model=list[UserResponse])
 def list_users(admin: User = Depends(require_admin),
