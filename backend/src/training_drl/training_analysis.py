@@ -1,64 +1,69 @@
 """
 Análisis académico del entrenamiento del agente PPO.
 
-Implementa las técnicas de validación apropiadas para Deep Reinforcement Learning
-aplicado a series temporales financieras:
+Este módulo es el "laboratorio" del TFM: contiene las herramientas para
+entrenar el agente con monitorización de calidad, validar que su política
+generaliza fuera de los datos vistos, y producir las gráficas que sustentan
+las conclusiones de la memoria.
 
-  1. Walk-Forward Validation  — equivalente temporal del cross-validation
-  2. Detección de sobreajuste — gap entre reward de train y evaluación
-  3. Early stopping informado — curvas de entropía y explained variance
-  4. Estabilidad out-of-sample — varianza del Sharpe en múltiples ventanas de test
+Cuatro bloques principales:
+
+  1. Walk-Forward Validation — equivalente temporal de la validación cruzada.
+     Entrena con un tramo histórico, valida en el siguiente, y desliza la
+     ventana hacia adelante. Detecta si la política funciona bien solo en
+     un periodo concreto (sobreajuste a un régimen de mercado).
+
+  2. Expanding Window — variante donde el train empieza siempre en el día 0
+     y crece. Simula mejor el caso real ("uso todo lo que sé hasta hoy para
+     decidir mañana") a costa de mayor coste computacional.
+
+  3. Detección de sobreajuste — compara reward en train vs evaluación
+     out-of-sample paso a paso, y para el entrenamiento si el agente deja
+     de mejorar (early stopping con paciencia).
+
+  4. Diagnóstico de la dinámica de PPO — captura entropía, value loss,
+     explained variance, KL aproximada y clip fraction durante el entrenamiento.
+     Permite verificar que la red está aprendiendo y no colapsa ni oscila.
 
 Nota sobre métricas clásicas de ML:
   - K-fold cross-validation y ROC/AUC no aplican a DRL sobre series temporales.
-    K-fold mezclaría futuro y pasado (data leakage). ROC es para clasificación binaria.
+    K-fold mezclaría futuro y pasado (data leakage); ROC es para clasificación binaria.
   - Walk-forward es el estándar académico para modelos financieros secuenciales.
-    Ver: López de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
-"""
-# todo: revusar esto
-"""
-El reward del agente mira los últimos 40 días en vez de 20 para calcular el Sharpe. 
-Efecto directo: Señal más suave: un día malo ya no cambia el Sharpe tanto 
-    (es 1/40 en vez de 1/20 del peso). 
-    Los gradientes oscilan menos → el clip fraction debería bajar de 66% a ~30-45%.
-    Reacción más lenta: el agente tarda más en detectar un cambio de régimen. 
-    Con ventana de 20 días, si el mercado se desploma hoy, en 5 días ya lo nota. Con 40, tarda 10-15 días. Eso puede ser bueno (no reacciona a ruido) o malo (no reacciona a una crisis real a tiempo).
-    Menos turnover: como la señal cambia menos frecuentemente, el agente opera menos → comisiones más bajas → mejor retorno neto. Esto podría ser la mejora más visible.
-    Posible caída de explained variance: con una señal más suave, la red neuronal tiene menos variación 
-        que predecir
+    Documentacion: Ver: López de Prado (2018), "Advances in Financial Machine Learning", cap. 7.
 
-Para el TFM, documentar ambas configuraciones:
+─────────────────────────────────────────────────────────────────────────────
+Decisiones de diseño y experimentación pendiente (para la memoria del TFM)
+─────────────────────────────────────────────────────────────────────────────
 
-"Se probaron ventanas de Sharpe rolling de 20 y 40 días. Con 20 días el clip fraction fue del 66% 
-pero la KL se mantuvo controlada (0.049). Con 40 días [resultado tras probar]. Se eligió la ventana de [X] por ofrecer mejor balance entre reactividad y estabilidad."
+Función de recompensa actual:
+    reward = Sharpe_rolling_20d - phi·MDD - gamma·Turnover
 
-Variar la función de recompensa a log return:
-Volver a log_return como reward significara reemplazar el Sharpe rolling por el retorno logarítmico 
-directo:
+  Justificación: el Sharpe rolling de 20 días aporta una señal de calidad
+  ajustada por riesgo (no solo retorno bruto), mientras que las penalizaciones
+  por MDD y turnover desincentivan caídas grandes y operativa excesiva.
+  phi y gamma se parametrizan vía perfil de riesgo (risk_profiles.py).
 
-    Ahora:   reward = Sharpe_rolling_20d - phi·MDD - gamma·Turnover
-    Con log: reward = log_return         - phi·MDD - gamma·Turnover
-Ventajas:
-Señal inmediata: el log_return de hoy depende solo de hoy. No hay ventana rolling → no hay oscilación 
-por datos que entran/salen de la ventana → clip fraction debería bajar drásticamente a ~15-25%.
-Ya lo probe: con los 8 activos originales y phi=0.5 tenías Sharpe 0.628. Ahora con phi=0.02,
-gamma=0.01 y los nuevos hiperparámetros (lr=1e-4, clip_range=0.1), debería ser mejor.
-Más fácil de explicar en la memoria: "el agente maximiza el retorno logarítmico diario penalizado por 
-drawdown y turnover" es más intuitivo que "maximiza un Sharpe rolling de 20 días".
+Alternativas estudiadas (no implementadas, candidatas a sección de trabajo
+futuro en la memoria):
 
-Desventajas:
-No penaliza la volatilidad directamente: el log_return premia ganar dinero sin importar cuánto oscila la 
-cartera. El Sharpe rolling penaliza la oscilación implícitamente (divido por std). Sin Sharpe, la volatilidad del PPO podría 
-ser más alta que con él. Más sensible al ruido diario: un día con retorno +3% seguido de -3% da reward 
-positivo y luego negativo. El Sharpe rolling suaviza esto.
+  - Ventana de Sharpe a 40 días en lugar de 20: la señal sería más suave
+    (cada día pesa 1/40 en lugar de 1/20), lo que reduciría el clip fraction
+    observado (~66 % → ~30-45 %) y bajaría el turnover, a cambio de mayor
+    latencia para detectar cambios de régimen (10-15 días vs 5).
 
+  - Reward = log_return en vez de Sharpe rolling: señal puramente diaria,
+    sin oscilación por datos entrando/saliendo de la ventana. Esperaría
+    clip fraction más bajo y explicación más facil, pero peor rendimiento
+    ("retorno logarítmico penalizado por drawdown y turnover"). Coste:
+    pierde la penalización implícita de la volatilidad que ofrece el
+    Sharpe; habría que compensar con phi mayor.
 
-R_eval 0.617, explained variance 0.979 y KL controlada son resultados sólidos. 
-El clip fraction alto es documentable y justificable. Cambiar el reward ahora significa reentrenar, 
-re-validar walk-forward y expanding window — todo el pipeline de nuevo.
-
-Probar segundo experimento en la memoria: "se compararon dos funciones de recompensa: Sharpe rolling vs 
-log_return". Pero no como reemplazo del modelo actual.
+# todo para la memoria.
+Estado actual del modelo: R_eval = 0.617, explained variance = 0.979,
+KL aproximada controlada (~0.049). Resultados sólidos; el clip fraction
+elevado es justificable en la memoria. Cambiar la recompensa exige
+reentrenar y re-validar todo el pipeline, por lo que se documenta como
+experimento comparativo, no como sustitución del modelo de referencia.
 """
 
 import os
@@ -85,25 +90,50 @@ except ImportError:
 
 class AcademicMonitorCallback(BaseCallback):
     """
-    Captura métricas internas de SB3 en cada update de PPO para diagnóstico académico.
-        SB3: stable baselines
-    Métricas capturadas:
-      - entropy_loss   : entropía de la política. Debe decrecer lentamente. Sino, hay overfitting.
-                         Colapso rápido indica memorización del conjunto de entrenamiento.
-      - value_loss     : error cuadrático del value function. Debe estabilizarse.
-                         Divergencia significa que la red de valor no aprende la función de retorno.
-                         Predice cuánto se ganará en la posición actual, o desde ella.
-      - explained_var  : fracción de varianza de los returns explicada por el value function.
-                         Valores < 0 indican que el value function es peor que predecir la media.
-                         Objetivo: > 0.5 para una política bien calibrada. 
-                         Significa en qué porcentaje entiende cómo van las cosas. Entiende por qué gana dinero.
-      - approx_kl      : divergencia KL aproximada entre política vieja y nueva. que no haya un cambio grande entre politivas
-                         Valores > 0.05 indican actualizaciones demasiado grandes (inestabilidad).
-                         cambia de método.
-      - clip_fraction  : fracción de actualizaciones recortadas por PPO clip_range.
-                         > 0.3 indica clip_range demasiado pequeño;
-                         < 0.01 indica configuración innecesariamente conservadora.
-                         Si clip > 0.3, significa que el PPO está reteniendo innecesariamnete.
+    Captura métricas internas de PPO durante el entrenamiento para diagnóstico.
+
+    SB3 (Stable-Baselines3) emite cada cierto número de pasos un resumen
+    interno con varias señales con la evolución de la red. Este callback las
+    recopila para luego pintarlas y poder verificar que el agente aprende
+    de forma estable. Monitorización del entrenamiento.
+
+    Métricas capturadas y cómo interpretarlas (todas se grafican en un
+    panel en src/reports/training_diagnostics.png):
+
+      - entropy_loss
+            Mide cuánta "exploración aleatoria" sigue haciendo la política.
+            Al principio es alta (el agente prueba acciones); debe decrecer
+            poco a poco según se va decantando por las buenas. Un colapso
+            brusco indica que el agente ha memorizado y deja de explorar
+            (riesgo de sobreajuste). Sin descenso = no está aprendiendo.
+
+      - value_loss
+            Error de la "red de valor" — la parte del modelo que predice
+            cuánto reward obtendrá el agente desde el estado actual hasta
+            el final. Debe estabilizarse en un rango bajo. Si oscila o
+            crece, la red de valor no consigue aprender la dinámica del
+            entorno y el agente carece de una buena guía.
+
+      - explained_var
+            Qué fracción de la variación real de los retornos consigue
+            anticipar la red de valor (R² del modelo de valor). Va de
+            −∞ a 1. Objetivo > 0.5 ("entiende a grandes rasgos cómo
+            evoluciona el valor de la cartera"). Valores < 0 significan
+            que predecir la media constante sería mejor: red no funciona.
+
+      - approx_kl
+            Cuánto cambia la política en cada actualización (dirvergencia
+            KL entre la política antigua y la nueva). PPO está diseñado
+            para hacer cambios pequeños: > 0.05 indica saltos demasiado
+            grandes, lo que puede dar entrenamientos inestables o que
+            "olvidan" lo aprendido.
+
+      - clip_fraction
+            Porcentaje de actualizaciones que PPO recorta porque exceden
+            su clip_range. Rango sano: 0.01-0.3. Si supera 0.3, el modelo
+            quiere cambiar mucho y PPO está frenándolo casi siempre →
+            considerar bajar learning_rate o subir clip_range. Si es < 0.01,
+            la configuración es innecesariamente conservadora.
 
     Parameters
     ----------
@@ -236,7 +266,7 @@ class AcademicMonitorCallback(BaseCallback):
 
     def _generate_diagnostic(self) -> str:
         """
-        Genera texto de diagnóstico automático basado en las métricas finales.
+        Texto de diagnóstico automático basado en las métricas finales.
 
         Evalúa explained variance, KL divergencia, clip fraction y evolución
         de la entropía para emitir un veredicto sobre la salud del entrenamiento.
@@ -293,32 +323,68 @@ class AcademicMonitorCallback(BaseCallback):
 # Walk-Forward Validation
 # ---------------------------------------------------------------------------
 
-LEANRING_RATE=1e-4
+LEARNING_RATE=1e-4
 CLIP_RANGE=0.1
-# todo: no habría data leakage aquí?
+# TODO (rigor académico): los CSVs de entrada llegan ya normalizados con z-score
+# calculado sobre el split train global del dataset (~2018-2024). 
+# z-score es una forma de "estandarizar" un número. La fórmula es: z = (valor - media) / desviación
+# Para que el todas las features (RSI, MACD, volumen...) estén en una escala parecida y la red neuronal pueda compararlas.
+# Para que walk-forward sea académicamente puro, cada ventana debería recalcular sus
+# propios stats con el train de esa ventana — si no, hay un leakage sutil
+# porque la escala de los features de cada ventana refleja info futura.
+# En la práctica el efecto es pequeño (z-score en mercados financieros estables
+# es bastante robusto) pero conviene mencionarlo en la memoria.
+
+# Opción A (correcta): usar solo los datos de train de cada ventana. Si V3 entrena con 2020-2022, calculo media/desviación con esos años exclusivamente.
+# TODO: alerta de dataleakage
+# Opción B (lo que hacemos hoy): media/desviación calculadas una sola vez al principio, sobre el split train global del dataset entero (~2018-2024).
+# Conclusión que saco para la memoria:
+# En el TFM, el z-score se calcula sobre el split train global, no por ventana. Esto introduce un leakage sutil pero conviene reconocerlo. En la práctica el efecto es pequeño porque las medias/desviaciones de un activo financiero son razonablemente estables a lo largo de varios años (no cambian drásticamente entre 2018 y 2024). Para una versión académicamente impecable habría que recalcular stats por ventana — queda como mejora futura."
 def walk_forward_validation(features_path: str,
                             prices_path: str,
                             train_days: int = 504,
                             test_days: int  = 252,
                             total_timesteps: int = 100000) -> pd.DataFrame:
     """
-    Validación Walk-Forward con ventanas de tamaño fijo.
-    El número de ventanas lo determina el propio dataset, no es un parámetro.
-    Avanza un periodo de test cada vez (rolling de 1 año).
-    Hace un proceso circular: entrena con los datos de los años 1 y 2, y testea con el 3, etc.
+    Validación Walk-Forward con ventanas deslizantes de tamaño fijo.
+
+    Idea intuitiva: como en finanzas el orden temporal importa, no podemos
+    barajar los datos al azar (eso mezclaría futuro con pasado y se llama
+    data leakage). En su lugar, dividimos el histórico en bloques
+    consecutivos: entrenamos con dos años, validamos en el siguiente,
+    deslizamos la ventana hacia adelante un año y repetimos. Cada ventana
+    es un experimento independiente y completo.
+
+    Pregunta del TFM que responde: "¿es el agente PPO igual de bueno en
+    cualquier periodo de mercado, o solo casualmente acertó en el tramo
+    de test del split 80/20?". Si el Sharpe es bueno en todas las
+    ventanas, la política generaliza; si solo en una concreta, no.
+
+    El número de ventanas lo determina el dataset, no es un parámetro:
+    cuantos más años de histórico, más ventanas se generan automáticamente
+    sin tocar el código.
 
     Criterios de tamaño de ventana:
-      - train_days = 504 (2 años): mínimo para que PPO vea suficientes episodios completos
-      - test_days  = 252 (1 año): mínimo para que el Sharpe anualizado sea estadísticamente
-        fiable (con < 252 días el factor sqrt(252) distorsiona la métrica)
+      - train_days = 504 (2 años): mínimo para que PPO vea suficientes
+        episodios y aprenda regímenes alcistas y bajistas.
+      - test_days  = 252 (1 año): mínimo para que el Sharpe anualizado
+        sea estadísticamente fiable (con < 252 días el factor √252
+        amplifica el ruido y la métrica deja de ser comparable).
 
-    Con el dataset actual (2018-2026, 8.2 años) genera 6 ventanas automáticamente.
-    Si se amplía el rango histórico, el número de ventanas crece sin cambiar el código.
+    Con el dataset actual (2018-2026, 8.2 años) genera 6 ventanas.
 
-    Permite detectar:
-      - Sharpe medio > 0 en todas las ventanas: política generalmente rentable
-      - Alta varianza entre ventanas: política inestable, dependiente del régimen
-      - Degradación monotónica en ventanas recientes: overfitting a datos viejos
+    Lectura de los resultados (df devuelto):
+      - Sharpe medio > 0 en todas las ventanas → política generalmente rentable.
+      - Alta varianza del Sharpe entre ventanas → política inestable,
+        depende del régimen de mercado.
+      - Degradación monotónica, que siempre va en al misma dirección, en las ventanas recientes → posible
+        sobreajuste a la dinámica antigua del mercado.
+        Ejemplo: El Sharpe baja sin parar según avanzamos en el tiempo: 1.4 → 1.3 → 1.1 → 0.8 → 0.5 → 0.2.
+        ¿Qué significa? El agente aprendió patrones que funcionaban bien en mercados antiguos pero que ya no se dan hoy. 
+        Está sobreajustado al pasado lejano. Una alarma para el TFM.
+        Si en cambio el Sharpe oscilara (1.4, 0.8, 1.5, 0.7, 1.3, 0.9), eso sería simplemente "varianza alta"
+        → política inestable, dependiente del régimen, pero no hay un patrón sistemático de 
+        empeoramiento.
 
     Parameters
     ----------
@@ -350,7 +416,7 @@ def walk_forward_validation(features_path: str,
         if os.path.exists(old_file):
             os.remove(old_file)
 
-    df_f    = pd.read_csv(features_path, index_col=0)
+    df_f = pd.read_csv(features_path, index_col=0)
     n_total = len(df_f)
 
     # -- Ventanas adaptativas --
@@ -373,7 +439,7 @@ def walk_forward_validation(features_path: str,
         print(f"  [AVISO] Dataset corto ({n_total}d). "
               f"Ventanas adaptadas automaticamente: train={train_days}d, test={test_days}d")
 
-    # Calcular ventanas: el número surge del dato, no del parámetro
+    # Calcular ventanas: el número depende del dato, no del parámetro
     windows = []
     start = 0
     while start + train_days + test_days <= n_total:
@@ -406,7 +472,7 @@ def walk_forward_validation(features_path: str,
                                  start_idx=start, end_idx=split)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=LEANRING_RATE, n_steps=1024, batch_size=64,
+            learning_rate=LEARNING_RATE, n_steps=1024, batch_size=64,
             clip_range=CLIP_RANGE, ent_coef=0.01,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
@@ -585,34 +651,41 @@ def expanding_window_validation(features_path: str,
                                  test_days: int = 63,
                                  total_timesteps: int = 100000) -> pd.DataFrame:
     """
-    Validación Expanding Window: el train crece en cada ventana.
+    Validación Expanding Window: el conjunto de entrenamiento crece en cada ventana.
 
-    A diferencia del rolling window (tamaño fijo), aquí el entrenamiento empieza
-    siempre desde el día 0 del dataset y crece progresivamente. Cada ventana
-    entrena con TODA la historia disponible hasta ese momento y evalúa en los
-    siguientes test_days días.
+    Idea intuitiva: a diferencia del walk-forward rolling (donde la ventana
+    de train tiene tamaño fijo y se desliza), aquí el train empieza siempre
+    en el día 0 y va acumulando historia. Cada nueva ventana entrena con
+    TODO lo conocido hasta el momento y prueba en los siguientes meses.
+
+    Pregunta del TFM que responde: "¿el agente mejora cuando le doy más
+    historia, o llega un punto en que más datos no ayudan?". Es la
+    metodología que más se parece a un sistema en producción real, donde
+    cada noche reentrenaría con todo el histórico que tengo.
 
     Ejemplo con min_train=2 años, test=3 meses:
-      V1: Train [2019-01 -> 2021-01] (2.0 años)  → Test [2021-01 -> 2021-04]
-      V2: Train [2019-01 -> 2021-04] (2.25 años) → Test [2021-04 -> 2021-07]
-      V3: Train [2019-01 -> 2021-07] (2.5 años)  → Test [2021-07 -> 2021-10]
+      V1: Train [2019-01 → 2021-01] (2.0 años)  → Test [2021-01 → 2021-04]
+      V2: Train [2019-01 → 2021-04] (2.25 años) → Test [2021-04 → 2021-07]
+      V3: Train [2019-01 → 2021-07] (2.5 años)  → Test [2021-07 → 2021-10]
       ...
 
     Ventajas sobre rolling window:
-      - Simula producción real: "uso todo lo que sé hasta hoy para predecir mañana"
-      - El modelo ve más regímenes de mercado en cada iteración
-      - Genera más ventanas de evaluación (~12 con 5 años vs ~3-4 con rolling)
+      - Simula producción real ("uso todo lo que sé hasta hoy para predecir mañana").
+      - El modelo ve más regímenes de mercado conforme avanza.
+      - Genera más ventanas (~12 con 5 años vs ~3-4 con rolling de 1 año),
+        lo que da más puntos de evaluación y robustez estadística.
 
     Desventajas:
-      - El entrenamiento es más largo en las últimas ventanas (más datos)
-      - Asume que los datos antiguos siguen siendo relevantes
+      - Las últimas ventanas tardan más en entrenar (más datos por procesar).
+      - Asume implícitamente que los datos antiguos siguen siendo relevantes
+        — si el régimen de mercado cambia mucho, el rolling puede ser preferible.
 
     Parameters
     ----------
-    features_path   : ruta al CSV de features normalizadas
-    prices_path     : ruta al CSV de precios originales
+    features_path: ruta al CSV de features normalizadas
+    prices_path: ruta al CSV de precios originales
     min_train_days  : días mínimos de train para la primera ventana (504 = 2 años)
-    test_days       : días de test por ventana (63 = 3 meses, como sugiere Rubén)
+    test_days: días de test por ventana (63 = 3 meses, como sugiere Rubén)
     total_timesteps : pasos de entrenamiento PPO por ventana
 
     Returns
@@ -672,7 +745,7 @@ def expanding_window_validation(features_path: str,
                                  start_idx=start, end_idx=split_idx)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=LEANRING_RATE, n_steps=1024, batch_size=64,
+            learning_rate=LEARNING_RATE, n_steps=1024, batch_size=64,
             clip_range=CLIP_RANGE, ent_coef=0.01,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
@@ -726,29 +799,69 @@ def expanding_window_validation(features_path: str,
     return df_ew
 
 
-# ---------------------------------------------------------------------------
+##############################################
 # Detección de sobreajuste: gap train vs eval
-# ---------------------------------------------------------------------------
+# ############################################
 
 class OverfitDetectorCallback(BaseCallback):
     """
-    Detecta sobreajuste comparando el reward en train y en evaluación.
+    Detecta sobreajuste y aplica early stopping comparando train vs evaluación.
 
-    Señal de sobreajuste: reward_train >> reward_eval de forma sostenida.
-    Implementa early stopping con paciencia configurable.
+    Idea intuitiva: durante el entrenamiento, el reward en datos de train
+    siempre tiende a subir (la red puede acabar memorizando). El que importa
+    es el reward en datos out-of-sample (eval), que el agente nunca ve durante
+    el aprendizaje. Si el de eval deja de mejorar mientras el de train sigue
+    subiendo → el agente está sobreajustando: aprende patrones que solo
+    funcionan en el pasado conocido.
+
+    Acciones que toma este callback:
+      1. Cada `eval_freq` pasos, ejecuta backtests sobre el conjunto de eval
+         y calcula su reward medio por step.
+      2. Si reward_eval no mejora en `patience` evaluaciones consecutivas,
+         detiene el entrenamiento (early stopping).
+      3. Si el gap relativo (train - eval) supera el 50%, lo logea como
+         alerta de sobreajuste — el modelo aprende cosas que no generalizan.
+      4. Almacena el historial completo para pintar luego las curvas
+         train/eval en src/reports/overfitting_analysis.png.
 
     Parameters
     ----------
     eval_env : gym.Env
-        Entorno de validación (distinto del de entrenamiento).
+        Entorno de validación (distinto del de entrenamiento, debe usar el
+        20 % de datos out-of-sample que el agente nunca verá durante el train).
     eval_freq : int
-        Frecuencia de evaluación en pasos de entrenamiento.
+        Frecuencia de evaluación en pasos del modelo (no en episodios).
     n_eval_ep : int
-        Número de episodios de evaluación para estabilizar la media.
+        Número de episodios de evaluación que se promedian. Con política
+        determinista y entorno sin aleatoriedad, valores > 1 son redundantes
+        en este TFM, pero se mantiene la convención de SB3 por robustez ante futuras introducciones de ruido.
+        
+        Ampliación: simulamos 3 veces el mismo backtest y promediamos. Hoy las 3 ejecuciones dan 
+        resultado idéntico porque:
+            La política es determinista: ante la misma observación, siempre devuelve la misma acción.
+            El entorno es determinista: los precios reales del histórico no cambian. El día 15 enero 2024 IVV cerró a $480, 
+                sea la primera vez que lo simulemos o la décima. → Las 3 ejecuciones son fotocopias entre sí. 
+                Hacer 1 sería suficiente y triplicaría la velocidad.
+
+        ¿Por qué entonces lo dejamos en 3? Porque podríamos meter aleatoriedad en el futuro. 
+        Por ejemplo:   Dropout en la red: técnica que apaga neuronas al azar para evitar sobreajuste. 
+            Si lo activamos, la política deja de ser determinista — la misma observación da acciones ligeramente distintas cada vez.
+            Slippage estocástico: simular que cuando compras IVV no consigo exactamente el precio teórico, 
+            sino uno con un pequeño desliz aleatorio (lo realista en un broker real). El entorno deja de ser determinista.
+        
+        Si introducimos cualquiera de esas dos cosas, las 3 ejecuciones empezarían a dar resultados ligeramente distintos, 
+        y promediar 3 sería estadísticamente más fiable que confiar en una sola.
+
+        Conclusión: dejamos N=3 por si las moscas por si mañana metemos aleatoriedad. 
+        Hoy es redundante pero no rompe nada.
+        todo: debería contemplar esta posibilidad no determinista? Verlo con Rubén.
+
     patience : int
-        Evaluaciones consecutivas sin mejora antes de detener el entrenamiento.
+        Evaluaciones consecutivas sin mejora antes de aplicar early stopping.
     min_improvement_pct : float
-        Incremento mínimo relativo del reward de eval para contar como mejora.
+        OBSOLETO — se mantiene por compatibilidad con la firma antigua, pero
+        actualmente el callback usa un umbral absoluto fijo (0.001) en lugar
+        de uno relativo. Ver justificación en _on_step().
     verbose : int
         Nivel de verbosidad (0 = silencioso, 1 = log por evaluación).
     """
@@ -760,9 +873,9 @@ class OverfitDetectorCallback(BaseCallback):
         self.eval_freq = eval_freq
         self.n_eval_ep = n_eval_ep
         self.patience = patience
-        # Mejora mínima en términos RELATIVOS al mejor valor visto (2% por defecto).
-        # Usar porcentaje evita que la escala del reward (puede ser -50 a +50)
-        # haga que min_mejora absoluta sea irrelevante.
+        # Conservado por compatibilidad de firma; el código no lo usa porque
+        # el umbral relativo daba problemas con rewards cercanos a cero.
+        # El umbral efectivo (absoluto, 0.001) está en _on_step().
         self.min_improvement_pct = min_improvement_pct
 
         self.train_history       = []
@@ -787,8 +900,16 @@ class OverfitDetectorCallback(BaseCallback):
         if self.num_timesteps % self.eval_freq != 0:
             return True
 
-        # Reward por step en train (ep_info_buffer contiene 'r'=total y 'l'=length).
-        # Dividir por la longitud del episodio hace que sea comparable entre datasets de distinto tamaño.
+        # ── Reward por step en train ────────────────────────────────────────
+        # SB3 guarda en ep_info_buffer un resumen de los últimos episodios
+        # ejecutados durante el entrenamiento (campo 'r' = reward total del
+        # episodio, 'l' = longitud en pasos).
+        #
+        # Dividimos reward total entre longitud para obtener "reward medio
+        # por paso". Esto es importante porque un dataset largo da episodios
+        # más largos, que acumularían más reward sin que el agente sea
+        # mejor — al normalizar por step, podemos comparar directamente con
+        # reward_eval, que también se calcula por step.
         if hasattr(self.model, 'ep_info_buffer') and len(self.model.ep_info_buffer) > 0:
             reward_train = np.mean([
                 ep['r'] / max(ep['l'], 1) for ep in self.model.ep_info_buffer
@@ -796,9 +917,22 @@ class OverfitDetectorCallback(BaseCallback):
         else:
             reward_train = np.nan
 
-        # Reward por step en eval (N episodios deterministas)
-        # Ejecuta el agente 3 veces en datos de evaluación (el 20% que nunca usó para aprender) y calcula el reward medio por paso. 
-        # Esta es la métrica real — si aquí va bien, el agente generaliza.
+        # ── Reward por step en eval (out-of-sample) 
+        # Ejecuta `n_eval_ep` episodios completos sobre el conjunto de
+        # evaluación (el 20% de datos que el agente NUNCA vio durante el
+        # entrenamiento) y promedia el reward medio por paso de los N.
+        #
+        # Un "episodio" aquí = un backtest entero del periodo de eval, desde
+        # el primer día hasta el último (`done = True`).
+        #
+        # Por qué N=3 con `deterministic=True`: en este setup, política
+        # determinista + entorno sin aleatoriedad → los 3 episodios dan el
+        # mismo resultado. Mantenemos la convención de SB3 (más robusta si en
+        # el futuro se introduce ruido en política/entorno: dropout, slippage
+        # estocástico, etc.).
+        #
+        # Esta es la métrica real de generalización: si crece aquí (no solo
+        # en train), el agente está aprendiendo patrones, no memorizando.
         rewards_eval = []
         for _ in range(self.n_eval_ep):
             obs, _ = self.eval_env.reset()
@@ -817,11 +951,24 @@ class OverfitDetectorCallback(BaseCallback):
         self.eval_history.append(reward_eval)
         self.timesteps_log.append(self.num_timesteps)
 
-        # Early stopping con paciencia.
-        # Umbral de mejora: los rewards son por step (escala ~[-0.5, 0.5]),
-        # así que usamos un umbral absoluto pequeño fijo (0.001) en lugar de
-        # relativo al mejor valor, que con valores negativos grandes era demasiado exigente.
-        # Si el reward de evaluación es mejor que el mejor visto hasta ahora (con un margen mínimo de 0.001 para no contar ruido como mejora)
+        # ── Early stopping con paciencia 
+        # Si tras `patience` evaluaciones consecutivas no hay mejora en eval,
+        # paramos el entrenamiento (el modelo dejó de aprender; seguir solo
+        # agrava el sobreajuste y consume tiempo).
+        #
+        # Decisión de diseño — umbral ABSOLUTO (0.001) vs RELATIVO (% del mejor):
+        #   Un umbral relativo (ej. "mejora ≥ 1% del best_eval") tiene un fallo
+        #   conocido cuando el mejor valor cruza cero o es negativo. Si
+        #   `best_eval = -0.4`, un 1% es −0.404 (razonable); pero si
+        #   `best_eval = -0.001`, casi cualquier ruido cuenta como mejora y el
+        #   entrenamiento no para nunca. Con valores positivos altos, exige
+        #   mejoras irreales.
+        #
+        #   El umbral absoluto resuelve esto: 0.001 representa siempre la misma
+        #   cantidad de progreso real. Como el reward está en una escala
+        #   estable ~[-0.5, 0.5] (es reward por step, no acumulado), 0.001
+        #   equivale a ~0.2% del rango total — suficiente para filtrar
+        #   fluctuación estadística sin perder mejoras reales.
         improvement_threshold = 0.001
         if reward_eval > self.best_eval + improvement_threshold:
             self.best_eval = reward_eval
@@ -885,7 +1032,7 @@ class OverfitDetectorCallback(BaseCallback):
         ax1.set_title('Reward: Train vs Out-of-Sample',
                       fontsize=11, fontweight='bold')
         ax1.set_xlabel('Pasos de entrenamiento')
-        ax1.set_ylabel('Reward acumulado por episodio')
+        ax1.set_ylabel('Reward medio por step')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
@@ -923,9 +1070,9 @@ class OverfitDetectorCallback(BaseCallback):
         return self.eval_history
 
 
-# ---------------------------------------------------------------------------
+# # # # # # # # # # # # # # # # # # # # # # # # # # # 
 # Función principal: entrenamiento académico completo
-# ---------------------------------------------------------------------------
+# # # # # # # # # # # # # # # # # # # # # # # # # # # 
 
 def train_academic(features_path: str = 'data/normalized_features.csv',
                    prices_path: str   = 'data/original_prices.csv',
@@ -934,33 +1081,59 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
                    patience: int = 8,
                    risk_profile: str = 'balanced') -> PPO:
     """
-    Entrenamiento con monitorización académica completa.
+    Entrenamiento académico completo del agente PPO con todos los controles
+    de calidad activos. Es la función "entrar a producir el modelo del TFM".
 
-    Incluye diagnóstico de entropía, value loss y explained variance,
-    early stopping basado en reward out-of-sample con paciencia adaptativa,
-    y detección automática de sobreajuste (gap train/eval).
+    Qué hace, paso a paso:
+      1. Resuelve el perfil de riesgo elegido (phi, gamma) y crea dos
+         entornos: uno de train (80 % de los datos) y otro de eval (20 %
+         restante, out-of-sample).
+      2. Calcula automáticamente eval_freq y patience adaptativos para que
+         las evaluaciones lleguen con la frecuencia adecuada al tamaño del
+         dataset (ver explicación más abajo).
+      3. Engancha tres callbacks: monitor académico (diagnóstico interno
+         PPO), detector de sobreajuste (gap train vs eval + early stopping)
+         y EvalCallback (guarda automáticamente el mejor modelo según el
+         reward de eval, en models/best_model_academic/).
+      4. Entrena PPO con hiperparámetros calibrados para series financieras
+         (lr=1e-4, n_steps=2048, batch_size=128, clip_range=0.1, red 256×256).
+      5. Genera dos PNG de diagnóstico: uno con la dinámica interna PPO
+         (entropía, value loss, KL...) y otro con las curvas train/eval
+         que evidencian si hubo sobreajuste.
 
     Parameters
     ----------
     features_path : str
-        Ruta al CSV de features normalizadas.
+        Ruta al CSV de features normalizadas (entrada a la red).
     prices_path : str
-        Ruta al CSV de precios originales.
+        Ruta al CSV de precios originales (para calcular el reward real).
     total_timesteps : int
-        Pasos máximos de entrenamiento (puede parar antes por early stopping).
+        Pasos máximos de entrenamiento. El early stopping puede detenerlo
+        antes si el agente deja de mejorar en eval.
     split_pct : float
-        Fracción de datos para entrenamiento (el resto se usa para evaluación).
+        Fracción de datos para train. El resto queda como out-of-sample
+        para evaluar el modelo durante y después del entrenamiento.
     patience : int
-        Evaluaciones base sin mejora antes de considerar early stopping.
+        Valor base de paciencia para early stopping. La función calcula
+        además una `effective_patience` adaptativa al número total de
+        evaluaciones previstas (entre 5 y 15).
     risk_profile : str
-        Perfil de riesgo: 'balanced', 'conservative', 'low_turnover', 'aggressive'.
-        Determina phi (penalización drawdown) y gamma (penalización turnover)
-        de la función de recompensa. Ver risk_profiles.py para detalle de cada uno.
+        Perfil que determina phi y gamma de la recompensa:
+          - 'balanced'     → equilibrado (configuración por defecto del TFM)
+          - 'conservative' → mayor penalización por drawdown
+          - 'low_turnover' → mayor penalización por rotación de cartera
+          - 'aggressive'   → mínimas penalizaciones, máxima libertad
+        Ver risk_profiles.py para los valores exactos de cada uno.
 
     Returns
     -------
     PPO
-        Modelo PPO entrenado (también guardado en models/best_model_academic/).
+        Modelo PPO entrenado. Se guardan dos copias en disco:
+          - models/best_model_academic/best_model.zip → el mejor modelo
+            visto en eval durante el entrenamiento (el que se usa en
+            simulaciones).
+          - models/ppo_academic_final.zip → el modelo en el último step
+            (no necesariamente el mejor, útil para depuración).
     """
     from src.training_drl.risk_profiles import get_profile, get_phi_gamma
 
@@ -988,18 +1161,28 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     eval_env  = PortfolioEnv(features_path, prices_path,
                              start_idx=split_idx, phi=phi, gamma=gamma)
 
-    # eval_freq adaptativo: evaluar cada ~20 episodios completos de entrenamiento.
-    # Con dataset largo (split_idx=2000 steps/ep), eval_freq=10000 -> solo 5 episodios
-    # entre evaluaciones -> señal de mejora ruidosa -> early stopping prematuro.
-    # Con dataset corto (split_idx=100 steps/ep), eval_freq=10000 -> 100 episodios
-    # entre evaluaciones -> umbral de mejora relativo se vuelve muy pequeño -> nunca para.
-    # Solución: eval_freq = 20 episodios * longitud del episodio de train.
+    # ── eval_freq adaptativo ──────────────────────────────────────────────
+    # ¿Cada cuántos pasos del modelo evaluamos en out-of-sample? Si
+    # evaluamos demasiado seguido, la señal "estoy mejorando" es ruidosa
+    # (no le ha dado tiempo a aprender nada nuevo entre dos evaluaciones)
+    # y el early stopping dispara antes de tiempo. Si evaluamos muy poco,
+    # el modelo se sobreajusta antes de que lo detectemos.
+    #
+    # Regla: una evaluación cada ~20 episodios completos de train. Como en
+    # este entorno cada episodio recorre todo el split, ep_len_train = split_idx.
+    # Con un dataset pequeñajo (split=100) → eval cada 5 000 pasos; con un dataset
+    # grande (split=2 000) → eval cada 40 000 pasos. Acotado entre 5 k y 50 k.
     ep_len_train = split_idx  # el entorno recorre todo el split en cada episodio
     eval_freq = max(5000, min(50000, ep_len_train * 20))
 
-    # Patience adaptativa: más pasos totales -> más evaluaciones antes de rendir.
-    # Con total_timesteps=500000 y eval_freq adaptativo, habrá ~total/eval_freq evaluaciones.
-    # Patience = 30% de esas evaluaciones, con mínimo 5 y máximo 15.
+    # ── Patience adaptativa ───────────────────────────────────────────────
+    # Cuántas evaluaciones consecutivas sin mejora aceptamos antes de parar.
+    # Si entrenamos pocos pasos en total, no podemos exigir 15 evaluaciones
+    # de paciencia (solo va a haber 8 evaluaciones en total). Si entrenamos
+    # 500 k pasos, sí podemos permitirnos esperar más antes de rendirnos.
+    #
+    # Regla: 30 % del número total de evaluaciones previstas, acotado entre
+    # 5 (paciencia mínima razonable) y 15 (más sería ineficiente).
     n_total_evals = total_timesteps // eval_freq
     effective_patience = max(5, min(15, n_total_evals // 3))
 
@@ -1029,17 +1212,78 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
         verbose=0
     )
 
+    # ── Hiperparámetros del PPO ───────────────────────────────────────────
+    # Calibrados para el entorno financiero del TFM tras experimentación:
+    # los valores por defecto de SB3 (lr=3e-4, n_steps=1024, batch=64,
+    # clip=0.2) producían entrenamientos inestables (KL alta, gradientes
+    # ruidosos) en series temporales con mucho ruido como las de mercado.
+    # Los valores actuales priorizan estabilidad sobre velocidad.
+    
+    # explicación detallada. Va a ir de cabeza al tfm
+    # Agente PPO con red MLP (perceptrón multicapa) sobre el entorno de entrenamiento.
+    # learning_rate=1e-4
+        #Cuánto se mueve la red en cada actualización. Es como caminar hacia la cima de una montaña: 
+        # pasos grandes (3e-4 = lr alto) llegas rápido pero te puedes saltar la cima; pasos pequeños 
+        # (1e-4) tardas más pero aciertas mejor. Bajamos de 3e-4 a 1e-4 porque las series financieras 
+        # tienen mucho ruido y los pasos grandes hacían oscilar el modelo.
+    #n_steps=2048
+        #Cuánta experiencia recoge antes de aprender. PPO funciona en ciclos: vive 2048 pasos en el 
+        # entorno (toma decisiones, ve consecuencias) y solo entonces actualiza la red con todo lo 
+        # aprendido. Subido de 1024 a 2048 = "vive el doble antes de reflexionar" → reflexión más 
+        # informada.
+    # batch_size=128
+        #De cuántos ejemplos toma nota a la vez al actualizar. Si los 2048 pasos son la "experiencia 
+        # total", el batch_size es el "trozo que le da a la red de cada vez". Subido de 64 a 128 
+        # = gradientes más promediados, menos ruidosos.
+
+    # clip_range=0.1
+        # Cuánto puede cambiar la política como máximo en una actualización. PPO previene saltos 
+        # bruscos: si la nueva política se quiere alejar más del 10% de la antigua, recorta. Bajado de 
+        # 0.2 a 0.1 = más conservador → entrenamiento más estable, menos riesgo de "olvidar" 
+        # lo aprendido.
+    # ent_coef=0.01
+        #Premio por explorar. Penaliza que el agente se vuelva demasiado seguro (siempre la misma acción)
+        # . 0.01 = pequeño empujón a probar acciones distintas. Si fuera 0, el agente se cerraría 
+        # enseguida en una estrategia y dejaría de buscar mejoras.
+
+    # vf_coef=0.5
+        # Cuánto pesa aprender el "modelo de valor" (la red que predice "cuánto reward voy a sacar 
+        # desde aquí") respecto a aprender la política directamente. 0.5 = mitad y mitad, balance 
+        # estándar.
+
+    # max_grad_norm=0.5
+        # Tope al tamaño de los gradientes. Si en una actualización los gradientes (las correcciones a 
+        # la red) son enormes — porque hubo un día catastrófico — los recortamos a 0.5. Evita que un 
+        # día anómalo destruya lo aprendido en semanas.
+
+    # policy_kwargs=dict(net_arch=[256, 256])
+        # Forma de la red neuronal: 2 capas ocultas con 256 neuronas cada una. Suficiente capacidad para
+        # aprender patrones financieros sin caer en sobreajuste por exceso de parámetros.
+
+    # verbose=1
+        # Verbosidad = "cuánto habla". 0 = silencioso (no imprime nada en consola). 1 = imprime un 
+        # resumen en cada actualización (rewards, losses, KL, etc.). 2 = aún más detallado. Como 
+        # queremos ver el progreso del entrenamiento en consola, usamos 1.
+
+
+    #tensorboard_log="./logs/"
+        # Dónde guardar logs de entrenamiento para visualizarlos con TensorBoard (una herramienta 
+        # gráfica de TensorFlow/PyTorch que pinta curvas de entrenamiento en tiempo real). No es 
+        # imprescindible, pero útil para diagnóstico durante el desarrollo.
+
+
+
     model = PPO(
         "MlpPolicy",
         train_env,
-        learning_rate=LEANRING_RATE,       # Reducido de 3e-4: actualizaciones más graduales
-        n_steps=2048,             # Aumentado de 1024: más experiencia entre updates
-        batch_size=128,           # Aumentado de 64: gradientes más estables
-        clip_range=CLIP_RANGE,           # Reducido de 0.2: frena cambios bruscos (KL alto)
-        ent_coef=0.01,
-        vf_coef=0.5,
-        max_grad_norm=0.5,
-        policy_kwargs=dict(net_arch=[256, 256]),
+        learning_rate=LEARNING_RATE,  # 1e-4 — actualizaciones más graduales (defecto: 3e-4)
+        n_steps=2048,# más experiencia entre updates (defecto: 1024)
+        batch_size=128,# gradientes más estables (defecto: 64)
+        clip_range=CLIP_RANGE, # 0.1 — frena cambios bruscos de política (defecto: 0.2)
+        ent_coef=0.01,  # exploración: peso de la entropía en la pérdida
+        vf_coef=0.5,# peso de la value loss en la pérdida total
+        max_grad_norm=0.5,  # clipping de gradientes para evitar explosiones
+        policy_kwargs=dict(net_arch=[256, 256]),  # MLP, perceptron multicapa, de 2 capas ocultas
         verbose=1,
         tensorboard_log="./logs/"
     )
