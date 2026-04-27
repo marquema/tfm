@@ -169,31 +169,6 @@ Infraestructura y MLOps & Docker / FastAPI \\ \hline
 \label{tab:herramientas}
 \end{table}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 \section{Planificación y Plan de Investigación}
 
 El desarrollo del proyecto se estructurará en cuatro fases mensuales, integrando hitos de validación temprana para asegurar la robustez del sistema:
@@ -265,13 +240,6 @@ A continuación se presenta la planificación temporal del proyecto, desglosada 
 \label{fig:gantt_tfm}
 \end{figure}
 
-
-
-
-
-
-
-
 \section{Vinculación con los Objetivos de Desarrollo Sostenible (ODS)}
 El presente proyecto se alinea principalmente con los siguientes objetivos de la Agenda 2030:
 \begin{itemize}
@@ -284,178 +252,153 @@ El presente proyecto se alinea principalmente con los siguientes objetivos de la
 \chapter{Estado del Arte}
 \label{cap:estado_del_arte}
 
-Este capítulo ofrece una revisión exhaustiva de la literatura científica y técnica que fundamenta la presente investigación. Se analiza la transición desde los modelos de optimización estática hacia los agentes de aprendizaje por refuerzo profundo (DRL), integrando la evolución de los activos digitales y las arquitecturas de software necesarias para su implementación en entornos reales.
+Este capítulo ofrece una revisión crítica de la literatura científica y técnica que fundamenta la presente investigación. El objetivo es analizar la transición desde los modelos de optimización estática hacia los agentes de aprendizaje por refuerzo profundo (DRL) aplicados a la gestión de carteras, prestando especial atención a la integración de los activos digitales como nueva clase de inversión. La revisión se estructura en tres ejes temáticos: la evolución de los marcos de optimización de carteras, los avances recientes en DRL aplicado a finanzas y la institucionalización de los criptoactivos. El capítulo cierra con una síntesis crítica que delimita las limitaciones persistentes en la literatura y enuncia, de forma sintética, la novedad que aporta este trabajo.
 
 \section{Evolución de la Gestión de Carteras: Del Paradigma de Markowitz a la Inteligencia Artificial}
 
-La gestión de carteras ha transitado desde una disciplina basada en la intuición hacia un campo de estudio dominado por la optimización matemática con enfoques puramente estadísticos y, más recientemente,  hacia modelos dinámicos basados en inteligencia artificial.  Esta evolución se divide en dos grandes eras: la clásica, centrada en la eficiencia estadística, y la moderna, centrada en el aprendizaje adaptativo. Esta evolución responde a la necesidad de capturar la complejidad de los mercados financieros modernos.
+La gestión cuantitativa de carteras ha transitado desde una disciplina basada en la intuición hacia un campo dominado por la optimización matemática y, más recientemente, por modelos dinámicos basados en aprendizaje automático. Esta evolución se enmarca en dos grandes etapas: una clásica, centrada en la eficiencia estadística estática, y una moderna, orientada al aprendizaje adaptativo bajo no estacionariedad.
 
 \subsection{La Teoría Moderna de Carteras (MPT) y su Legado}
-El punto de partida ineludible es el trabajo original de Markowitz \cite{markowitz1952}, \textit{Portfolio Selection}. Antes de este hito, la inversión era un proceso artesanal donde los analistas buscaban activos "ganadores" de forma individual. Markowitz cambió el paradigma al demostrar que el riesgo de un activo no debe medirse de forma aislada, sino por su contribución a la varianza total del conjunto.
+El punto de partida de la gestión cuantitativa moderna es el trabajo de Markowitz \cite{markowitz1952}. Su aportación fundamental reside en mostrar que el riesgo de un activo no debe medirse de forma aislada, sino a través de su contribución a la varianza total de la cartera. La MPT formaliza el problema de selección de activos como una optimización cuadrática en la que, dado un retorno esperado objetivo, se minimiza la varianza de la cartera.
 
-En términos conceptuales, la MPT define la cartera como un \textbf{sistema dinámico}. Su propuesta central es la \textbf{Frontera de Eficiencia}: un lugar geométrico que representa las combinaciones de activos que maximizan el retorno esperado para un nivel de riesgo determinado. Matemáticamente, este problema de optimización cuadrática se expresa como:
+Formalmente, la cartera óptima en sentido de Markowitz es la solución del problema:
 \begin{equation}
-\min w^T \Sigma w \quad \text{sujeto a} \quad w^T \mu = E[R_p], \quad \sum w_i = 1
+\min_{\mathbf{w} \in \mathbb{R}^{n}} \; \mathbf{w}^{\top} \boldsymbol{\Sigma}\, \mathbf{w}
+\quad \text{sujeto a} \quad
+\mathbf{w}^{\top} \boldsymbol{\mu} = R^{*},
+\quad \mathbf{w}^{\top} \mathbf{1} = 1,
+\quad \mathbf{w} \geq \mathbf{0},
+\label{eq:markowitz}
 \end{equation}
+donde $\mathbf{w} \in \mathbb{R}^{n}$ es el vector de pesos sobre $n$ activos, $\boldsymbol{\Sigma}$ es la matriz de covarianzas de los retornos, $\boldsymbol{\mu}$ el vector de retornos esperados, $R^{*}$ el retorno objetivo y $\mathbf{1}$ el vector unitario. La restricción $\mathbf{w}^{\top}\mathbf{1}=1$ garantiza que la cartera está plenamente invertida, mientras que $\mathbf{w}\geq\mathbf{0}$ corresponde a un escenario \textit{long-only}, habitual en la gestión institucional regulada.
 
-Donde $w$ es el vector de pesos, $\Sigma$ la matriz de covarianza y $\mu$ los retornos esperados. Si bien este marco fue revolucionario, su aplicación práctica enfrenta lo que en Ciencia de Datos denominamos ``\textit{extrema sensibilidad a los parámetros de entrada}". Como se discute en la literatura sobre la eficiencia y racionalidad de los mercados \cite{jstor2697771}, los supuestos de Markowitz presentan limitaciones críticas en la actualidad:
+Pese a su valor fundacional, la aplicación práctica de la MPT presenta limitaciones ampliamente documentadas en la literatura sobre eficiencia y racionalidad de los mercados \cite{michaud1989}:
 
 \begin{itemize}
-    \item \textbf{El espejismo de la estacionariedad:} La MPT asume que el pasado es un predictor estadístico perfecto. Calcula la volatilidad como una ``foto fija", ignorando que en mercados reales las correlaciones son dinámicas y tienden a converger a 1 durante periodos de crisis(todos empiezan a caer a la vez. Activos que normalmente no están correlacionados), anulando el beneficio de la diversificación.
-    \item \textbf{La trampa de la Normalidad:} El modelo asume que los retornos siguen una distribución Gaussiana. La realidad es que no: realmente, los eventos financieros muestran ``colas pesadas" (\textit{fat tails}), lo que implica que eventos extremos (cisnes negros) ocurren con una frecuencia órdenes de magnitud superior a lo previsto por la estadística clásica.
+    \item \textbf{Sensibilidad a los parámetros estimados.} La solución óptima depende fuertemente de las estimaciones de $\boldsymbol{\mu}$ y $\boldsymbol{\Sigma}$, que se calculan sobre ventanas históricas finitas. Pequeñas variaciones en estos parámetros producen reasignaciones drásticas de pesos, lo que cuestiona la estabilidad práctica del modelo.
+    \item \textbf{Supuesto implícito de estacionariedad.} La MPT trata las correlaciones como constantes a lo largo del tiempo. La evidencia empírica muestra, sin embargo, que en periodos de tensión las correlaciones tienden a aumentar, reduciendo el beneficio de la diversificación previsto por el modelo.
+    \item \textbf{Distribución gaussiana de los retornos.} Numerosos estudios documentan que los retornos financieros presentan colas pesadas y exceso de curtosis, propiedades que la suposición de normalidad del marco clásico no captura adecuadamente.
 \end{itemize}
 
+\subsection{Hacia una Optimización Secuencial: Limitaciones del Marco Estático}
 
-\subsection{El desafío de los Criptoactivos y la Inversión Dinámica}
+Las limitaciones anteriores se acentúan cuando la cartera incorpora activos cuyo comportamiento estadístico se aleja de los supuestos clásicos, como ocurre con los criptoactivos. La literatura ha respondido extendiendo el marco original con diversas variantes (Black-Litterman, optimización robusta, modelos de mínima varianza con restricciones de norma, etc.), pero todas comparten la naturaleza estática del enfoque: cada decisión se toma resolviendo un problema de optimización de un único periodo, asumiendo parámetros estimados a partir de una ventana retrospectiva.
 
-La irrupción de activos digitales como el Bitcoin (representado en este estudio por el ETF \textbf{IBIT}) invalida los supuestos de baja volatilidad de la MPT. Los criptoactivos presentan ciclos de mercado acelerados y una volatilidad estructuralmente distinta a la renta variable tradicional. 
-
-Para gestionar con éxito una cartera híbrida, este trabajo propone transitar de una ``optimización de un solo periodo'' a una gestión secuencial que considere:
-
-\begin{enumerate}
-    \item \textbf{Naturaleza Secuencial de la Información:} Las decisiones de inversión actuales afectan el estado futuro del capital. Por ello, utilizamos \textbf{log-retornos} ($\ln(P_t/P_{t-1})$) para garantizar la aditividad temporal y manejar las asimetrías de los activos digitales.
-    \item \textbf{Costes de Fricción Reales:} A diferencia de la MPT teórica, un sistema de ejecución real debe penalizar el \textit{turnover} excesivo. Las comisiones y el \textit{slippage} son variables que un agente de \textit{Deep Reinforcement Learning} puede integrar en su función de recompensa, algo que la optimización estática de Markowitz no permite de forma nativa.
-\end{enumerate}
-
-En conclusión, el salto hacia el aprendizaje por refuerzo no es solo una mejora tecnológica, sino una necesidad estadística para navegar mercados donde la eficiencia no es perfecta y la adaptación constante es la única métrica de supervivencia.
-
+Frente a este paradigma estático, una línea creciente de literatura plantea la gestión de carteras como un problema secuencial en el que la decisión actual condiciona el espacio de estados futuro. Bajo esta visión, las comisiones, el \textit{slippage} y el \textit{turnover} dejan de ser fricciones externas y pasan a formar parte intrínseca de la función objetivo. Este replanteamiento abre la puerta a marcos basados en procesos de decisión de Markov y, en particular, al aprendizaje por refuerzo profundo, que se examina en la siguiente sección.
 
 \section{Deep Reinforcement Learning (DRL) en la Toma de Decisiones Financieras}
 
-La adopción del Aprendizaje por Refuerzo Profundo en la gestión de carteras representa un cambio de paradigma: pasamos de sistemas basados en reglas o predicciones aisladas a agentes autónomos que optimizan una política de decisión secuencial. Como se desprende de la literatura técnica %\cite{liu2018finrl}%
-, la ventaja competitiva de los agentes de DRL reside en su capacidad para modelar el mercado como un Proceso de Decisión de Markov (MDP), donde el agente aprende a maximizar una recompensa acumulada interactuando con un entorno incierto y no lineal.
+El \textit{Deep Reinforcement Learning} aplicado a la gestión de carteras supone un cambio de paradigma respecto a los enfoques estáticos: la decisión deja de obtenerse como solución de un problema de optimización de un único periodo y pasa a aprenderse como política condicionada al estado del entorno. La literatura modela este escenario como un Proceso de Decisión de Markov (MDP), donde un agente interactúa con el mercado, observa un estado $\mathbf{s}_t$, ejecuta una acción $\mathbf{a}_t$ y recibe una recompensa $r_t$, con el objetivo de maximizar el retorno acumulado esperado.
 
-\subsection{El Algoritmo PPO como Estándar de Estabilidad y Convergencia}
+\subsection{El Algoritmo PPO como Estándar de Estabilidad}
 
-En el trading algorítmico, uno de los mayores desafíos es la alta relación señal-ruido. Los algoritmos clásicos de gradiente de política a menudo sufren de una "colapso de política" si realizan una actualización demasiado agresiva basada en un evento de mercado ruidoso. Para mitigar esto, se propuso el algoritmo \textit{Proximal Policy Optimization} (PPO) \cite{schulman2017ppo}, que se ha consolidado como un estándar por su robustez.
+Dentro de la familia de algoritmos de gradiente de política, \textit{Proximal Policy Optimization} (PPO) \cite{schulman2017ppo} se ha consolidado como una elección de referencia debido a su estabilidad y eficiencia muestral. Una de las dificultades clásicas de los métodos de gradiente de política es que actualizaciones excesivamente amplias pueden conducir a degradaciones bruscas en el desempeño, especialmente en entornos con baja relación señal-ruido como los financieros. PPO mitiga este problema introduciendo un objetivo recortado (\textit{Clipped Surrogate Objective}) que limita la magnitud del cambio entre la política actualizada y la previa.
 
-La innovación técnica del PPO radica en su función de objetivo recortada (\textit{Clipped Surrogate Objective}). En términos expertos, esto actúa como una ``barandilla'' de seguridad que impide que la nueva política se desvíe excesivamente de la anterior:
-
+Formalmente, sea $\pi_{\theta}$ la política parametrizada y $\hat{A}_t$ una estimación de la ventaja en el instante $t$. El objetivo recortado se define como:
 \begin{equation}
-L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min(r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1 - \epsilon, 1 + \epsilon) \hat{A}_t) \right]
+L^{\mathrm{CLIP}}(\theta) = \hat{\mathbb{E}}_t \!\left[ \min\!\Big( r_t(\theta)\,\hat{A}_t,\; \mathrm{clip}\!\big(r_t(\theta),\, 1-\epsilon,\, 1+\epsilon\big)\,\hat{A}_t \Big) \right],
+\label{eq:ppo-clip}
 \end{equation}
+donde
+\begin{equation}
+r_t(\theta) = \frac{\pi_{\theta}(\mathbf{a}_t \mid \mathbf{s}_t)}{\pi_{\theta_{\mathrm{old}}}(\mathbf{a}_t \mid \mathbf{s}_t)}
+\end{equation}
+es el cociente de probabilidades entre la política nueva y la antigua, y $\epsilon$ es un hiperparámetro que acota el cambio relativo permitido en cada actualización. El operador $\min$ aplicado al producto $r_t(\theta)\,\hat{A}_t$ y a su versión recortada penaliza los movimientos que se alejan del entorno de confianza implícito definido por $[1-\epsilon, 1+\epsilon]$, evitando actualizaciones inestables sin necesidad de imponer restricciones explícitas sobre la divergencia de Kullback-Leibler como en el caso de TRPO.
 
-Donde $r_t(\theta)$ representa el ratio de probabilidad entre la política nueva y la antigua. Para un gestor de activos, esta estabilidad es fundamental: evita que el agente venda en modo pánico' o realice apuestas excesivas ante un pico momentáneo de volatilidad en activos como el Bitcoin, garantizando que el aprendizaje sea consistente y resiliente como proponen Schulman et al. \cite{schulman2017ppo}.
+Esta estabilidad ha favorecido la adopción de PPO en múltiples estudios sobre trading algorítmico, en los que la combinación de alta varianza de la señal y horizontes largos de inversión hace especialmente sensible al método de optimización empleado.
 
-\subsection{Arquitectura Actor-Critico: Separando el Análisis de la Ejecución}
+\subsection{Arquitectura Actor-Crítico}
 
-Un aspecto fundamental resaltado en implementaciones modernas %\cite{acm2024ppo} 
-Adversarial Deep Reinforcement Learning in Portfolio Management, es el uso de la arquitectura \textit{Actor-Critic}. En este esquema, el agente se divide en dos redes neuronales que colaboran y se supervisan mutuamente:
-
+La mayoría de implementaciones modernas de PPO se apoyan en una arquitectura \textit{Actor-Critic}, en la que dos redes neuronales colaboran:
 \begin{itemize}
-    \item \textbf{El Actor:} Es el encargado de proponer la acción, es decir, decide la asignación de pesos ($w$) de la cartera en cada paso de tiempo.
-    \item \textbf{El Crítico:} Evalúa la calidad de dicha acción estimando la función de valor del estado actual. Su rol es reducir la varianza del aprendizaje, indicándole al Actor si el retorno obtenido fue mérito de su decisión o simplemente ruido del mercado.
+    \item El \textit{actor} aproxima la política $\pi_{\theta}(\mathbf{a}\mid\mathbf{s})$ y propone la acción a ejecutar (en gestión de carteras, el vector de pesos $\mathbf{w}_t$).
+    \item El \textit{crítico} estima la función de valor $V_{\phi}(\mathbf{s})$, lo que permite calcular ventajas $\hat{A}_t$ con menor varianza que un estimador puramente Monte Carlo.
 \end{itemize}
+Esta separación es especialmente útil en problemas con espacios de acción continuos, como la asignación de pesos de cartera en $[0,1]^{n}$, donde aproximaciones discretas (por ejemplo, basadas en DQN) resultan poco adecuadas.
 
-Esta separación de responsabilidades permite que el modelo aprenda de forma más eficiente en espacios de acciones continuos (donde los pesos pueden ser cualquier valor real entre 0 y 1), algo que modelos discretos como el DQN no pueden manejar con precisión.
+\subsection{Industrialización del DRL Financiero: el Ecosistema FinRL}
 
-\subsection{Industrialización del DRL: El Ecosistema FinRL}
+Una dificultad recurrente en la literatura de DRL financiero es la reproducibilidad: muchos resultados publicados son difíciles de replicar debido a la variabilidad de fuentes de datos, preprocesamientos y parametrizaciones del entorno. Para mitigar esta brecha, los trabajos en torno a \textbf{FinRL} \cite{liu2018finrl,arxiv191110107,liu2021finrl} proponen una infraestructura jerárquica que estandariza la ingesta de datos, el preprocesamiento y el \textit{backtesting} sobre el estándar \textbf{Gymnasium}.
 
-%Como señalan %\cite{liu2018finrl} y \cite{arxiv191110107}, 
-%FinRL: A Deep Reinforcement Learning Library for
-%Automated Stock Trading in Quantitative Finance, 
-Como señalan diversos trabajos sobre FinRL \cite{liu2018finrl,arxiv191110107}, la brecha entre la teoría y la práctica en finanzas cuantitativas suele deberse a la dificultad de reproducir entornos de mercado fieles. El marco \textbf{FinRL} \cite{liu2021finrl} aborda esta problemática proporcionando una infraestructura jerárquica que estandariza la ingesta de datos, el preprocesamiento y el \textit{backtesting} bajo los estándares de \textbf{Gymnasium}.
+Dicha estandarización tiene un valor doble. Por un lado, reduce la fricción de implementación al ofrecer entornos preconfigurados que cumplen la interfaz Gymnasium, permitiendo encadenar algoritmos de la familia PPO/A2C/DDPG sin reescribir el simulador. Por otro lado, fija un marco común para reportar métricas de evaluación, lo que facilita la comparación entre trabajos. Sin embargo, FinRL no aborda directamente cuestiones críticas para la gestión institucional de carteras híbridas: el modelado fino de fricciones, la inclusión de activos digitales con propiedades estadísticas singulares y el diseño de funciones de recompensa que penalicen explícitamente \textit{drawdown} y \textit{turnover}. Investigaciones más recientes \cite{plosone2025} señalan justamente la necesidad de extender los entornos para reflejar de forma realista la fricción operativa cuando se opera con instrumentos como ETFs sobre criptoactivos.
 
+\section{Criptoactivos e Institucionalización: el Impacto del IBIT}
 
-Recientes investigaciones en 
-%\textit{PLOS ONE} 
-\cite{plosone2025} subrayan que, al operar con activos híbridos que incluyen ETFs como el IBIT, el entorno debe ser capaz de simular no solo el precio, sino también la fricción del mercado (comisiones y \textit{slippage}). La ventaja de utilizar FinRL en este TFM es que permite al agente PPO entrenarse en un simulador que penaliza el comportamiento errático, forzándolo a encontrar estrategias de rebalanceo adecuadas que superen consistentemente a las estrategias pasivas de \textit{Buy \& Hold}.
-
-
-
-\section{Criptoactivos e Institucionalización: El Impacto del IBIT}
-
-La integración de criptoactivos en carteras institucionales ha trascendido el ámbito especulativo para consolidarse como un componente de diversificación estructural. Como señalan en la obtra de \textit{Cryptoassets: The Guide to Bitcoin, Blockchain, and
-Cryptocurrency for Investment Professionals}   \cite{hougan2021crypto}, el Bitcoin posee propiedades estadísticas únicas que lo distinguen tanto de la renta variable como de los activos de refugio tradicional (oro o bonos), ofreciendo una fuente de retorno no correlacionada en horizontes temporales de largo plazo.
+La integración de criptoactivos en carteras institucionales ha trascendido el ámbito puramente especulativo y se ha consolidado como un componente con potencial de diversificación estructural. Como se argumenta en \cite{hougan2021crypto}, el Bitcoin presenta propiedades estadísticas que lo distinguen tanto de la renta variable tradicional como de los activos refugio clásicos (oro o bonos), aunque sus efectos en términos de diversificación dependen fuertemente del régimen de mercado.
 
 \subsection{El IBIT como Catalizador de Eficiencia y Liquidez}
 
-El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) ha marcado un punto de inflexión en la microestructura del mercado de activos digitales. Su importancia en este trabajo no es solo financiera, sino técnica: al operar bajo la estructura de un ETF \textit{spot}, el IBIT elimina las barreras de custodia y las ineficiencias de los mercados \textit{offshore}, permitiendo que los agentes de \textit{Deep Reinforcement Learning} operen sobre series temporales de alta fidelidad, con liquidez institucional y costes de fricción estandarizados.
+El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) constituye un punto de inflexión en la microestructura del mercado de criptoactivos. Al tratarse de un ETF \textit{spot} regulado, el IBIT permite acceder a la exposición a Bitcoin a través de los canales habituales de negociación bursátil, eliminando una parte significativa de las fricciones de custodia y liquidez asociadas a los mercados \textit{offshore}.
 
-Desde la perspectiva de la teoría de carteras, la inclusión del IBIT permite desplazar la frontera de eficiencia hacia el cuadrante superior izquierdo (mayor retorno por unidad de riesgo, o dicho de otro modo, maximizar la rentabilidad reduciendo el riesgo). Sin embargo, este desplazamiento no es lineal, es decir, el beneficio no es ni constante, ni predecible. 
-%La literatura en \textit{IEEE} \textit{ieee9755122} destaca que, 
-La literatura previa destaca que, aunque el Bitcoin puede actuar como un diversificador eficiente, su comportamiento durante episodios de pánico financiero muestra episodios de acoplamiento momentáneo con el S\&P 500 \cite{ieee9755122}. Es decir, comienza a comportarse como un mercado bursatil tradicional, lo que exige una gestión activa y dinámica que los modelos estáticos no pueden proporcionar. 
-En resumen, IBIT puede mejorar una cartera, pero diversificar hacia este tipo de activos puede fallar. Por eso es necesaria una gestión activa, y no confiar solo en modelos teóricos.
+Desde la perspectiva de la teoría de carteras, la inclusión de un activo con un perfil de retorno-riesgo diferenciado podría contribuir a desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. No obstante, este beneficio es contingente al régimen de mercado: la literatura previa documenta episodios en los que el Bitcoin ha mostrado un acoplamiento elevado con índices bursátiles tradicionales como el S\&P 500, especialmente durante eventos de tensión financiera \cite{ieee9755122}. Esta dependencia condicional sugiere que la diversificación obtenida mediante criptoactivos no es estable a lo largo del tiempo, lo que motiva el uso de marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
 
-\subsection{Propiedades Estadísticas: Volatilidad y Dependencia Temporal}
+\subsection{Propiedades Estadísticas Relevantes para la Gestión Algorítmica}
 
-A diferencia de los activos tradicionales, el IBIT hereda del Bitcoin una estructura de retornos caracterizada por:
+Los retornos del IBIT heredan del Bitcoin un conjunto de propiedades estadísticas relevantes desde el punto de vista del modelado:
 
 \begin{itemize}
-    \item \textbf{Cluster de Volatilidad (\textit{Volatility Clustering}):} Como se analiza en \textit{plosone2025}, la volatilidad en los criptoactivos no es ruido aleatorio, sino que se presenta en ráfagas persistentes. Es decir, varios días seguidos de movimientos volátiles, \textit{en ráfaga} seguidos por períodos de calma.  Nuestro modelo PPO aprovecha esta característica; en lugar de considerar la volatilidad únicamente como un riesgo, el agente aprende a identificar estos periodos de alta actividad para ajustar los pesos de la cartera proactivamente.
-    \item \textbf{Asimetría y Colas Pesadas:} Los retornos del IBIT presentan colas pesadas (\textit{fat tails}), lo que implica que las ganancias o pérdidas extremas son más probables de lo que sugiere una distribución normal. 
+    \item \textbf{\textit{Volatility clustering}.} Tal y como se documenta en \cite{plosone2025}, la volatilidad de los criptoactivos no se distribuye uniformemente en el tiempo, sino que tiende a presentarse en \textit{clústeres} persistentes en los que periodos de alta agitación alternan con fases comparativamente más estables.
+    \item \textbf{Asimetría y colas pesadas.} La distribución empírica de los retornos del IBIT exhibe colas más pesadas que las de una distribución normal, lo que implica una mayor frecuencia de eventos extremos respecto a lo que predicen los modelos gaussianos clásicos.
+    \item \textbf{Dependencia condicional con el mercado tradicional.} Como se ha indicado, las correlaciones con renta variable y renta fija varían con el régimen, lo que penaliza a los modelos estáticos que asumen una estructura de covarianza constante.
 \end{itemize}
 
-\subsection{Sinergia entre DRL y la Nueva Clase de Activos}
+Estas características, combinadas con la naturaleza no estacionaria de los retornos, dificultan la aplicación directa de los marcos de optimización de un único periodo y refuerzan el interés de aproximaciones secuenciales basadas en aprendizaje por refuerzo profundo.
 
-La justificación técnica de utilizar un agente de DRL para gestionar el IBIT radica en la naturaleza cambiante de sus correlaciones: en períodos de calma, la correlación con los mercados tradicionales tiende a ser baja, mientras que en períodos de turbulencias financieras tenderá a ser alta. La investigación de \textit{IEEE} \textit{ieee9755122} sugiere que las criptomonedas exhiben una ``memoria larga'' en su varianza, es decir, la volatilidad actual depende de lo que pasó hace mucho tiempo y no solo de los días recientes. Un optimizador de Markowitz tradicional, que solo observa una ventana retrospectiva fija, quedaría atrapado en el pasado. 
+\section{Síntesis Crítica y Hueco de Investigación}
+\label{sec:sintesis_critica}
 
+La revisión de los apartados anteriores permite extraer tres observaciones principales:
 
-En contraste, el agente PPO propuesto en este TFM utiliza una representación del estado que incluye indicadores técnicos y momentos estadísticos que incluyen medidas como asimetría y curtosis, que capturan riesgos extremos co colas pesadas, permitiendo tener una visión más completa del mercado. Esto le permite capturar la transición del Bitcoin de ser un activo de ``alto riesgo'' a un componente de ``reserva de valor institucional'' dependiendo del régimen de mercado, optimizando el Ratio de Sharpe de la cartera híbrida mediante una reasignación de capital en tiempo real que minimiza el \textit{Maximum Drawdown} durante correcciones bruscas del sector cripto. Es decir, nuestro agente PPO reduce el riesgo de pérdidas grandes durante caídas bruscas en el sector cripto, moviendo dinero entre activos en el momento adecuado, no esperando a que simplemente, pase la crisis.
+\begin{enumerate}
+    \item Los marcos clásicos de optimización de carteras, basados en el legado de Markowitz, asumen estacionariedad, normalidad y ausencia de fricciones, supuestos que se ven especialmente comprometidos cuando la cartera incorpora criptoactivos.
+    \item Los algoritmos de DRL —y en particular PPO— ofrecen un marco maduro para abordar el problema como una decisión secuencial bajo incertidumbre. Sin embargo, gran parte de la literatura aplicada se centra en universos puramente bursátiles o en criptomonedas aisladas, y emplea funciones de recompensa relativamente simples (típicamente, retornos logarítmicos o ratios de Sharpe sobre ventana fija).
+    \item Ecosistemas como FinRL han contribuido decisivamente a estandarizar la ingesta y la evaluación, pero no abordan de forma específica el problema de gestionar carteras híbridas que combinen activos tradicionales con ETFs sobre criptoactivos, ni el de reflejar con fidelidad las fricciones operativas asociadas a tales instrumentos.
+\end{enumerate}
 
+A partir de estas observaciones, el hueco de investigación que motiva el presente trabajo puede formularse como sigue: \textit{no existe en la literatura revisada un marco integrado que combine (i) un agente DRL basado en PPO, (ii) una función de recompensa multiobjetivo que penalice explícitamente \textnormal{drawdown} y \textnormal{turnover}, (iii) un universo híbrido que incluya ETFs regulados sobre Bitcoin y Ethereum, y (iv) un protocolo de validación temporal estricto sobre datos out-of-sample}. Cubrir este vacío constituye la motivación central del TFM y se concreta en las contribuciones que se sintetizan a continuación.
 
-\section{Arquitectura de Sistemas y MLOps: De la Teoría a la Ingeniería Real}
+\section{Novedad de este Trabajo}
+\label{sec:novedad}
 
-Un sistema de trading algorítmico moderno no es solo un modelo matemático; es una infraestructura de software. La literatura subraya que la escalabilidad y la gestión de la deuda técnica son críticas en sistemas financieros automatizados %\cite{acm2022mlops}.
-\textit{acm2022mlops}.
+A partir del hueco identificado en la sección \ref{sec:sintesis_critica}, este Trabajo Final de Máster se posiciona en la intersección entre el aprendizaje por refuerzo profundo, la gestión institucional de carteras y la incorporación de activos digitales como nueva clase de inversión. Sus aportaciones, que se desarrollan en detalle en los capítulos posteriores, pueden sintetizarse en los siguientes ejes:
 
-\subsection{Resiliencia mediante Microservicios y Gestión de Proxies}
-%Siguiendo la metodología de \cite{oates2006}, este trabajo aplica un enfoque de ingeniería centrado en el artefacto. La novedad técnica radica en el desarrollo de microservicios (\textbf{FastAPI} y \textbf{Docker}) capaces de operar en entornos corporativos restrictivos. La integración de sesiones TLS impersonadas mediante \texttt{curl\_cffi} aborda un vacío
-Siguiendo la metodología propuesta en \cite{oates2006}, este trabajo aplica  un enfoque de ingeniería centrado en el artefacto. La novedad técnica radica en el desarrollo de microservicios (\textbf{FastAPI} y \textbf{Docker}) capaces de operar en entornos corporativos restrictivos. La integración de sesiones TLS impersonadas mediante \texttt{curl\_cffi} aborda un vacío en la literatura técnica: la garantía de ingesta de datos de alta fidelidad desde APIs protegidas (como Yahoo Finance) sin comprometer la seguridad ni la integridad del flujo de datos en entornos con proxies SSL.
+\begin{itemize}
+    \item Diseño de un agente PPO sobre un MDP específicamente adaptado a una cartera híbrida que combina renta variable tradicional, renta fija y ETFs regulados sobre criptoactivos (IBIT y ETHA).
+    \item Definición de una función de recompensa multiobjetivo que integra retorno ajustado por riesgo, penalización por \textit{drawdown} y penalización por \textit{turnover}, parametrizada mediante perfiles de riesgo seleccionables.
+    \item Aplicación de un protocolo de validación temporal robusto, basado en \textit{walk-forward}, \textit{expanding window} y análisis de sensibilidad de los hiperparámetros de la recompensa, así como un análisis del rendimiento por régimen de volatilidad.
+    \item Implementación del sistema como una arquitectura de microservicios con persistencia, autenticación y trazabilidad de cada modelo entrenado, lo que permite la reproducción exacta de los experimentos y la simulación personalizada por parte de usuarios finales.
+\end{itemize}
 
-\section{Arquitectura de Sistemas y MLOps: De la Teoría a la Ingeniería Real}
+El detalle de cómo se concretan estas aportaciones —el modelado del entorno, la metodología de validación, la arquitectura del sistema y los experimentos realizados— se aborda en los capítulos siguientes de la memoria.
 
-Un sistema de trading algorítmico moderno trasciende la mera formulación matemática; se define como una infraestructura de software de alta disponibilidad donde la gestión de la deuda técnica y la escalabilidad son pilares fundamentales \cite{acm2022mlops}. En este TFM, se adopta un enfoque de \textbf{Financial MLOps}, reconociendo que la eficacia de un agente de DRL es efímera si no está respaldada por un \textit{pipeline} de datos reproducible y una arquitectura capaz de mitigar el sesgo operativo.
+\chapter{Materiales y Métodos}
+\label{cap:materiales_y_metodos}
+
+Este capítulo describe los elementos metodológicos del trabajo: el marco general de investigación adoptado, la arquitectura del sistema implementado y las decisiones de ingeniería que sostienen el ciclo experimental. Las secciones que siguen presentan, primero, el encaje del trabajo en el marco de la \textit{Design Science Research}; a continuación, la arquitectura de microservicios diseñada para garantizar reproducibilidad y resiliencia; y, finalmente, las decisiones específicas relativas a la ingesta de datos en entornos restrictivos. El detalle del entorno DRL, la función de recompensa y el protocolo de validación se desarrolla en los capítulos posteriores dedicados a la implementación y a los resultados.
+
+\section{Marco metodológico: Design Science Research}
+\label{sec:dsr}
+
+El presente trabajo se encuadra en el marco de la \textit{Design Science Research} (DSR) \cite{oates2006}, una metodología orientada a la creación y evaluación de artefactos tecnológicos como medio para resolver problemas prácticos relevantes. El \textit{artefacto} de esta investigación es un sistema integral de optimización de carteras híbridas basado en aprendizaje por refuerzo profundo, compuesto por un pipeline de datos, un entorno de simulación, un agente PPO entrenado y una capa de servicios para evaluación y simulación personalizada.
+
+La adopción de DSR resulta adecuada porque el trabajo no se limita a verificar una hipótesis científica aislada, sino que persigue la construcción de un sistema completo cuya evaluación se realiza tanto en términos cuantitativos (métricas financieras de riesgo y rendimiento) como cualitativos (reproducibilidad, mantenibilidad y trazabilidad operativa). El ciclo de diseño se ha articulado en iteraciones sucesivas en las que cada fase aporta un componente del artefacto y un protocolo de evaluación específico, en línea con el esquema clásico propuesto en la literatura de DSR.
+
+\section{Arquitectura del Sistema: Enfoque MLOps}
+\label{sec:arquitectura}
+
+La eficacia de un agente DRL depende, en la práctica, de una infraestructura de soporte capaz de garantizar reproducibilidad, trazabilidad y aislamiento entre fases experimentales. La literatura sobre MLOps en sistemas financieros automatizados \cite{acm2022mlops} subraya que la deuda técnica acumulada en el preprocesamiento, en el versionado de modelos y en la gestión de datos suele ser determinante en la capacidad de un sistema para sostener resultados consistentes a lo largo del tiempo. A partir de estas consideraciones, este trabajo adopta un enfoque de \textit{Financial MLOps} en el que la arquitectura se descompone en microservicios coordinados.
 
 \subsection{Resiliencia mediante Microservicios y Contenedores}
 
-Siguiendo la metodología de %
-\textit{oates2006}, este trabajo aplica un enfoque de ingeniería centrado en el artefacto. La arquitectura se descompone en microservicios orquestados mediante \textbf{Docker}, lo que garantiza la paridad de entornos entre la fase de entrenamiento y el despliegue. Esta elección técnica es estratégica: el ecosistema \textbf{Gymnasium} y las librerías de \textit{Deep Learning} poseen dependencias complejas que requieren aislamiento para evitar la degradación del rendimiento del agente.
+La arquitectura se organiza en torno a una capa de servicio basada en \textbf{FastAPI}, sobre la que se exponen las distintas fases del pipeline (selección del universo, preparación de datos, entrenamiento del agente, validación temporal y simulación personalizada). Esta separación modular permite independizar el ciclo de inferencia del agente respecto a la ingesta y al preprocesamiento, así como escalar de forma diferenciada cada componente. El uso de contenedores con \textbf{Docker} se prevé para garantizar la paridad de entornos entre fase de entrenamiento y despliegue, evitando inconsistencias entre dependencias del ecosistema Gymnasium y de las librerías de \textit{Deep Learning}.
 
-El uso de \textbf{FastAPI} como capa de servicio permite que el modelo PPO sea consumido de forma asíncrona, facilitando la integración de señales de mercado en tiempo real sin bloquear el flujo de ejecución. Esta estructura modular permite escalar de forma independiente la ingesta de datos (ETL) del motor de inferencia del agente.
+La capa de persistencia está soportada por una base de datos relacional gestionada mediante un ORM, en la que se almacenan los universos de activos seleccionados por el screener, los modelos entrenados con su configuración de recompensa, y el historial de simulaciones realizadas por los usuarios. Esta capa, junto con la persistencia en disco de los CSVs de \textit{features} y los modelos serializados, constituye la base de la trazabilidad experimental del sistema.
 
-\subsection{Ingesta de Datos y Gestión de Restricciones Corporativas}
+\subsection{Ingesta de Datos en Entornos Restrictivos}
 
-Una contribución técnica original de este proyecto es la resolución del acceso a datos en entornos profesionales restringidos. La integración de sesiones TLS impersonadas mediante la librería \texttt{curl\_cffi} aborda un vacío crítico en la literatura técnica de trading algorítmico: la garantía de ingesta de datos de alta fidelidad desde APIs protegidas (como Yahoo Finance) sin comprometer la seguridad. 
+La ingesta de datos se ha diseñado teniendo en cuenta restricciones habituales en entornos corporativos, tales como la presencia de \textit{proxies} SSL y la posibilidad de bloqueos a las cabeceras estándar utilizadas por las librerías Python más comunes. Para mitigar estas dificultades, se ha integrado la librería \texttt{curl\_cffi}, que permite emular la huella TLS de un navegador Chrome moderno y, con ello, acceder a fuentes públicas como Yahoo Finance sin comprometer las políticas de seguridad de la red.
 
-Al emular las huellas dactilares (\textit{browser fingerprints}) de navegadores modernos, el sistema evita el bloqueo por parte de firewalls corporativos y proxies SSL, asegurando que el flujo de datos para activos sensibles como el \textbf{IBIT} sea continuo y no sufra de latencias que invaliden el aprendizaje del agente.
-
-
-\section{Metodología de Investigación: Design Science Research (DSR)}
-
-Este trabajo se encuadra en el marco de la \textit{Design Science Research} (DSR), una metodología centrada en la creación y evaluación de artefactos tecnológicos innovadores para resolver problemas prácticos complejos. El \textit{artefacto} en esta investigación es el ecosistema completo de optimización de carteras híbridas basado en DRL.
-
-\subsection{El Ciclo de Diseño y Técnica de Generación de Datos}
-
-Se emplea una investigación basada en documentos (\textit{Document-based Research}), automatizando la extracción de series temporales históricas para construir un entorno de aprendizaje representativo. La robustez científica de la metodología se apoya en tres pilares:
-
-\begin{enumerate}
-    \item \textbf{Preprocesamiento y Normalización Logarítmica:} Siguiendo los principios de \cite{markowitz1952} y las necesidades de los modelos neuronales, se transforman los precios en log-retornos. Esta técnica garantiza la estacionariedad de las series y permite que el agente aprenda variaciones relativas, mitigando el impacto de la escala de precios entre activos tan dispares como un ETF de renta fija y el Bitcoin.
-    \item \textbf{Protocolo de Validación Out-of-Sample:} Para combatir el \textit{backtest overfitting} ---uno de los fallos más comunes en la literatura financiera \cite{plosone2025}--- se aplica una separación temporal estricta: 
-    \begin{itemize}
-        \item \textbf{Training Set (80\%):} Donde el agente interactúa con el entorno para optimizar la política PPO.
-        \item \textbf{Test Set (20\%):} Una ventana de tiempo invisible para el modelo que simula el entorno real (\textit{out-of-sample}), evaluando la capacidad de generalización del agente ante regímenes de mercado no vistos.
-    \end{itemize}
-    \item \textbf{Validación de Robustez ante el Ruido:} Se implementa un protocolo de evaluación que no solo mide el retorno absoluto, sino métricas de riesgo ajustado (Sharpe, Sortino) y el \textit{Maximum Drawdown}, asegurando que el artefacto sea viable bajo condiciones de estrés financiero, en línea con los estándares de \textit{IEEE} \cite{ieee9755122}.
-\end{enumerate}
-
-Este enfoque metodológico asegura que el TFM no sea solo un ejercicio de programación, sino una investigación científica validada que aporta una solución técnica al problema de la gestión de activos híbridos en la era digital.
-
-
-
-\section{Novedad y Contribuciones Originales}
-
-La originalidad de este Trabajo Final de Máster reside en la aplicación de técnicas avanzadas de \textit{Deep Reinforcement Learning} para resolver el problema de la asignación dinámica de activos en un universo híbrido. Las contribuciones científicas y técnicas se desglosan en los siguientes puntos:
-
-\begin{enumerate}
-    \item \textbf{Modelado del MDP para Carteras Híbridas de Alta Volatilidad:} La principal contribución es el diseño de un Proceso de Decisión de Markov (MDP) adaptado a la convivencia de activos de baja volatilidad (renta fija/variable tradicional) con activos de alta convexidad como el \textbf{IBIT}. A diferencia de los modelos estándar, este trabajo propone un \textbf{espacio de estados ($S$)} enriquecido que permite al agente identificar cambios de régimen y correlaciones falsas entre el ecosistema cripto y el mercado tradicional.
-    
-    \item \textbf{Diseño de Función de Recompensa (\textit{Reward Shaping}) Multiobjetivo:} Se introduce una función de recompensa personalizada que trasciende la optimización del retorno simple. La novedad radica en la integración matemática de penalizaciones por \textit{Maximum Drawdown} (MDD) y fricción operativa (\textit{turnover}) directamente en el gradiente de la política. Esto fuerza al agente PPO a converger hacia una estrategia de ``racionalidad financiera'', priorizando la preservación de capital sobre la ganancia especulativa.
-
-    \item \textbf{Optimización en Espacios de Acción Continuos mediante PPO:} Frente a los enfoques de trading discreto (comprar/vender/mantener), este proyecto implementa una arquitectura de salida continua. El agente genera un vector de pesos de cartera ($\mathbf{w}_t$) mediante una distribución de probabilidad Gaussiana, permitiendo un rebalanceo granular y preciso. Esta aproximación es técnicamente superior para la gestión de ETFs, donde el ajuste fino de los pesos es crítico para la eficiencia de la frontera de inversión.
-
-    \item \textbf{Protocolo de Validación ante No-Estacionariedad:} Se aporta un marco de evaluación robusto diseñado para detectar el \textit{overfitting} en series temporales financieras. Mediante un protocolo de validación \textit{walk-forward} y pruebas de estrés en periodos de alta volatilidad inducida por activos digitales, se demuestra la capacidad de generalización del agente frente a la naturaleza no estacionaria de los mercados híbridos, superando las limitaciones de los optimizadores de varianza media tradicionales.
-\end{enumerate}
+Esta solución se ha encapsulado tras una abstracción de fuente de datos (\textit{Strategy pattern}), de modo que el resto del pipeline trabaja contra una interfaz común y resulta independiente del proveedor concreto utilizado. De este modo, la arquitectura admite, sin modificar el resto del sistema, la sustitución futura de la fuente histórica por proveedores en tiempo real (por ejemplo, Alpaca, Polygon.io o Interactive Brokers), siempre que cumplan con la interfaz especificada.
 
 \chapter{Glosario}
 
