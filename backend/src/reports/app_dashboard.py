@@ -1,11 +1,48 @@
 """
-Dashboard interactivo del TFM — AI-Driven Portfolio Management.
+Dashboard interactivo (Streamlit) del TFM — AI-Driven Portfolio Management.
 
-Muestra:
-  - Backtest comparativo: PPO vs Equal Weight, 60/40, Buy & Hold, Markowitz
-  - Métricas académicas: Sharpe, Sortino, MDD, CAGR, Volatilidad
-  - Asset allocation de la IA (pie chart interactivo)
-  - Diagnóstico del entrenamiento con explicaciones académicas
+Qué es este módulo en una frase:
+    Es el "panel de control académico" del TFM. Una aplicación web
+    Streamlit que permite explorar de forma interactiva los resultados
+    del agente PPO contra las baselines, ajustar parámetros (split,
+    comisión, capital) y ver el impacto en tiempo real. Diseñado para
+    la defensa del TFM — ideal para mostrar al tribunal "en vivo"
+    cualquier comparación que pidan.
+
+Diferencia con el frontend Angular:
+    El TFM tiene DOS interfaces visuales que coexisten deliberadamente:
+      - Streamlit (este módulo): orientado a EXPLORACIÓN académica.
+        Permite tocar parámetros y re-evaluar. Pensado para uso del
+        admin/investigador y la defensa.
+      - Angular (frontend-angular/): orientado a USUARIO FINAL inversor.
+        UI pulida, autenticación JWT, consume API REST. Pensado para
+        demostrar viabilidad de producto.
+    Ambas leen los mismos artefactos (CSVs, modelo PPO, BD) — la
+    diferencia es de público objetivo y nivel de profundidad técnica.
+
+Cómo se ejecuta:
+    streamlit run src/reports/app_dashboard.py
+
+    Streamlit levanta un servidor local en http://localhost:8501.
+    Cualquier widget (slider, selectbox) que el usuario toque dispara
+    una re-ejecución completa del script — el patrón de programación
+    es declarativo (describes la UI; Streamlit gestiona el ciclo).
+
+Secciones del dashboard (8 paneles):
+  1. Métricas comparativas: tabla Sharpe/Sortino/MDD/CAGR/Vol/Retorno
+     para todas las estrategias.
+  2. Equity curves: evolución del capital de cada estrategia (Plotly).
+  3. Drawdown over time: caídas desde máximos por estrategia.
+  4. Asset allocation: pie chart de los pesos finales del PPO.
+  5. Diagnóstico de entrenamiento: KL, clip fraction, value loss, etc.
+  6. Distribución de retornos diarios.
+  7. Volatilidad rolling.
+  8. Análisis de regímenes (vía regime_analysis.py).
+
+Carga datos directamente de:
+  - data/normalized_features.csv y data/original_prices.csv
+  - models/best_model_academic/best_model.zip (modelo PPO entrenado)
+  - BD (universe_repository) para metadata del modelo (perfil de riesgo).
 """
 import os
 import sys
@@ -34,8 +71,17 @@ def get_trained_model_info():
     """
     Consulta la BD para recuperar el perfil de riesgo del último PPO entrenado.
 
+    Sobre el cache: `@st.cache_data(ttl=60)` significa que Streamlit
+    cachea el resultado durante 60 segundos. Sin esto, cada interacción
+    del usuario (mover un slider) dispararía una consulta nueva a la BD
+    — innecesario porque la metadata del modelo no cambia segundo a
+    segundo. TTL bajo (60s) garantiza que tras reentrenar un modelo, el
+    dashboard refleje los nuevos valores casi inmediatamente sin
+    requerir restart manual.
+
     Devuelve dict con: risk_profile, phi, gamma, steps, trained_at.
-    Si no hay modelo en BD, devuelve None.
+    Si no hay modelo en BD (o falla la conexión), devuelve None — el
+    dashboard sigue funcionando, solo pierde el banner de perfil.
     """
     try:
         from src.auth.models import SessionLocal
@@ -274,7 +320,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
 
         ppo_series   = pd.Series(ppo_equity, name='IA_PPO')
 
-        # ── Baselines ─────────────────────────────────────────────────────────
+        # ── Baselines 
         baseline_results = ejecutar_baselines(
             df_p_test,
             initial_balance=initial_bal,
@@ -283,7 +329,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             ticker_bond='BND_Close'
         )
 
-        # ── Agente Especulativo (GMM + K-Means) ─────────────────────────────
+        # ── Agente Especulativo (GMM + K-Means) 
         speculative_path = 'models/speculative_gmm.pkl'
         if os.path.exists(speculative_path):
             import pickle
@@ -306,9 +352,9 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     date_d0 = test_dates[0] - BDay(1)
     dates   = [date_d0] + test_dates.tolist()
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════
     # SECCIÓN 1: Métricas comparativas
-    # ════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════
     st.markdown("---")
     st.markdown("## 1. Métricas de Rendimiento")
     st.markdown(
@@ -383,9 +429,9 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
     fig_eq.update_layout(**LAYOUT_OSCURO, xaxis_title="Fecha", yaxis_title="Valor ($)", height=450)
     st.plotly_chart(fig_eq, use_container_width=True)
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ════════════════════
     # SECCIÓN 3: Drawdown
-    # ════════════════════════════════════════════════════════════════════════
+    # ═════════════════════
     st.markdown("---")
     st.markdown("## 3. Drawdown — Peor Caída en Cada Momento")
     st.markdown(
@@ -418,9 +464,9 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
                          yaxis_title="Drawdown (%)", yaxis_ticksuffix="%", height=350)
     st.plotly_chart(fig_dd, use_container_width=True)
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════
     # SECCIÓN 4: Asset Allocation
-    # ════════════════════════════════════════════════════════════════════════
+    # ═════════════════════════════════
     st.markdown("---")
     st.markdown("## 4. Qué Compra el Agente — Asset Allocation")
 
@@ -468,9 +514,9 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
                                 yaxis_title="Peso", yaxis_tickformat=".0%", height=350)
             st.plotly_chart(fig_w, use_container_width=True)
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════
     # SECCIÓN 5: Diagnóstico del Entrenamiento
-    # ════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════
     st.markdown("---")
     st.markdown("## 5. ¿Aprendió Bien el Agente? — Diagnóstico del Entrenamiento")
     st.markdown(
@@ -592,9 +638,9 @@ de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
         else:
             st.info("Pendiente. Ejecuta POST /admin/fase3/expanding-window")
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════
     # SECCIÓN 6: Retornos Diarios del PPO
-    # ════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════
     st.markdown("---")
     st.markdown("## 6. Retornos Diarios del Agente PPO")
     st.markdown(
@@ -624,9 +670,9 @@ de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
                               height=350, bargap=0.1)
         st.plotly_chart(fig_ret, use_container_width=True)
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════
     # SECCIÓN 7: Volatilidad Rolling Comparativa
-    # ════════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════
     st.markdown("---")
     st.markdown("## 7. Volatilidad Rolling (20 días, anualizada)")
     st.markdown(
@@ -656,9 +702,9 @@ de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
                           height=400)
     st.plotly_chart(fig_vol, use_container_width=True)
 
-    # ════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════
     # SECCIÓN 8: Análisis de Regímenes de Volatilidad
-    # ════════════════════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════
     st.markdown("---")
     st.markdown("## 8. Análisis de Regímenes de Volatilidad")
     st.markdown(

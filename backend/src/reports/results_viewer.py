@@ -1,36 +1,51 @@
 """
-Módulo de visualización y evaluación de resultados del TFM.
+Visor de resultados del TFM — script standalone para evaluación batch.
 
-Ejecuta el backtest completo comparando el agente IA (PPO) contra
-los cuatro baselines financieros definidos en los objetivos del trabajo:
-  1. Equal-Weight con rebalanceo mensual
-  2. Cartera 60/40 (IVV/BND)
-  3. Buy & Hold
-  4. Markowitz Media-Varianza (ventana 12 meses)
-  
+Qué es este módulo en una frase:
+    Es la versión "línea de comandos" del dashboard. Ejecuta el backtest
+    completo (PPO + baselines + análisis de regímenes), guarda gráficas
+    y CSVs en src/reports/, e imprime un resumen en consola. Pensado
+    para automatización (CI, scripts batch, generación de figuras para
+    la memoria) — sin necesidad de levantar Streamlit.
 
-Genera:
-  - Tabla comparativa de métricas (Sharpe, Sortino, MDD, CAGR, Retorno Total)
-  - Gráfica de evolución de carteras guardada en reports/
-  - Análisis de regímenes de volatilidad
+Diferencia con app_dashboard.py:
+    Ambos hacen lo mismo conceptualmente, pero con público distinto:
+      - app_dashboard.py: interactivo, exploración manual del tribunal.
+      - results_viewer.py: no interactivo, generación reproducible de
+        artefactos para la memoria (PNGs, CSVs).
+    Si necesitamos un PNG concreto para incluir en la memoria, ejecutar
+    este script es más cómodo que abrir Streamlit y hacer captura.
+
+Estrategias evaluadas (alineadas con los objetivos del TFM):
+  1. Equal-Weight con rebalanceo mensual    — baseline robusto.
+  2. Cartera 60/40 (IVV/BND)                — baseline clásico institucional.
+  3. Buy & Hold                             — baseline pasivo total.
+  4. Markowitz Media-Varianza (ventana 12m) — baseline teórico Nobel 1990.
+  5. Agente Especulativo (GMM + K-Means)    — agente contraste no-supervisado.
+  6. PPO (DRL)                              — agente del TFM, propuesta principal.
+
+Artefactos generados (en src/reports/):
+  - Tabla comparativa de métricas: Sharpe, Sortino, MDD, CAGR, Retorno Total.
+  - Gráfica de evolución de carteras (todas las estrategias superpuestas).
+  - Curva de progreso del entrenamiento (vía logs de TensorBoard).
+  - Análisis por régimen de volatilidad (delegado a regime_analysis.py).
 
 Uso:
-  python results_viewer.py
+  python src/reports/results_viewer.py
 """
-
-# todo: comparativa contra el agente especulativo.
 
 import os
 import sys
-# Añadir raíz del proyecto al path para que 'src' sea importable
-# cuando se ejecuta directamente: python src/reports/results_viewer.py
+# Añadir raíz del proyecto al sys.path: necesario porque al ejecutar
+# directamente este script (no como módulo importado), Python no incluye
+# automáticamente la raíz del proyecto en su búsqueda de imports.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 import glob
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')  # Backend sin pantalla (compatible con servidor)
+matplotlib.use('Agg')  # Backend headless: guarda PNGs sin necesidad de display gráfico
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from src.training_drl.environment_trading import PortfolioEnv
@@ -40,8 +55,6 @@ from src.benchmarking.baselines import (
 from src.training_drl.regime_analysis import analizar_regimenes
 
 os.makedirs("src/reports", exist_ok=True)
-
-# todo: adaptar a nombres en inglés
 
 # ─────────────────────────────────────────────
 # Rutas por defecto
@@ -59,18 +72,43 @@ INITIAL_BALANCE = 10_000
 
 def plot_training_progress(log_dir: str = './logs/'):
     """
-    Lee los logs de TensorBoard y genera la curva de recompensa media del entrenamiento.
+    Genera la curva de recompensa media a partir de los logs de TensorBoard.
 
-    Busca el archivo de eventos más reciente dentro de log_dir, extrae la serie
-    temporal de 'rollout/ep_rew_mean' y genera una gráfica con la curva original
-    y una media móvil suavizada.
+    Por qué lee TensorBoard:
+        Stable-Baselines3 emite logs en formato TensorBoard durante el
+        entrenamiento PPO (los activamos en train_academic con
+        `tensorboard_log="./logs/"`). Esos logs contienen la evolución
+        de la recompensa media por episodio (`rollout/ep_rew_mean`),
+        que es la métrica más interpretable para mostrar al tribunal:
+        "el agente fue mejorando step a step hasta converger".
 
-    Guarda la gráfica en reports/training_progress.png.
+        En lugar de re-ejecutar el entrenamiento o reconstruir la curva,
+        leemos los eventos directamente del log → barato y reproducible.
 
-    Parámetros
+    La media móvil:
+        La curva cruda oscila mucho (ruido natural del entrenamiento PPO).
+        Añadimos una media móvil suavizada por encima para que la
+        TENDENCIA sea visible al ojo humano. La curva original se mantiene
+        en gris para dar contexto del nivel de ruido.
+        
+        Esta gráfica termina siendo la prueba visual de que el agente aprendió. La curva 
+        suavizada subiendo desde valores bajos hasta valores altos = "el PPO mejoró su política con el 
+        entrenamiento". Si esa tendencia no existiera, no habría TFM.
+
+        Por eso la gráfica training_progress.png es una de las figuras más importantes para incluir 
+        en la sección de resultados de la memoria — junto con la curva train vs eval (que demuestra que 
+        también generalizó).
+
+
+    Salida: src/reports/training_progress.png. Lista para insertar en
+    la sección "Resultados del entrenamiento" de la memoria.
+
+    Parameters
     ----------
     log_dir : str
-        Directorio donde se encuentran los logs de TensorBoard.
+        Directorio raíz de los logs TensorBoard. Por defecto './logs/'.
+        La función busca el evento MÁS RECIENTE recursivamente — útil
+        cuando se han hecho varios entrenamientos y solo el último cuenta.
     """
     try:
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
@@ -120,9 +158,9 @@ def plot_training_progress(log_dir: str = './logs/'):
     plt.close(fig)
 
 
-# ─────────────────────────────────────────────
+# ───────────────────
 # Backtest principal
-# ─────────────────────────────────────────────
+# ───────────────────
 
 def run_full_backtest(model_path: str= MODEL_PATH,
                       features_path: str = FEATURES_PATH,
@@ -221,11 +259,11 @@ def run_full_backtest(model_path: str= MODEL_PATH,
         print("  [AVISO] Agente especulativo no ajustado. "
               "Ejecuta POST /fase4/ajustar-especulativo")
 
-    # ── 4. Unir todos los resultados ─────────────────────────────────────────
+    # ── 4. Unir todos los resultados 
     all_values = {'IA_PPO': ia_series}
     all_values.update(baselines)
 
-    # ── 5. Tabla comparativa de métricas ──────────────────────────────────────
+    # ── 5. Tabla comparativa de métricas 
     print("\n" + "="*65)
     print(f"{'BENCHMARKING COMPARATIVO — PERÍODO OUT-OF-SAMPLE':^65}")
     print("="*65)
@@ -241,7 +279,7 @@ def run_full_backtest(model_path: str= MODEL_PATH,
     df_metrics.to_csv(csv_path, encoding='utf-8-sig')
     print(f"\nTabla de métricas guardada: {csv_path}")
 
-    # ── 6. Gráfica comparativa ────────────────────────────────────────────────
+    # ── 6. Gráfica comparativa 
     _plot_backtest(all_values, df_metrics)
 
     return {'valores': all_values, 'metricas': df_metrics}
