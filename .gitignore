@@ -22,3 +22,4 @@ dist/
 *.csv
 backup/
 .claude/
+notas-tutor.md
