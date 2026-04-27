@@ -158,7 +158,7 @@ El TFM se ejecuta en **fases secuenciales**. El admin debe completarlas en orden
 | **1a** | Filtrar universo S&P 500 + cripto | `POST /admin/fase1/screener` | ~3 min |
 | **1b** | Descargar precios + features | `POST /admin/fase1/preparar-datos` | ~2 min |
 | **2** | Validar integridad de datos | `GET  /admin/fase2/validar-datos` | <1 s |
-| **3a** | Entrenar PPO (modelo principal) | `POST /admin/fase3/entrenar-academico?risk_profile=balanced` | 30 min – 3 h |
+| **3a** | Entrenar PPO (modelo principal) | `POST /admin/fase3/entrenar-academico?risk_profile=low_turnover` | 30 min – 3 h |
 | **3b** | Walk-forward validation | `POST /admin/fase3/walk-forward` | 2-4 h |
 | **3c** | Expanding window validation | `POST /admin/fase3/expanding-window` | 4-6 h |
 | **3d** | Sensitivity analysis (4 configs) | `POST /admin/fase3/sensitivity-analysis` | 6-8 h |
@@ -310,10 +310,18 @@ Cuatro perfiles configurables (`src/training_drl/risk_profiles.py`):
 
 | Perfil | φ | γ | Filosofía |
 |---|---|---|---|
-| `balanced` | 0.02 | 0.01 | **Por defecto en el TFM**. Equilibrio retorno/riesgo |
-| `conservative` | 0.05 | 0.01 | Penaliza drawdowns 2.5× más → preserva capital |
-| `low_turnover` | 0.02 | 0.02 | Penaliza turnover → mejor Sharpe en sensitivity |
-| `aggressive` | 0.01 | 0.005 | Mínimas penalizaciones → máxima libertad |
+| `low_turnover` | 0.02 | 0.02 | **PERFIL PRINCIPAL DEL TFM**. Mejor Sharpe en el análisis de sensibilidad → es el default y la calibración con la que se entrena el modelo final. |
+| `balanced` | 0.02 | 0.01 | Alternativa equilibrada — baseline conservador del catálogo. |
+| `conservative` | 0.05 | 0.01 | Penaliza drawdowns 2.5× más → preserva capital. |
+| `aggressive` | 0.01 | 0.005 | Mínimas penalizaciones → máxima libertad. |
+
+> **Decisión metodológica**: la elección de `low_turnover` como perfil
+> principal del TFM no es arbitraria. El análisis de sensibilidad
+> (sección siguiente) lo identificó empíricamente como la calibración
+> con mejor Sharpe out-of-sample entre las cuatro evaluadas. El
+> sensitivity actúa así como **herramienta de selección de
+> hiperparámetros con justificación cuantitativa**, no solo como
+> validación a posteriori.
 
 El perfil usado se persiste en BD (`TrainedModel.train_metrics.risk_profile`) y se muestra en la tabla final y el dashboard.
 

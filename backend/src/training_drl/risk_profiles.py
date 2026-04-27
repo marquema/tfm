@@ -5,14 +5,20 @@ Define las configuraciones de hiperparámetros de la función de recompensa
 (phi y gamma) como perfiles con nombre legible. Cada perfil representa
 una filosofía de inversión distinta:
 
-  - balanced:  equilibrio entre retorno y control de riesgo (configuración
-                   base del TFM y default del entrenamiento).
-  - conservative : prioriza preservar capital, penaliza drawdowns más fuertemente.
   - low_turnover : fuerza al agente a operar menos, reduciendo costes de
-                   transacción. Es el perfil que mejor Sharpe obtuvo en el
-                   análisis de sensibilidad y queda como candidato a perfil
-                   de referencia secundario para la memoria.
-  - aggressive: mínimas penalizaciones, máxima libertad para el agente.
+                   transacción. PERFIL PRINCIPAL DEL TFM y default del
+                   entrenamiento: el análisis de sensibilidad (ver
+                   sensitivity_analysis.py) lo identificó como la
+                   configuración con mejor Sharpe out-of-sample, así que
+                   el modelo final del TFM se entrena con esta calibración.
+                   La elección está respaldada por evidencia empírica
+                   reproducible, no por defecto subjetivo.
+  - balanced     : equilibrio entre retorno y control de riesgo. Perfil
+                   alternativo y baseline conservador del catálogo. Útil
+                   cuando se quiere un comportamiento predecible sin
+                   apostar por la calibración óptima del sensitivity.
+  - conservative : prioriza preservar capital, penaliza drawdowns más fuertemente.
+  - aggressive   : mínimas penalizaciones, máxima libertad para el agente.
 
 Los perfiles se usan en:
   - train_academic(): el admin elige con qué filosofía entrenar el modelo.
@@ -61,8 +67,8 @@ RISK_PROFILES = {
         'gamma': 0.01,
         'name': 'Equilibrado',
         'description': (
-            'Balance entre retorno y control de riesgo. '
-            'Configuración base del TFM. phi=0.02 penaliza drawdowns '
+            'Balance entre retorno y control de riesgo. Perfil alternativo '
+            'y baseline conservador del catálogo. phi=0.02 penaliza drawdowns '
             'proporcionalmente al retorno diario; gamma=0.01 desincentiva '
             'rotación excesiva sin impedir al agente reaccionar a cambios de mercado.'
         ),
@@ -83,11 +89,13 @@ RISK_PROFILES = {
         'gamma': 0.02,
         'name': 'Bajo Turnover',
         'description': (
-            'Fuerza al agente a mantener posiciones, reduciendo costes de transacción. '
-            'gamma=0.02 hace que una rotación completa de cartera cueste 0.04 en reward, '
-            'equivalente a ~40 días de retorno positivo. El agente solo opera cuando '
-            'la mejora esperada compensa ampliamente el coste de mover capital. '
-            'Mejor Sharpe en el análisis de sensibilidad.'
+            'PERFIL PRINCIPAL DEL TFM. Fuerza al agente a mantener posiciones, '
+            'reduciendo costes de transacción. gamma=0.02 hace que una rotación '
+            'completa de cartera cueste 0.04 en reward, equivalente a ~40 días de '
+            'retorno positivo. El agente solo opera cuando la mejora esperada '
+            'compensa ampliamente el coste de mover capital. Identificado como la '
+            'configuración con mejor Sharpe out-of-sample en el análisis de '
+            'sensibilidad — el modelo final del TFM se entrena con este perfil.'
         ),
     },
     'aggressive': {

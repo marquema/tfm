@@ -95,8 +95,8 @@ def get_trained_model_info():
         if model is None:
             return None
         metrics = model.train_metrics or {}
-        profile_id = metrics.get('risk_profile', 'balanced')
-        profile = RISK_PROFILES.get(profile_id, RISK_PROFILES['balanced'])
+        profile_id = metrics.get('risk_profile', 'low_turnover')
+        profile = RISK_PROFILES.get(profile_id, RISK_PROFILES['low_turnover'])
         return {
             'risk_profile': profile_id,
             'name': profile['name'],

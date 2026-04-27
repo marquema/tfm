@@ -115,7 +115,7 @@ from ta import add_all_ta_features
 DEFAULT_WINDOWS = [5, 20, 60]
 
 # Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos
-# en vez de medir correlaciones a lo loco entre todos los activos, eliges 3 pares con historia que contar al agente. Le das la información concentrada y útil.
+# en vez de medir correlaciones a lo loco entre todos los activos, elijo 3 pares con historia que contar al agente. 
 DEFAULT_CORRELATION_PAIRS = [
     ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable — activo de riesgo o refugio?
     ('IBIT', 'BND'),  # Bitcoin vs Bonos — diversificador o activo especulativo?
@@ -132,7 +132,7 @@ DEFAULT_CORRELATION_PAIRS = [
 #IVV-BND	"¿Sigue funcionando la 60/40 clásica?"	Alta — el benchmark del TFM lleva una variante 60/40
 
 #El problema que — ETHA está ausente
-#Y es un problema gordo, considerando que para TFM: "Integrando Criptoactivos en la Inversión Tradicional" 
+# Problema gordo,  TFM: "Integrando Criptoactivos en la Inversión Tradicional" 
 # Cripto-ETFs obligatorios (IBIT + ETHA) precisamente para diferenciarlos como clases de 
 # activo distintas.
 
@@ -142,20 +142,19 @@ DEFAULT_CORRELATION_PAIRS = [
 # como activo tecnológico/DeFi".
 # No detecta cuándo ETHA y IBIT divergen (información clave para diversificación cripto).
 # No mide cómo ETHA se comporta frente a renta variable o bonos.
-# Es una incoherencia académica entre el ALCANCE del TFM y los datos que recibe el modelo.
-# Pares que faltan, por orden de prioridad
-# Críticos 
+# Es una incoherencia entre el ALCANCE del TFM y los datos que recibe el modelo.
+# Pares que faltan
 # ('ETHA', 'IBIT'),  # Ethereum vs Bitcoin — ¿son la misma cosa o se mueven distinto?
 # Por qué: es el par más TFM-relevante de todos. Si ambos cripto-ETFs siempre correlacionan 
 # a 0.95, el TFM defiende algo trivial ("añadir cripto a la cartera" = "añadir Bitcoin"). 
-# Si la correlación oscila (0.7 en bonanza, 0.95 en crisis), demuestro que diferenciar 
+# Si la correlación cambia, puede estar bien (0.7 en bonanza, 0.95 en crisis), demuestro que diferenciar 
 # entre criptos aporta valor real al modelo. Es el argumento que justifica por qué tengo
 # 2 cripto-ETFs y no solo 1.
 # 
-# Importantes. Validar tutor.
+# Importantes. Validar Ruben!
 # ('ETHA', 'IVV'),   # Ethereum vs Renta Variable — perfil idéntico al de IBIT-IVV
 # Por qué: paraleliza el análisis que hago con IBIT. Sin este par, el modelo "ve" 
-# cómo Bitcoin se relaciona con la bolsa pero no Ethereum — inconsistente con la tesis.
+# cómo Bitcoin se relaciona con la bolsa pero no Ethereum — inconsistente con TFM.
 
 # Posibles, pero weno, no relevantes
 # ('ETHA', 'BND'),   # Ethereum vs Bonos
@@ -182,7 +181,7 @@ DEFAULT_CORRELATION_PAIRS = [
 # de los pilares de la tesis (criptoactivos como diversificadores, diferenciación entre 
 # Bitcoin y Ethereum, robustez de la 60/40 ante mercados modernos)."
 
-#Riesgo a vigilar
+#Riesgo a vigilar. RUben help
 # ETHA solo existe desde julio 2024. Para backtests sobre 2018-2024, las correlaciones 
 # que involucren ETHA serán NaN la mayor parte del periodo. El pipeline ya contempla eso 
 # (limpieza columnar en generate_dataset), pero conviene saber que:
@@ -190,7 +189,7 @@ DEFAULT_CORRELATION_PAIRS = [
 # válidos solo en los últimos 2 años.
 # Si la ventana rolling de 60d empieza antes de julio 2024, generará NaN durante los 
 # primeros 60d posteriores al listado.
-# mencionarlo en la memoria como "limitación de datos" cuando expliques estas correlaciones.
+# mencionarlo en la memoria como "limitación de datos" cuando explique esas correlaciones.
 
 
 

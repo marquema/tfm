@@ -1079,7 +1079,7 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
                    total_timesteps: int = 500000,
                    split_pct: float = 0.8,
                    patience: int = 8,
-                   risk_profile: str = 'balanced') -> PPO:
+                   risk_profile: str = 'low_turnover') -> PPO:
     """
     Entrenamiento académico completo del agente PPO con todos los controles
     de calidad activos. Es la función "entrar a producir el modelo del TFM".
@@ -1119,9 +1119,10 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
         evaluaciones previstas (entre 5 y 15).
     risk_profile : str
         Perfil que determina phi y gamma de la recompensa:
-          - 'balanced'     → equilibrado (configuración por defecto del TFM)
+          - 'low_turnover' → DEFAULT y PERFIL PRINCIPAL DEL TFM. Mejor
+                             Sharpe en el análisis de sensibilidad.
+          - 'balanced'     → equilibrado (alternativa conservadora)
           - 'conservative' → mayor penalización por drawdown
-          - 'low_turnover' → mayor penalización por rotación de cartera
           - 'aggressive'   → mínimas penalizaciones, máxima libertad
         Ver risk_profiles.py para los valores exactos de cada uno.
 

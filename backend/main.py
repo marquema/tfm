@@ -225,7 +225,7 @@ async def get_final_table(db: Session = Depends(get_db)):
     risk_profile_id = None
     risk_profile_info = None
     if model_record and model_record.train_metrics:
-        risk_profile_id = model_record.train_metrics.get('risk_profile', 'balanced')
+        risk_profile_id = model_record.train_metrics.get('risk_profile', 'low_turnover')
         risk_profile_info = RISK_PROFILES.get(risk_profile_id)
 
     training_context = {
@@ -238,10 +238,10 @@ async def get_final_table(db: Session = Depends(get_db)):
             "n_features": universe.n_features if universe else 0,
         },
         "model": {
-            "risk_profile": risk_profile_id or 'balanced',
-            "risk_profile_name": risk_profile_info['name'] if risk_profile_info else 'Equilibrado',
+            "risk_profile": risk_profile_id or 'low_turnover',
+            "risk_profile_name": risk_profile_info['name'] if risk_profile_info else 'Bajo Turnover',
             "phi": risk_profile_info['phi'] if risk_profile_info else 0.02,
-            "gamma": risk_profile_info['gamma'] if risk_profile_info else 0.01,
+            "gamma": risk_profile_info['gamma'] if risk_profile_info else 0.02,
             "steps": model_record.steps if model_record else None,
             "trained_at": str(model_record.created_at)[:19] if model_record else None,
         },
@@ -282,7 +282,7 @@ async def get_final_table(db: Session = Depends(get_db)):
     summary_lines = [
         f"Período de test: {test_info.get('start', '?')} a {test_info.get('end', '?')} ({test_info.get('days', '?')} días).",
         f"Universo: {len(universe.tickers) if universe else '?'} activos.",
-        f"Perfil de riesgo: {risk_profile_info['name'] if risk_profile_info else 'Equilibrado'}.",
+        f"Perfil de riesgo: {risk_profile_info['name'] if risk_profile_info else 'Bajo Turnover'}.",
         f"PPO supera en Sharpe a {n_wins_sharpe}/{n_baselines} estrategias.",
         f"PPO supera en Retorno a {n_wins_retorno}/{n_baselines} estrategias.",
         f"PPO supera en Sortino a {n_wins_sortino}/{n_baselines} estrategias.",
@@ -602,7 +602,7 @@ async def validate_data():
 @app.post("/admin/fase3/entrenar-academico", tags=["Admin"])
 async def start_training(background_tasks: BackgroundTasks,
                                  steps: int = 500000, patience: int = 8,
-                                 risk_profile: str = 'balanced',
+                                 risk_profile: str = 'low_turnover',
                                  admin: User = Depends(require_admin),
                                  db: Session = Depends(get_db)):
     """
@@ -668,15 +668,20 @@ async def start_training(background_tasks: BackgroundTasks,
               forma adaptativa (entre 5 y 15) según el ratio total_steps/
               eval_freq, garantizando que paciencia no sea ni demasiado
               estricta para datasets cortos ni demasiado laxa para largos.
-        - risk_profile (str, default='balanced'):
+        - risk_profile (str, default='low_turnover'):
               Selecciona la combinación (phi, gamma) que pondera las
               penalizaciones del reward compuesto del entorno
               (PortfolioEnv: R = Sharpe_rolling − phi·MDD − gamma·Turnover).
               Catálogo definido en risk_profiles.py:
-                - balanced : phi=0.02, gamma=0.01 — equilibrio entre retorno y control de riesgo. Configuración base del TFM.
-                - conservative : phi=0.05, gamma=0.01 — prioriza preservar capital, penaliza drawdowns 2.5× más.
-                - low_turnover : phi=0.02, gamma=0.02 — fuerza mantener posiciones; mejor Sharpe en el análisis de sensibilidad.
-                - aggressive   : phi=0.01, gamma=0.005 — mínimas penalizaciones, máxima libertad.
+                - low_turnover : phi=0.02, gamma=0.02 — PERFIL PRINCIPAL DEL TFM.
+                                 Mejor Sharpe en el análisis de sensibilidad → es
+                                 el default y el modelo final se entrena con éste.
+                - balanced     : phi=0.02, gamma=0.01 — alternativa equilibrada,
+                                 baseline conservador del catálogo.
+                - conservative : phi=0.05, gamma=0.01 — prioriza preservar capital,
+                                 penaliza drawdowns 2.5× más.
+                - aggressive   : phi=0.01, gamma=0.005 — mínimas penalizaciones,
+                                 máxima libertad.
 
     Returns
     -------
