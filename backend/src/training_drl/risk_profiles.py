@@ -5,29 +5,54 @@ Define las configuraciones de hiperparámetros de la función de recompensa
 (phi y gamma) como perfiles con nombre legible. Cada perfil representa
 una filosofía de inversión distinta:
 
-  - balanced:     equilibrio entre retorno y control de riesgo (configuración base)
-  - conservative: prioriza preservar capital, penaliza drawdowns más fuertemente
-  - low_turnover: fuerza al agente a operar menos, reduciendo costes de transacción
-  - aggressive:   mínimas penalizaciones, máxima libertad para el agente
+  - balanced:  equilibrio entre retorno y control de riesgo (configuración
+                   base del TFM y default del entrenamiento).
+  - conservative : prioriza preservar capital, penaliza drawdowns más fuertemente.
+  - low_turnover : fuerza al agente a operar menos, reduciendo costes de
+                   transacción. Es el perfil que mejor Sharpe obtuvo en el
+                   análisis de sensibilidad y queda como candidato a perfil
+                   de referencia secundario para la memoria.
+  - aggressive: mínimas penalizaciones, máxima libertad para el agente.
 
 Los perfiles se usan en:
-  - train_academic(): el admin elige con qué filosofía entrenar el modelo
-  - PortfolioEnv: recibe phi y gamma del perfil seleccionado
-  - sensitivity_analysis: compara los 4 perfiles automáticamente
-  - BD (universe_metadata): se guarda qué perfil se usó para cada modelo
+  - train_academic(): el admin elige con qué filosofía entrenar el modelo.
+  - PortfolioEnv: recibe phi y gamma del perfil seleccionado.
+  - sensitivity_analysis: compara los 4 perfiles automáticamente y produce
+    el CSV/PNG comparativo que sustenta la justificación en la memoria.
+  - BD (TrainedModel.train_metrics): se guarda el perfil usado en cada
+    modelo entrenado para poder mostrarlo en el dashboard y en la tabla final.
 
-Fundamentación de los valores:
-  Los valores están calibrados para que el reward tenga escalas comparables:
-    - log_return diario típico: ~0.001 (0.1%)
-    - phi=0.02, MDD=20% → penalty=0.004 (mismo orden que el retorno)
-    - gamma=0.01, turnover completo → penalty=0.02 (~20 días de retorno)
+Fundamentación de los valores (orden de magnitud):
+  La calibración busca que cada componente del reward tenga peso comparable
+  para que ninguno domine al resto. Tomando como referencia un retorno diario
+  típico de ~0.1 % (≈0.001 en escala lineal):
+
+    - phi=0.02 con un MDD del 20 %  → penalty ≈ 0.004 (mismo orden que el
+      retorno diario; hace que un drawdown profundo "duela" tanto como un día
+      bueno).
+    - gamma=0.01 con un turnover completo (cambio total de cartera)
+      → penalty ≈ 0.02 (~20 días de retorno positivo; rotar todo solo merece
+      la pena si la mejora esperada lo compensa).
+
+  Nota: la reward actual es Sharpe rolling 20d − phi·MDD − gamma·Turnover,
+  no log_return. Las penalizaciones se calibraron originalmente con
+  log_return como referencia y se mantienen porque el Sharpe rolling diario
+  produce reward por step en una escala similar (~ ±0.5/√20 ≈ ±0.1) al log_return.
+  
+  Es decir, cambiamos la receta del premio pero no tocamos los castigos. 
+    ¿Por qué no pasa nada? Porque el premio nuevo y el viejo dan números parecidos en 
+    tamaño, así que los castigos siguen pesando lo mismo en proporción. Si en vez de 
+    eso hubiéramos puesto un premio en escala 1000 (por ejemplo el valor de la cartera
+    entera), tendríamos que haber subido phi y gamma a la misma escala. Pero no es el 
+    caso.
+  
 
 Referencia:
-  Los valores óptimos se determinaron mediante el análisis de sensibilidad
-  (sensitivity_analysis.py) sobre el período out-of-sample.
+  Los valores se contrastaron mediante el análisis de sensibilidad
+  (sensitivity_analysis.py) sobre el periodo out-of-sample. Resultado:
+  todos los perfiles obtienen Sharpe > 2.2, lo que evidencia robustez
+  frente a variaciones de phi/gamma dentro del rango explorado.
 """
-
-from typing import Optional
 
 
 RISK_PROFILES = {
