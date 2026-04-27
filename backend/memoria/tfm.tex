@@ -78,7 +78,7 @@
 % Resumen en el idioma
 
 \abstractidioma{
-Este TFM se centra en el diseño e implementación de un modelo de gestión de activos inteligente basado en \textit{Deep Reinforcement Learning} (DRL). El objetivo es construir un agente capaz de gestionar una cartera híbrida que combine activos tradicionales (renta variable y bonos) con la nueva clase de activos digitales, utilizando para ello ETFs y ETPs regulados. Mediante el uso de algoritmos de gradiente de política, el agente aprenderá a balancear los pesos de la cartera de forma dinámica, respondiendo al  de mercado y métricas de riesgo en tiempo real. Se busca evaluar si un enfoque basado en agentes puede mejorar la rentabilidad ajustada al riesgo frente a baselines estáticas.  
+Este Trabajo Final de Máster aborda el diseño e implementación de un sistema de gestión dinámica de carteras híbridas basado en \textit{Deep Reinforcement Learning} (DRL). El sistema combina activos tradicionales (renta variable y renta fija) con ETFs regulados sobre criptoactivos (IBIT y ETHA), permitiendo evaluar la integración de la nueva clase de activos digitales en la inversión institucional. La política de asignación se modela mediante un agente \textit{Proximal Policy Optimization} (PPO) entrenado sobre un entorno Gymnasium personalizado, en el que el espacio de estados integra indicadores técnicos y métricas de riesgo, y la recompensa penaliza explícitamente el \textit{Maximum Drawdown} y el \textit{turnover}. La validación se realiza mediante un protocolo \textit{out-of-sample} estricto con esquemas \textit{walk-forward} y \textit{expanding window}, y se compara el desempeño del agente frente a \textit{baselines} financieros clásicos (60/40, \textit{Equal-Weight}, \textit{Buy \& Hold} y Markowitz). Los resultados permiten cuantificar en qué medida un agente de aprendizaje por refuerzo profundo aporta una mejora reproducible en términos de rentabilidad ajustada al riesgo respecto a estrategias estáticas de referencia.
 }
 
 % Resumen en inglés.
@@ -105,6 +105,12 @@ La integración de activos cripto en carteras institucionales a través de ETFs 
 
 \section{Contexto y justificación del trabajo}
 
+La aprobación en enero de 2024 de los primeros ETFs \textit{spot} sobre Bitcoin en Estados Unidos, y muy particularmente del \textit{iShares Bitcoin Trust} (IBIT), supone un cambio cualitativo en el acceso institucional a los criptoactivos. Por primera vez, los gestores patrimoniales pueden construir exposición a Bitcoin a través de un instrumento regulado, custodiado por un \textit{prime broker} convencional y negociado en mercados organizados, eliminando una parte sustancial de las fricciones operativas y reputacionales que limitaban su uso en carteras institucionales. Esta evolución abre un escenario en el que la integración de activos digitales en carteras tradicionales deja de ser una cuestión hipotética y se convierte en un problema práctico de asignación de activos.
+
+Sin embargo, los marcos clásicos de optimización de carteras —en particular la teoría moderna de Markowitz— se basan en supuestos (normalidad de los retornos, estacionariedad de las correlaciones, ausencia de fricciones) que no se sostienen cuando se incorporan activos con la dinámica observada en los criptoactivos: colas pesadas, \textit{volatility clustering} y dependencia condicional con el mercado tradicional que se intensifica precisamente en los episodios de tensión, justo cuando la diversificación es más necesaria. Una gestión basada en parámetros estimados sobre ventanas históricas y reasignaciones puntuales resulta, en este contexto, especialmente vulnerable.
+
+El presente trabajo se justifica, por tanto, en la confluencia de tres factores: (i) la disponibilidad de un instrumento regulado que permite operar criptoactivos como un ETF cualquiera, (ii) la inadecuación de los marcos estáticos clásicos para capturar la dinámica de estos activos, y (iii) la madurez alcanzada por los algoritmos de aprendizaje por refuerzo profundo —y en particular por \textit{Proximal Policy Optimization}— como herramientas para abordar problemas de decisión secuencial bajo incertidumbre con espacios de acción continuos. La intersección de estos tres factores delimita un problema relevante, abordable y poco explorado: cómo aprender una política dinámica de asignación que permita integrar criptoactivos en carteras híbridas controlando explícitamente el riesgo y los costes de transacción.
+
 \section{Definición de los objetivos}
 \subsection{Objetivo Principal}
 \begin{itemize}
@@ -121,38 +127,23 @@ La integración de activos cripto en carteras institucionales a través de ETFs 
 
 % --- SECCIÓN DE METODOLOGÍA ---
 
-\section{Descripción de la Metodología}
+\section{Enfoque Metodológico General}
+\label{sec:enfoque_metodologico}
 
-Para abordar la complejidad de la gestión de carteras híbridas, este trabajo adopta una metodología de investigación basada en la \textit{Design Science Research} (DSR), centrada en el desarrollo y validación de un artefacto tecnológico (el agente PPO) para resolver un problema de optimizacin financiera. El proceso se estructura en cinco fases iterativas que garantizan el rigor científico y la viabilidad tecnica del sistema.
+El trabajo adopta como marco general la \textit{Design Science Research} (DSR), orientada a la construcción y evaluación de un artefacto tecnológico que resuelve un problema práctico relevante. El artefacto es un sistema integral de gestión dinámica de carteras híbridas que articula cinco fases sucesivas:
 
-\subsection{Fase 1: Adquisición de Datos y Feature Engineering}
-La base del sistema reside en la ingesta de datos de alta fidelidad. Se utilizará la API de \textit{Yahoo Finance} para extraer series temporales de un universo de activos híbrido, incluyendo el \textbf{IBIT} (ETF de Bitcoin) y \textit{proxies} de renta variable y fija tradicional.
+\begin{enumerate}
+    \item \textbf{Adquisición de datos e ingeniería de características}, sobre un universo híbrido que incluye renta variable, renta fija y ETFs regulados sobre criptoactivos.
+    \item \textbf{Modelado del entorno de simulación} bajo el estándar Gymnasium, formalizando el problema como un Proceso de Decisión de Markov con costes de transacción y \textit{slippage} explícitos.
+    \item \textbf{Entrenamiento del agente DRL} mediante el algoritmo \textit{Proximal Policy Optimization} (PPO), con una función de recompensa multiobjetivo que penaliza el \textit{Maximum Drawdown} y el \textit{turnover}.
+    \item \textbf{Validación temporal estricta} mediante esquemas \textit{walk-forward} y \textit{expanding window}, junto con análisis de sensibilidad y por régimen de volatilidad.
+    \item \textbf{Industrialización mediante una arquitectura de microservicios} que garantiza reproducibilidad, trazabilidad y aislamiento entre fases experimentales.
+\end{enumerate}
 
-\begin{itemize}
-    \item \textbf{Preprocesamiento:} Transformación de precios de cierre en log-retornos para asegurar la componente temporal.
-    \item \textbf{Ingeniería de Características:} Construcción de un espacio de estados multidimensional que integra indicadores de tendencia (MACD), osciladores de momentum (RSI) y medidas de volatilidad implícita, proporcionando al agente una visión holística del régimen de mercado.
-\end{itemize}
-
-\subsection{Fase 2: Modelado del Entorno de Simulación (Gymnasium)}
-Se desarrollará un entorno de simulación personalizado bajo el estándar \textbf{Gymnasium}. Esta fase es clave, ya que transforma el mercado financiero en un Proceso de Decisión de Markov (MDP). A diferencia de los entornos genéricos, este simulador integrará:
-
-\begin{itemize}
-    \item \textbf{Modelado de Fricción:} Implementación de costes de transacción  y \textit{slippage} para evitar estrategias de \textit{overtrading}.
-    \item \textbf{Lógica de Rebalanceo:} Un sistema de gestión de pesos continuos que asegura que la cartera cumpla siempre con la restricción de presupuesto ($\sum w_i = 1$). Esto asegura todo el capital distribuído correctamente, sin sobrar ni faltar dinero.
-\end{itemize}
-
-\subsection{Fase 3: Entrenamiento y Optimización del Agente DRL}
-En esta fase se implementará el algoritmo \textbf{Proximal Policy Optimization} (PPO) utilizando la librería \textbf{Stable-Baselines3}. El enfoque se centrará en el \textit{Reward Shaping}, diseñando una función de recompensa compuesta que no solo busque la maximización del retorno, sino la optimización del riesgo ajustado. Se realizarán experimentos de ajuste de hiperparámetros (tasa de aprendizaje, entropía, horizonte de tiempo) para garantizar la convergencia estable de la política. Esta será la función:  $$ R_t = r_p(t) - [\alpha \cdot \text{Riesgo}(t) + \beta \cdot \text{Costes}(t) + \gamma \cdot \text{Turnover}(t)] $$
-
-\subsection{Fase 4: Protocolo de Evaluación y Backtesting}
-Para validar la capacidad de generalización del modelo, se empleará un protocolo de validación \textit{out-of-sample} estricto. El sistema será sometido a un \textit{backtesting} de datos históricos dividido en periodos de entrenamiento y prueba, evaluando el desempeño mediante métricas financieras estándar: Ratio de Sharpe, Ratio de Sortino y \textit{Maximum Drawdown}. Esta fase busca verificar si el agente ha aprendido patrones robustos o si ha caído en  \textit{overfitting} de datos conocidos.
-
-\subsection{Fase 5: Arquitectura de Despliegue y MLOps}
-Finalmente, la metodología contempla la industrialización del modelo mediante una arquitectura de microservicios. Se utilizará \textbf{Docker} para desplegar en contenedores el entorno y el agente. Esta fase garantiza que el artefacto sea agnóstico a la plataforma y pueda integrarse en un flujo de integración continua.
-%, permitiendo el reentrenamiento del modelo ante el \textit{data drift} del mercado.
+El detalle técnico de cada fase —diseño del entorno, formulación de la recompensa, perfiles de riesgo, protocolo de validación y arquitectura del sistema— se desarrolla en el capítulo \ref{cap:materiales_y_metodos}, dedicado específicamente a Materiales y Métodos.
 
 \subsection{Herramientas y Tecnologías}
-El desarrollo del proyecto se apoyará en el siguiente \textit{stack} tecnológico:
+El desarrollo del proyecto se apoya en el siguiente \textit{stack} tecnológico:
 
 \begin{table}[h]
 \centering
@@ -245,7 +236,7 @@ El presente proyecto se alinea principalmente con los siguientes objetivos de la
 \begin{itemize}
     \item \textbf{ODS 8: Trabajo decente y crecimiento económico.} Al desarrollar herramientas que mejoran la eficiencia de los mercados financieros y la gestión del riesgo, se contribuye a la estabilidad del sistema económico y al crecimiento de soluciones Fintech innovadoras.
     \item \textbf{ODS 9: Industria, innovación e infraestructura.} La investigación en Inteligencia Artificial aplicada a las finanzas fomenta la innovación tecnológica y el desarrollo de infraestructuras financieras más resilientes y automatizadas.
-    \item \textbf{ODS 12: Producción y consumo responsables.} A través de una gestión de carteras más técnica y menos emocional, se promueve una inversión más racional y sostenible en el tiempo, reduciendo la volatilidad innecesaria causada por la especulación irracional.
+    \item \textbf{ODS 12: Producción y consumo responsables.} La adopción de marcos de decisión cuantitativos y reproducibles favorece una gestión de carteras basada en evidencia y trazable, reduciendo la dependencia de decisiones discrecionales y contribuyendo a un uso más eficiente del capital invertido.
 \end{itemize}
 
 
@@ -284,7 +275,27 @@ Pese a su valor fundacional, la aplicación práctica de la MPT presenta limitac
 
 Las limitaciones anteriores se acentúan cuando la cartera incorpora activos cuyo comportamiento estadístico se aleja de los supuestos clásicos, como ocurre con los criptoactivos. La literatura ha respondido extendiendo el marco original con diversas variantes (Black-Litterman, optimización robusta, modelos de mínima varianza con restricciones de norma, etc.), pero todas comparten la naturaleza estática del enfoque: cada decisión se toma resolviendo un problema de optimización de un único periodo, asumiendo parámetros estimados a partir de una ventana retrospectiva.
 
-Frente a este paradigma estático, una línea creciente de literatura plantea la gestión de carteras como un problema secuencial en el que la decisión actual condiciona el espacio de estados futuro. Bajo esta visión, las comisiones, el \textit{slippage} y el \textit{turnover} dejan de ser fricciones externas y pasan a formar parte intrínseca de la función objetivo. Este replanteamiento abre la puerta a marcos basados en procesos de decisión de Markov y, en particular, al aprendizaje por refuerzo profundo, que se examina en la siguiente sección.
+Frente a este paradigma estático, una línea creciente de literatura plantea la gestión de carteras como un problema secuencial en el que la decisión actual condiciona el espacio de estados futuro. Bajo esta visión, las comisiones, el \textit{slippage} y el \textit{turnover} dejan de ser fricciones externas y pasan a formar parte intrínseca de la función objetivo. Este replanteamiento abre la puerta a marcos basados en procesos de decisión de Markov y, en particular, al aprendizaje por refuerzo profundo. La tabla \ref{tab:comparativa_paradigmas} resume el contraste entre el paradigma estático clásico, los enfoques basados en DRL y la contribución específica de los ecosistemas de estandarización tipo FinRL.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{3.0cm}|p{3.7cm}|p{3.7cm}|p{3.7cm}|}
+\hline
+\textbf{Dimensión} & \textbf{MPT clásica (Markowitz)} & \textbf{DRL aplicado a carteras} & \textbf{Ecosistema FinRL} \\ \hline
+Naturaleza de la decisión & Estática, un único periodo & Secuencial, política condicionada al estado & Hereda la naturaleza secuencial del DRL \\ \hline
+Tratamiento de fricciones & Externo al modelo & Integrado en la recompensa & Soporte parcial vía wrappers genéricos \\ \hline
+Supuesto de estacionariedad & Sí (correlaciones constantes) & No (la política puede adaptarse a cambios de régimen) & No impone supuestos adicionales \\ \hline
+Adecuación a colas pesadas & Limitada (asume normalidad) & Adecuada (no requiere supuestos distribucionales) & Heredada del algoritmo DRL empleado \\ \hline
+Reproducibilidad & Alta (forma cerrada) & Baja sin estandarización; sensible a semillas y datos & Aporte central: estandariza ingesta, entornos y \textit{backtesting} \\ \hline
+Ámbito de aplicación habitual & Carteras institucionales tradicionales & Estudios mayoritariamente sobre acciones o cripto puro & Bursátil, trading de un único activo o universos pequeños \\ \hline
+Fricción operativa con criptoactivos regulados (ETFs) & No abordada explícitamente & Posible pero requiere diseño \textit{ad-hoc} & No incluida en los entornos de referencia \\ \hline
+\end{tabular}
+\caption{Contraste sintético entre el paradigma estático de Markowitz, los enfoques basados en DRL y los ecosistemas de estandarización tipo FinRL.}
+\label{tab:comparativa_paradigmas}
+\end{table}
+
+Como pone de manifiesto la tabla \ref{tab:comparativa_paradigmas}, ninguno de los tres marcos resuelve por sí solo el problema planteado en este trabajo: la MPT clásica no captura la dinámica de los criptoactivos, los enfoques de DRL aportan flexibilidad pero rara vez se aplican a universos híbridos, y los ecosistemas tipo FinRL aportan reproducibilidad pero sin un soporte específico para ETFs sobre criptoactivos ni para funciones de recompensa multiobjetivo. Las dos secciones siguientes profundizan, primero, en los avances específicos del DRL aplicado a carteras y, después, en la integración de los criptoactivos como nueva clase de activo.
 
 \section{Deep Reinforcement Learning (DRL) en la Toma de Decisiones Financieras}
 
@@ -307,6 +318,30 @@ es el cociente de probabilidades entre la política nueva y la antigua, y $\epsi
 
 Esta estabilidad ha favorecido la adopción de PPO en múltiples estudios sobre trading algorítmico, en los que la combinación de alta varianza de la señal y horizontes largos de inversión hace especialmente sensible al método de optimización empleado.
 
+\subsubsection{Comparación con algoritmos alternativos}
+\label{sec:ppo_vs_alternativas}
+
+La elección de PPO no es la única opción posible dentro del DRL, y su justificación frente a otros algoritmos requiere examinarse a la luz de los requisitos específicos del problema: espacio de acción continuo de alta dimensionalidad, baja relación señal-ruido y necesidad de estabilidad en el entrenamiento sobre series financieras. La tabla \ref{tab:ppo_vs_alternativas} sintetiza el contraste con las alternativas más habituales.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{2.6cm}|p{6.0cm}|p{5.2cm}|}
+\hline
+\textbf{Algoritmo} & \textbf{Características relevantes} & \textbf{Limitaciones para gestión de carteras} \\ \hline
+DQN \cite{schulman2017ppo} & Aprendizaje basado en función de valor; espacio de acción discreto. & Inadecuado para asignación continua de pesos en $[0,1]^{n}$; requeriría discretizar el simplex con pérdida de granularidad. \\ \hline
+A2C & Actor-Crítico síncrono; un único paso de actualización por lote. & Menor eficiencia muestral que PPO al no reutilizar trayectorias mediante \textit{minibatch SGD} multi-época; mayor varianza de gradiente. \\ \hline
+DDPG & Política determinista para acciones continuas; aprendizaje \textit{off-policy}. & Sensibilidad elevada a hiperparámetros y a la inicialización; rendimiento frágil en entornos estocásticos como los financieros. \\ \hline
+SAC & \textit{Off-policy}, actor-crítico estocástico, regularización por entropía. & Buen rendimiento empírico, pero coste computacional y de memoria mayor (\textit{replay buffer}, doble crítico) y sintonización más exigente. \\ \hline
+TRPO \cite{schulman2017ppo} & Restricción explícita de divergencia KL para garantizar pasos seguros. & Implementación notablemente más compleja (segunda derivada, conjugado-gradiente) sin mejora consistente respecto a PPO. \\ \hline
+PPO \cite{schulman2017ppo} & Objetivo recortado, \textit{on-policy}, actor-crítico estocástico, eficiencia muestral mediante \textit{minibatch SGD} multi-época. & Requiere recolección de trayectorias frescas en cada actualización; el coste se compensa por la estabilidad y la simplicidad de la implementación. \\ \hline
+\end{tabular}
+\caption{Comparativa de PPO frente a alternativas de DRL desde la perspectiva de la gestión secuencial de carteras.}
+\label{tab:ppo_vs_alternativas}
+\end{table}
+
+A partir de la comparativa anterior, la elección de PPO en el presente trabajo se justifica por tres motivos. En primer lugar, soporta de forma nativa espacios de acción continuos sin necesidad de discretizar el simplex de pesos, lo que evita una pérdida indeseada de granularidad en la asignación. En segundo lugar, su mecanismo de objetivo recortado proporciona estabilidad de entrenamiento sin la complejidad de implementación de TRPO ni la fragilidad de DDPG. Por último, en términos de coste de implementación y reproducibilidad, PPO ha sido objeto de un esfuerzo de estandarización particularmente intenso —en especial a través de librerías como Stable-Baselines3—, lo que reduce la probabilidad de error en el código de entrenamiento y facilita la replicabilidad de los experimentos por terceros.
+
 \subsection{Arquitectura Actor-Crítico}
 
 La mayoría de implementaciones modernas de PPO se apoyan en una arquitectura \textit{Actor-Critic}, en la que dos redes neuronales colaboran:
@@ -318,9 +353,31 @@ Esta separación es especialmente útil en problemas con espacios de acción con
 
 \subsection{Industrialización del DRL Financiero: el Ecosistema FinRL}
 
-Una dificultad recurrente en la literatura de DRL financiero es la reproducibilidad: muchos resultados publicados son difíciles de replicar debido a la variabilidad de fuentes de datos, preprocesamientos y parametrizaciones del entorno. Para mitigar esta brecha, los trabajos en torno a \textbf{FinRL} \cite{liu2018finrl,arxiv191110107,liu2021finrl} proponen una infraestructura jerárquica que estandariza la ingesta de datos, el preprocesamiento y el \textit{backtesting} sobre el estándar \textbf{Gymnasium}.
+Una dificultad recurrente en la literatura de DRL financiero es la reproducibilidad: muchos resultados publicados son difíciles de replicar debido a la variabilidad de fuentes de datos, preprocesamientos y parametrizaciones del entorno. Para mitigar esta brecha, los trabajos en torno a \textbf{FinRL} \cite{liu2018finrl,liu2021finrl} proponen una infraestructura jerárquica que estandariza la ingesta de datos, el preprocesamiento y el \textit{backtesting} sobre el estándar \textbf{Gymnasium}.
 
-Dicha estandarización tiene un valor doble. Por un lado, reduce la fricción de implementación al ofrecer entornos preconfigurados que cumplen la interfaz Gymnasium, permitiendo encadenar algoritmos de la familia PPO/A2C/DDPG sin reescribir el simulador. Por otro lado, fija un marco común para reportar métricas de evaluación, lo que facilita la comparación entre trabajos. Sin embargo, FinRL no aborda directamente cuestiones críticas para la gestión institucional de carteras híbridas: el modelado fino de fricciones, la inclusión de activos digitales con propiedades estadísticas singulares y el diseño de funciones de recompensa que penalicen explícitamente \textit{drawdown} y \textit{turnover}. Investigaciones más recientes \cite{plosone2025} señalan justamente la necesidad de extender los entornos para reflejar de forma realista la fricción operativa cuando se opera con instrumentos como ETFs sobre criptoactivos.
+Dicha estandarización tiene un valor doble. Por un lado, reduce la fricción de implementación al ofrecer entornos preconfigurados que cumplen la interfaz Gymnasium, permitiendo encadenar algoritmos de la familia PPO/A2C/DDPG sin reescribir el simulador. Por otro lado, fija un marco común para reportar métricas de evaluación, lo que facilita la comparación entre trabajos.
+
+A pesar de su valor como infraestructura de referencia, conviene delimitar con precisión qué aporta FinRL y qué queda fuera de su alcance, dado que esa frontera condiciona directamente el diseño del presente trabajo. La tabla \ref{tab:finrl_vs_tfm} sintetiza esa delimitación.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{4.0cm}|p{5.0cm}|p{5.0cm}|}
+\hline
+\textbf{Componente} & \textbf{Aportación de FinRL} & \textbf{A desarrollar en este trabajo} \\ \hline
+Ingesta de datos & Conectores estandarizados a varias fuentes (Yahoo, Alpaca, etc.) & Ingesta sobre Yahoo en entornos restrictivos (\texttt{curl\_cffi}) y selección de universo orientada a una cartera híbrida \\ \hline
+Entornos de simulación & Entornos genéricos para \textit{trading} de acciones, criptomonedas y carteras pequeñas & Entorno específico para cartera híbrida con ETFs regulados sobre criptoactivos (IBIT, ETHA), restricción \textit{long-only} y suma a uno \\ \hline
+Función de recompensa & Recompensas estándar basadas en retorno o ratio de Sharpe sobre ventana fija & Recompensa multiobjetivo que combina Sharpe rolling, penalización por \textit{Maximum Drawdown} y por \textit{turnover}, parametrizada por perfiles de riesgo \\ \hline
+Modelado de fricciones & Soporte de comisiones lineales en algunos entornos & Modelado explícito de comisiones y \textit{slippage}, con reflejo directo en la dinámica del entorno \\ \hline
+Protocolo de validación & Particiones \textit{train/test} simples sobre periodo fijo & Validación temporal estricta con esquemas \textit{walk-forward} y \textit{expanding window}, análisis de sensibilidad y por régimen de volatilidad \\ \hline
+Trazabilidad experimental & Registro mínimo de experimentos en notebooks & Persistencia en base de datos relacional con metadatos completos por modelo entrenado y reproducción exacta de simulaciones \\ \hline
+Despliegue & No abordado de forma específica & Capa de servicios FastAPI, autenticación, roles y arquitectura de microservicios para uso operativo \\ \hline
+\end{tabular}
+\caption{Delimitación entre lo que aporta FinRL como infraestructura y lo que se desarrolla específicamente en este trabajo.}
+\label{tab:finrl_vs_tfm}
+\end{table}
+
+En síntesis, FinRL aporta el \textit{andamiaje} —ingesta y \textit{wrappers} sobre Gymnasium— pero deja abiertas precisamente las cuestiones que resultan críticas para la gestión institucional de carteras híbridas: el modelado fino de fricciones, la inclusión de instrumentos regulados sobre criptoactivos y el diseño de funciones de recompensa que penalicen explícitamente \textit{drawdown} y \textit{turnover}. Trabajos como \cite{jiang2017drl}, que aplican DRL al problema concreto de gestión de cartera, ilustran el potencial del enfoque secuencial pero se centran en universos de criptomonedas \textit{spot} sin integrar instrumentos regulados ni penalizaciones explícitas de riesgo y rotación. La sección siguiente examina precisamente las propiedades estadísticas de los criptoactivos y el papel del IBIT como instrumento regulado, cuya integración constituye uno de los focos del presente trabajo.
 
 \section{Criptoactivos e Institucionalización: el Impacto del IBIT}
 
@@ -330,14 +387,14 @@ La integración de criptoactivos en carteras institucionales ha trascendido el �
 
 El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) constituye un punto de inflexión en la microestructura del mercado de criptoactivos. Al tratarse de un ETF \textit{spot} regulado, el IBIT permite acceder a la exposición a Bitcoin a través de los canales habituales de negociación bursátil, eliminando una parte significativa de las fricciones de custodia y liquidez asociadas a los mercados \textit{offshore}.
 
-Desde la perspectiva de la teoría de carteras, la inclusión de un activo con un perfil de retorno-riesgo diferenciado podría contribuir a desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. No obstante, este beneficio es contingente al régimen de mercado: la literatura previa documenta episodios en los que el Bitcoin ha mostrado un acoplamiento elevado con índices bursátiles tradicionales como el S\&P 500, especialmente durante eventos de tensión financiera \cite{ieee9755122}. Esta dependencia condicional sugiere que la diversificación obtenida mediante criptoactivos no es estable a lo largo del tiempo, lo que motiva el uso de marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
+Desde la perspectiva de la teoría de carteras, la inclusión de un activo con un perfil de retorno-riesgo diferenciado podría contribuir a desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. No obstante, este beneficio es contingente al régimen de mercado: la literatura previa documenta episodios en los que el Bitcoin ha mostrado un acoplamiento elevado con índices bursátiles tradicionales como el S\&P 500, especialmente durante eventos de tensión financiera. \cite{conlon2020safehaven} muestran, sobre el periodo de mercado bajista asociado a la COVID-19, que el Bitcoin no se comportó como activo refugio sino que su correlación con la renta variable aumentó en los momentos de mayor estrés. Esta dependencia condicional sugiere que la diversificación obtenida mediante criptoactivos no es estable a lo largo del tiempo, lo que motiva el uso de marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
 
 \subsection{Propiedades Estadísticas Relevantes para la Gestión Algorítmica}
 
 Los retornos del IBIT heredan del Bitcoin un conjunto de propiedades estadísticas relevantes desde el punto de vista del modelado:
 
 \begin{itemize}
-    \item \textbf{\textit{Volatility clustering}.} Tal y como se documenta en \cite{plosone2025}, la volatilidad de los criptoactivos no se distribuye uniformemente en el tiempo, sino que tiende a presentarse en \textit{clústeres} persistentes en los que periodos de alta agitación alternan con fases comparativamente más estables.
+    \item \textbf{\textit{Volatility clustering}.} Tal y como se documenta en \cite{katsiampa2017}, la volatilidad del Bitcoin presenta una marcada estructura de \textit{clustering}, ajustándose adecuadamente a modelos de la familia GARCH. Bajo este patrón, periodos de alta agitación alternan con fases comparativamente más estables, en lugar de distribuirse uniformemente en el tiempo.
     \item \textbf{Asimetría y colas pesadas.} La distribución empírica de los retornos del IBIT exhibe colas más pesadas que las de una distribución normal, lo que implica una mayor frecuencia de eventos extremos respecto a lo que predicen los modelos gaussianos clásicos.
     \item \textbf{Dependencia condicional con el mercado tradicional.} Como se ha indicado, las correlaciones con renta variable y renta fija varían con el régimen, lo que penaliza a los modelos estáticos que asumen una estructura de covarianza constante.
 \end{itemize}
@@ -386,7 +443,7 @@ La adopción de DSR resulta adecuada porque el trabajo no se limita a verificar 
 \section{Arquitectura del Sistema: Enfoque MLOps}
 \label{sec:arquitectura}
 
-La eficacia de un agente DRL depende, en la práctica, de una infraestructura de soporte capaz de garantizar reproducibilidad, trazabilidad y aislamiento entre fases experimentales. La literatura sobre MLOps en sistemas financieros automatizados \cite{acm2022mlops} subraya que la deuda técnica acumulada en el preprocesamiento, en el versionado de modelos y en la gestión de datos suele ser determinante en la capacidad de un sistema para sostener resultados consistentes a lo largo del tiempo. A partir de estas consideraciones, este trabajo adopta un enfoque de \textit{Financial MLOps} en el que la arquitectura se descompone en microservicios coordinados.
+La eficacia de un agente DRL depende, en la práctica, de una infraestructura de soporte capaz de garantizar reproducibilidad, trazabilidad y aislamiento entre fases experimentales. \cite{sculley2015hidden} señalan que la deuda técnica acumulada en el preprocesamiento, en el versionado de modelos y en la gestión de datos suele ser determinante en la capacidad de un sistema de aprendizaje automático para sostener resultados consistentes a lo largo del tiempo, hasta el punto de superar en magnitud a la complejidad estrictamente algorítmica. A partir de estas consideraciones, este trabajo adopta un enfoque de \textit{MLOps} en el que la arquitectura se descompone en microservicios coordinados, con persistencia explícita de datos, modelos y experimentos.
 
 \subsection{Resiliencia mediante Microservicios y Contenedores}
 
