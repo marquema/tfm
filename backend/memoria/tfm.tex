@@ -395,7 +395,7 @@ Los retornos del IBIT heredan del Bitcoin un conjunto de propiedades estadístic
 
 \begin{itemize}
     \item \textbf{\textit{Volatility clustering}.} Tal y como se documenta en \cite{katsiampa2017}, la volatilidad del Bitcoin presenta una marcada estructura de \textit{clustering}, ajustándose adecuadamente a modelos de la familia GARCH. Bajo este patrón, periodos de alta agitación alternan con fases comparativamente más estables, en lugar de distribuirse uniformemente en el tiempo.
-    \item \textbf{Asimetría y colas pesadas.} La distribución empírica de los retornos del IBIT exhibe colas más pesadas que las de una distribución normal, lo que implica una mayor frecuencia de eventos extremos respecto a lo que predicen los modelos gaussianos clásicos.
+    \item \textbf{Asimetría y colas pesadas.} Aunque la serie histórica del IBIT es todavía corta (cotiza desde enero de 2024) y no permite por sí sola caracterizaciones distribucionales robustas, los retornos del Bitcoin subyacente presentan, según la literatura, asimetría y colas significativamente más pesadas que las de una distribución normal, propiedades que cabe esperar igualmente en el ETF y que implican una mayor frecuencia de eventos extremos que la prevista por los modelos gaussianos clásicos.
     \item \textbf{Dependencia condicional con el mercado tradicional.} Como se ha indicado, las correlaciones con renta variable y renta fija varían con el régimen, lo que penaliza a los modelos estáticos que asumen una estructura de covarianza constante.
 \end{itemize}
 
@@ -456,6 +456,231 @@ La capa de persistencia está soportada por una base de datos relacional gestion
 La ingesta de datos se ha diseñado teniendo en cuenta restricciones habituales en entornos corporativos, tales como la presencia de \textit{proxies} SSL y la posibilidad de bloqueos a las cabeceras estándar utilizadas por las librerías Python más comunes. Para mitigar estas dificultades, se ha integrado la librería \texttt{curl\_cffi}, que permite emular la huella TLS de un navegador Chrome moderno y, con ello, acceder a fuentes públicas como Yahoo Finance sin comprometer las políticas de seguridad de la red.
 
 Esta solución se ha encapsulado tras una abstracción de fuente de datos (\textit{Strategy pattern}), de modo que el resto del pipeline trabaja contra una interfaz común y resulta independiente del proveedor concreto utilizado. De este modo, la arquitectura admite, sin modificar el resto del sistema, la sustitución futura de la fuente histórica por proveedores en tiempo real (por ejemplo, Alpaca, Polygon.io o Interactive Brokers), siempre que cumplan con la interfaz especificada.
+
+\section{Universo de Activos}
+\label{sec:universo}
+
+El sistema opera sobre un universo híbrido de nueve activos seleccionados para reflejar tanto las clases tradicionales (renta variable, renta fija, sectores defensivos) como la nueva clase de activos digitales accesible mediante ETFs regulados. La tabla \ref{tab:universo} resume el universo y la naturaleza de cada inclusión.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|l|p{6.5cm}|}
+\hline
+\textbf{Ticker} & \textbf{Clase} & \textbf{Función en la cartera} \\ \hline
+IVV & Renta variable USA & Réplica del S\&P 500; proxy del mercado bursátil estadounidense. \\ \hline
+BND & Renta fija agregada & ETF de Vanguard sobre el mercado total de bonos USA. \\ \hline
+IBIT & Cripto regulada & ETF \textit{spot} de Bitcoin (iShares); foco principal del TFM. \\ \hline
+ETHA & Cripto regulada & ETF \textit{spot} de Ethereum; segunda exposición cripto del universo. \\ \hline
+MO & Defensivo (tabaco) & Activo defensivo de alta dividend yield. \\ \hline
+JNJ & Defensivo (salud) & Defensivo de gran capitalización con dividendo estable. \\ \hline
+SCU & Diversificación & Activo del sector financiero alternativo. \\ \hline
+AWK & Defensivo (utilities) & Servicios públicos regulados. \\ \hline
+CB & Defensivo (seguros) & Aseguradora global de gran capitalización. \\ \hline
+\end{tabular}
+\caption{Universo de activos del sistema.}
+\label{tab:universo}
+\end{table}
+
+La selección busca representar una cartera realista de inversión institucional sobre la que evaluar la integración de criptoactivos: dispone de un núcleo amplio (IVV/BND), una exposición cripto diferenciada (IBIT y ETHA, dos clases con riesgo similar pero dinámica distinta) y una capa de activos defensivos sectoriales que aportan baja correlación con los activos de riesgo en periodos de tensión.
+
+\paragraph{Limitación conocida.} La construcción actual de las correlaciones \textit{rolling} como variable de estado del entorno utiliza tres pares (IBIT--IVV, IBIT--BND, IVV--BND). ETHA, aunque sí participa como activo asignable de la cartera, no aparece en ninguno de los pares de correlación dinámica del estado, lo que constituye una limitación documentada en la implementación cuya extensión queda como trabajo futuro.
+
+\section{Ingeniería de Características}
+\label{sec:features}
+
+A partir de las series de precios de cierre de los nueve activos del universo, se construye un conjunto de características diseñadas para que el agente disponga de información sobre la dinámica reciente, la volatilidad y los regímenes de mercado. Las categorías y ventanas se resumen en la tabla \ref{tab:features}.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{3.0cm}|p{3.7cm}|p{6.3cm}|}
+\hline
+\textbf{Categoría} & \textbf{Indicadores} & \textbf{Ventanas y propósito} \\ \hline
+Retornos & Log-retornos diarios & Magnitud de variación día a día. \\ \hline
+Momentum & Retorno acumulado a 5d, 20d y 60d & Tendencia a corto, medio y largo plazo, en línea con los horizontes documentados en la literatura de \textit{factor momentum}. \\ \hline
+Tendencia y momentum técnico & RSI, MACD diff & Sobrecompra/sobreventa y diferencia entre medias móviles. \\ \hline
+Volatilidad & ATR, \textit{Bollinger Band Width}, desviación estándar \textit{rolling}, asimetría y curtosis & Régimen de volatilidad y forma de la distribución reciente. \\ \hline
+Oscilador de canal & CCI & Distancia al canal típico de precio. \\ \hline
+Correlaciones & Correlación \textit{rolling} entre pares (IBIT--IVV, IBIT--BND, IVV--BND) & Estructura dinámica de dependencia entre activos. \\ \hline
+\end{tabular}
+\caption{Conjunto de características que componen el espacio de observación del agente.}
+\label{tab:features}
+\end{table}
+
+Antes de alimentar al agente, las \textit{features} se normalizan por activo y se truncan los \textit{outliers} para estabilizar el entrenamiento. El conjunto resultante se almacena en disco como \texttt{normalized\_features.csv} y constituye, junto con \texttt{original\_prices.csv}, la entrada estática del entorno de simulación.
+
+\section{Entorno de Simulación: \texttt{PortfolioEnv}}
+\label{sec:entorno}
+
+El entorno de simulación se ha implementado siguiendo la interfaz Gymnasium estándar y formaliza el problema como un Proceso de Decisión de Markov (MDP) finito. Sus componentes son:
+
+\begin{itemize}
+    \item \textbf{Espacio de estados} $\mathcal{S}$. Vector de observación del día $t$ que concatena las \textit{features} normalizadas de los nueve activos para ese instante, los pesos actuales de la cartera $\mathbf{w}_{t-1}$ y la última recompensa observada $r_{t-1}$. Se trata de una observación aumentada que permite al agente disponer no solo del estado de mercado, sino también de su propia posición previa.
+    \item \textbf{Espacio de acciones} $\mathcal{A}$. Vector continuo $\mathbf{a}_t \in [0,1]^{n}$ con $n=9$. La acción se interpreta como pesos no normalizados sobre el simplex de cartera: el entorno aplica internamente la normalización
+    \begin{equation*}
+        \mathbf{w}_t = \frac{\mathbf{a}_t}{\sum_i a_{t,i}},
+    \end{equation*}
+    garantizando $\mathbf{w}_t^{\top}\mathbf{1}=1$ y $\mathbf{w}_t \geq \mathbf{0}$ (cartera \textit{long-only}).
+    \item \textbf{Dinámica del entorno}. Dado el vector de pesos $\mathbf{w}_t$, el entorno aplica el rebalanceo, descuenta comisiones de transacción proporcionales al \textit{turnover} y un \textit{slippage} parametrizable, y actualiza el valor de la cartera según los retornos del día. La transición hacia el siguiente estado consiste en avanzar un paso en la serie temporal de \textit{features}.
+    \item \textbf{Recompensa}. Función multiobjetivo que combina retorno ajustado por riesgo y penalizaciones por riesgo realizado y rotación, descrita formalmente en la sección \ref{sec:recompensa}.
+\end{itemize}
+
+\section{Función de Recompensa y Perfiles de Riesgo}
+\label{sec:recompensa}
+
+\subsection{Formulación de la Recompensa}
+
+La recompensa por paso del entorno se define como:
+\begin{equation}
+r_t = \mathrm{clip}\!\left(\,\mathrm{Sharpe}^{(20)}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right),
+\label{eq:reward}
+\end{equation}
+donde:
+\begin{itemize}
+    \item $\mathrm{Sharpe}^{(20)}_t$ es el ratio de Sharpe calculado sobre los retornos diarios de la cartera en una ventana móvil de 20 días, normalizado para acotarse en un rango similar a $[-1, 1]$.
+    \item $\mathrm{MDD}_t \in [0, 1]$ es el \textit{Maximum Drawdown} actual respecto al máximo histórico del valor de cartera observado hasta el instante $t$.
+    \item $T_t = \sum_i |w_{i,t} - w_{i,t-1}|$ es el \textit{turnover} del paso $t$, suma de los cambios absolutos en pesos.
+    \item $\varphi$ y $\gamma$ son hiperparámetros que ponderan, respectivamente, la aversión al \textit{drawdown} y la aversión a la rotación. Su elección define el \textit{perfil de riesgo} del agente.
+    \item El operador $\mathrm{clip}$ acota el reward en $[-1,1]$ para estabilizar el entrenamiento y evitar que valores extremos dominen el gradiente.
+\end{itemize}
+
+A diferencia de las recompensas basadas en log-retorno o ratio de Sharpe sobre ventana fija, esta formulación es \textit{multiobjetivo}: integra explícitamente la dimensión de riesgo (vía $\mathrm{MDD}$) y la dimensión de fricción operativa (vía $T_t$) en una única señal escalar, permitiendo al algoritmo de optimización tratarlas como objetivos contrapuestos a equilibrar.
+
+\subsection{Perfiles de Riesgo}
+\label{sec:perfiles}
+
+Los hiperparámetros $\varphi$ y $\gamma$ se ofrecen al usuario administrador como cuatro perfiles preconfigurados (tabla \ref{tab:perfiles}), cada uno representando una filosofía de inversión distinta.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|p{7.6cm}|}
+\hline
+\textbf{Perfil} & $\boldsymbol{\varphi}$ & $\boldsymbol{\gamma}$ & \textbf{Filosofía} \\ \hline
+\texttt{balanced} & 0.02 & 0.010 & Equilibrio entre retorno y control de riesgo. \textit{Baseline} del catálogo. \\ \hline
+\texttt{conservative} & 0.05 & 0.010 & Penaliza \textit{drawdowns} con factor 2.5x respecto a \texttt{balanced}; prioriza preservar capital. \\ \hline
+\texttt{low\_turnover} & 0.02 & 0.020 & \textbf{Perfil principal del TFM.} Doble penalización por rotación que \texttt{balanced}: el agente solo opera cuando la mejora esperada en Sharpe compensa el coste de rotar. \\ \hline
+\texttt{aggressive} & 0.01 & 0.005 & Mínimas penalizaciones; máxima libertad para buscar retorno. \\ \hline
+\end{tabular}
+\caption{Perfiles de riesgo predefinidos del catálogo.}
+\label{tab:perfiles}
+\end{table}
+
+La elección de \texttt{low\_turnover} como perfil principal del TFM no es arbitraria: se justifica empíricamente mediante el análisis de sensibilidad de la sección siguiente.
+
+\section{Análisis de Sensibilidad de la Función de Recompensa}
+\label{sec:sensitivity}
+
+Para evaluar la robustez de la calibración y justificar la elección del perfil principal, se ha entrenado un agente PPO bajo cada uno de los cuatro perfiles, manteniendo idénticos el resto de hiperparámetros (200~000 pasos por configuración, partición \textit{train}/\textit{test} 80/20). Los resultados sobre el periodo \textit{out-of-sample} se resumen en la tabla \ref{tab:sensitivity}.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|c|c|}
+\hline
+\textbf{Configuración} & $\boldsymbol{\varphi}$ & $\boldsymbol{\gamma}$ & \textbf{Sharpe} & \textbf{Retorno (\%)} & \textbf{MDD (\%)} \\ \hline
+A: \texttt{balanced} & 0.02 & 0.010 & 1.368 & 112.4 & $-31.8$ \\ \hline
+B: \texttt{conservative} & 0.05 & 0.010 & 1.613 & 170.6 & $-40.8$ \\ \hline
+\textbf{C: \texttt{low\_turnover}} \textbf{(TFM)} & \textbf{0.02} & \textbf{0.020} & \textbf{1.770} & \textbf{182.2} & $-40.0$ \\ \hline
+D: \texttt{aggressive} & 0.01 & 0.005 & 1.310 & 102.6 & $-31.1$ \\ \hline
+\end{tabular}
+\caption{Resultados del análisis de sensibilidad sobre el periodo out-of-sample.}
+\label{tab:sensitivity}
+\end{table}
+
+La lectura de la tabla \ref{tab:sensitivity} permite extraer tres conclusiones:
+
+\begin{enumerate}
+    \item \textbf{\texttt{low\_turnover} maximiza Sharpe y retorno.} Con un Sharpe de 1.77 y un retorno acumulado del 182\%, supera a las otras tres configuraciones. Este resultado justifica empíricamente —no narrativamente— su elección como perfil principal.
+    \item \textbf{Trade-off MDD vs.\ Sharpe.} Las configuraciones \texttt{balanced} y \texttt{aggressive} obtienen menor MDD ($\sim$32\%) frente al $\sim$40\% de \texttt{conservative} y \texttt{low\_turnover}. La elección de \texttt{low\_turnover} prioriza el equilibrio retorno/riesgo capturado por Sharpe, asumiendo que (i) el propio $\gamma$ ya penaliza la rotación durante el entrenamiento y (ii) el Sharpe ya pondera retorno por volatilidad.
+    \item \textbf{Robustez frente a la calibración.} El rango de Sharpe (1.31 a 1.77) es estrecho frente a la magnitud de las variaciones de $\varphi$ y $\gamma$. Esto sugiere que la política aprendida no es excesivamente sensible a la calibración exacta de la recompensa dentro del rango explorado.
+\end{enumerate}
+
+\section{Agente PPO: Arquitectura, Hiperparámetros e Inferencia}
+\label{sec:agente_ppo}
+
+\subsection{Arquitectura Actor-Crítico}
+
+El agente se implementa con la API \texttt{PPO} de \textit{Stable-Baselines3}, instanciada con la política \texttt{MlpPolicy}, que corresponde a la \texttt{ActorCriticPolicy} estándar de la librería. Esta política define dos cabezas sobre una red MLP compartida:
+
+\begin{itemize}
+    \item Un \textit{actor} que produce los parámetros de una distribución Gaussiana diagonal sobre el espacio de acciones $[0,1]^{9}$.
+    \item Un \textit{crítico} que estima la función de valor $V_{\phi}(\mathbf{s})$, utilizada para calcular ventajas $\hat{A}_t$ con baja varianza mediante el algoritmo \textit{Generalized Advantage Estimation} (GAE) estándar de SB3.
+\end{itemize}
+
+La arquitectura concreta es un MLP de dos capas ocultas de 256 unidades cada una (\texttt{net\_arch=[256, 256]}), valor por defecto recomendado por SB3 para problemas continuos de dimensionalidad media.
+
+\subsection{Hiperparámetros}
+
+La tabla \ref{tab:ppo_params} resume los hiperparámetros utilizados, idénticos en producción y en validación temporal. La unificación entre fases es deliberada: garantiza que las métricas reportadas reflejan el desempeño esperable del modelo desplegado y no de una versión simplificada para reducir cómputo.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|l|p{6.0cm}|}
+\hline
+\textbf{Hiperparámetro} & \textbf{Valor} & \textbf{Justificación} \\ \hline
+Política & \texttt{MlpPolicy} & Actor-crítico estándar de SB3 con MLP compartido. \\ \hline
+\texttt{net\_arch} & $[256, 256]$ & Capacidad razonable para la dimensionalidad del estado. \\ \hline
+\texttt{learning\_rate} & $1\!\times\!10^{-4}$ & Actualizaciones más graduales que el valor por defecto $3\!\times\!10^{-4}$, útil en señales con baja relación señal-ruido. \\ \hline
+\texttt{n\_steps} & 2048 & Trayectoria larga entre actualizaciones; reduce la varianza de las estimaciones de ventaja. \\ \hline
+\texttt{batch\_size} & 128 & Gradientes más estables que con \texttt{batch\_size} 64. \\ \hline
+\texttt{clip\_range} ($\epsilon$) & 0.10 & Recorte conservador del PPO; limita los pasos en una señal con baja relación señal-ruido. \\ \hline
+\texttt{ent\_coef} & 0.01 & Bonificación por entropía para mantener exploración a lo largo del entrenamiento. \\ \hline
+\texttt{vf\_coef} & 0.5 & Peso del error del crítico en la pérdida total (valor por defecto). \\ \hline
+\texttt{max\_grad\_norm} & 0.5 & \textit{Clipping} de gradientes para evitar inestabilidades. \\ \hline
+\end{tabular}
+\caption{Hiperparámetros del entrenamiento PPO.}
+\label{tab:ppo_params}
+\end{table}
+
+\subsection{Modo de Inferencia: Determinismo en el Backtest}
+\label{sec:inferencia_determinista}
+
+PPO aprende una política estocástica $\pi_{\theta}(\mathbf{a} \mid \mathbf{s})$, modelada en este caso como una Gaussiana diagonal sobre el simplex. Durante el entrenamiento, esta estocasticidad es imprescindible para explorar el espacio de asignaciones. En cambio, en todas las fases de inferencia —\textit{walk-forward}, \textit{expanding window}, análisis de sensibilidad, análisis por régimen y simulaciones del usuario final— se utiliza el modo determinista (\texttt{deterministic=True} en la API SB3), que devuelve la media de la distribución del actor en lugar de muestrear. Esta decisión se justifica por tres razones:
+
+\begin{itemize}
+    \item \textbf{Reproducibilidad.} Dos ejecuciones del mismo modelo sobre los mismos datos producen exactamente la misma curva de \textit{equity}, lo que permite comparar con rigor entre configuraciones, perfiles y \textit{baselines}.
+    \item \textbf{Realismo operativo.} Un gestor patrimonial requiere la mejor estimación que la política aprendida puede ofrecer, no una muestra aleatoria. La media de la distribución corresponde a la asignación modal de la política.
+    \item \textbf{Separación entre entrenamiento y evaluación.} La estocasticidad solo es necesaria durante el entrenamiento; mantenerla en evaluación contaminaría las métricas con ruido ajeno al desempeño real.
+\end{itemize}
+
+\section{Baselines del Estudio Comparativo}
+\label{sec:baselines}
+
+Para evaluar el agente PPO se han implementado seis estrategias de referencia (\textit{baselines}) que cubren un espectro deliberadamente amplio: desde la cordura mínima exigible (\textit{lower bound}) hasta \textit{baselines} competitivas del sector cuantitativo. La tabla \ref{tab:baselines} resume el catálogo.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|p{8.5cm}|p{2.0cm}|}
+\hline
+\textbf{Baseline} & \textbf{Descripción y rol} & \textbf{Rebalanceo} \\ \hline
+Equal-Weight & 1/N a cada activo del universo. \textit{Baseline} pasiva clásica. & Mensual \\ \hline
+60/40 & 60\% IVV (renta variable) + 40\% BND (renta fija). Cartera institucional canónica. & Mensual \\ \hline
+Buy \& Hold & 1/N inicial sin rebalanceo posterior. \textit{Baseline} de mínima fricción. & Ninguno \\ \hline
+Markowitz MV & Optimización media-varianza con ventana de estimación de 252 días, maximizando Sharpe vía SLSQP. \textit{Baseline} teórica clásica \cite{markowitz1952}. & Mensual \\ \hline
+Random Uniform & Pesos muestreados uniformemente del simplex (Dirichlet$(\mathbf{1})$) con semilla fija. \textit{Lower bound} de cordura: si el agente DRL no supera a esta \textit{baseline}, no está aprendiendo. & Mensual \\ \hline
+Momentum Top-K & Cada mes, asigna pesos equiponderados al \textit{top}-3 de activos con mejor retorno acumulado en los últimos 60 días. Implementa el factor \textit{momentum} \textit{cross-sectional} documentado por \cite{jegadeesh1993}. \textit{Baseline} competitiva del sector cuantitativo. & Mensual \\ \hline
+\end{tabular}
+\caption{Estrategias de referencia (baselines) implementadas.}
+\label{tab:baselines}
+\end{table}
+
+La inclusión de Random Uniform y Momentum Top-K responde a dos preguntas distintas: la primera verifica que el agente realmente aprende y no replica el azar; la segunda verifica que el agente aporta valor por encima de un factor financiero conocido y operativamente sencillo. Si el PPO no supera al Momentum Top-K, su justificación como artefacto del TFM se debilita; si sí lo hace consistentemente, se valida la hipótesis de que un agente DRL aporta información adicional sobre la simple persistencia del momentum.
+
+\section{Protocolo de Validación Temporal}
+\label{sec:validacion}
+
+La validación del agente sigue dos esquemas complementarios habituales en la literatura de \textit{Machine Learning} financiero \cite{lopezdeprado2018}:
+
+\begin{itemize}
+    \item \textbf{\textit{Walk-forward} (rolling).} Se desliza una ventana temporal fija a lo largo del histórico: el modelo se entrena en un bloque \textit{train} y se evalúa inmediatamente después en un bloque \textit{test} contiguo, repitiendo el procedimiento sucesivamente. Cada ventana proporciona una estimación de desempeño \textit{out-of-sample} en condiciones realistas, evaluando exclusivamente sobre datos posteriores al entrenamiento.
+    \item \textbf{\textit{Expanding window}.} Variante en la que el bloque \textit{train} crece progresivamente con el tiempo (acumula toda la historia disponible hasta el corte), mientras que el bloque \textit{test} se desliza sobre el periodo siguiente. Este esquema simula mejor la situación de un sistema en producción que reentrena periódicamente con todos los datos acumulados.
+\end{itemize}
+
+En ambos esquemas, los hiperparámetros del entrenamiento son idénticos a los de la configuración de producción (tabla \ref{tab:ppo_params}), de modo que las métricas reportadas reflejan el desempeño esperable del modelo desplegado y no de una versión simplificada. Los resultados de cada ventana se agregan en sus medias y desviaciones, y se reportan junto con las correspondientes curvas de \textit{equity} comparadas con las seis \textit{baselines} de la sección \ref{sec:baselines}.
 
 \chapter{Glosario}
 
