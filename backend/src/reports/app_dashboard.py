@@ -222,6 +222,8 @@ COLORES = {
     'Buy_and_Hold':         '#7ed957',
     'Cartera_60_40':        '#ff6b6b',
     'Markowitz_MV':         '#c77dff',
+    'Random_Uniform':       '#8d99ae',  # gris azulado (lower bound)
+    'Momentum_TopK':        '#ef476f',  # rosa fuerte (factor competitivo)
 }
 
 NOMBRES = {
@@ -231,6 +233,8 @@ NOMBRES = {
     'Buy_and_Hold':         'Buy & Hold',
     'Cartera_60_40':        'Cartera 60/40',
     'Markowitz_MV':         'Markowitz MV',
+    'Random_Uniform':       'Random Uniform',
+    'Momentum_TopK':        'Momentum Top-3 (60d)',
 }
 
 DESCRIPCIONES_METRICAS = {

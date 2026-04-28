@@ -51,6 +51,8 @@ export class ResultsComponent implements OnInit {
     'Cartera_60_40': '#ff6b6b',
     'Markowitz_MV': '#c77dff',
     'Especulativo_HMM': '#ff9f1c',
+    'Random_Uniform': '#8d99ae',
+    'Momentum_TopK': '#ef476f',
   };
 
   private readonly darkLayout: any = {
@@ -364,6 +366,8 @@ export class ResultsComponent implements OnInit {
       'Cartera_60_40': 'Cartera 60/40',
       'Markowitz_MV': 'Markowitz MV',
       'Especulativo_HMM': 'Especulativo (GMM)',
+      'Random_Uniform': 'Random Uniform',
+      'Momentum_TopK': 'Momentum Top-3 (60d)',
     };
     return names[key] || key;
   }

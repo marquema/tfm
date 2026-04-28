@@ -313,6 +313,8 @@ def _plot_backtest(portfolio_values: dict, metrics: pd.DataFrame):
         'Cartera_60_40':       {'color': '#9467bd', 'ls': '--', 'lw': 1.5, 'zorder': 3},
         'Buy_and_Hold':        {'color': '#ff7f0e', 'ls': '--', 'lw': 1.5, 'zorder': 3},
         'Markowitz_MV':        {'color': '#8c564b', 'ls': ':',  'lw': 1.5, 'zorder': 3},
+        'Random_Uniform':      {'color': '#7f7f7f', 'ls': ':',  'lw': 1.2, 'zorder': 2},
+        'Momentum_TopK':       {'color': '#e377c2', 'ls': '-.', 'lw': 1.5, 'zorder': 3},
     }
 
     fig, axes = plt.subplots(2, 1, figsize=(14, 10),

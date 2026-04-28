@@ -632,6 +632,8 @@ def _plot_regimes(results: dict, test_regimes: pd.Series,
         'Cartera_60_40':        ('#ff6b6b', '--', 1.5, 'Cartera 60/40'),
         'Markowitz_MV':         ('#c77dff', ':',  1.5, 'Markowitz MV'),
         'Especulativo_HMM':     ('#ff9f1c', '-.',  1.5, 'Especulativo (GMM)'),
+        'Random_Uniform':       ('#8d99ae', ':',  1.2, 'Random Uniform'),
+        'Momentum_TopK':        ('#ef476f', '-.', 1.5, 'Momentum Top-3 (60d)'),
     }
 
     for name, (color, style, width, label) in strategy_styles.items():

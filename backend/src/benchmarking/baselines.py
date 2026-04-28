@@ -1,7 +1,7 @@
 """
 Modulo de baselines(estrategias de referencia) financieros para benchmarking comparativo con el agente DRL.
 
-Implementa las cuatro estrategias de referencia definidas en el TFM:
+Implementa las seis estrategias de referencia definidas en el TFM:
   1. Equal-Weight mensual: 1/N entre todos los activos, rebalanceo el primer dia de cada mes, para que estén iguales
   2. Cartera 60/40: 60% renta variable (IVV) / 40% renta fija (BND), rebalanceo mensual.
         Se comra lo que bajó y se vende lo que subió. Fondos de pensiones usan esta estrategia.
@@ -9,6 +9,12 @@ Implementa las cuatro estrategias de referencia definidas en el TFM:
         En mercados alcistas es lo mejor: se compra, no se hace nada, y simplemente se espera.
   4. Markowitz Media-Varianza: maximizacion del Ratio de Sharpe con ventana de estimacion
      de 252 dias (~12 meses), reoptimizacion mensual con scipy.optimize.
+  5. Random Uniform: cartera con pesos uniformemente aleatorios sobre el simplex,
+     rebalanceo mensual con seed fijo para reproducibilidad. Lower bound de cordura
+     (si el agente DRL no supera al random, no esta aprendiendo).
+  6. Momentum Top-K: cada mes, asigna pesos equiponderados al top-K de activos con
+     mejor retorno acumulado en los ultimos N dias. Baseline competitiva del sector
+     (factor momentum cross-sectional).
         Retorno esperado, volatilidad y correlación entre ellos. Frontera eficiente: no puedo ganar mas sin más riesgo.
         La idea central: no miramos activos individuales, miramos cómo se combinan
      Sharpe = (retorno_anual - tasa_libre_de_riesgo) / volatilidad_anual
@@ -412,7 +418,15 @@ def run_baselines(df_prices: pd.DataFrame,
                   ticker_equity: str = 'IVV_Close',
                   ticker_bond: str = 'BND_Close') -> dict:
     """
-    Ejecuta los cuatro baselines sobre el mismo conjunto de precios.
+    Ejecuta los seis baselines sobre el mismo conjunto de precios.
+
+    Estrategias incluidas:
+      - Equal_Weight_Mensual: 1/N con rebalanceo mensual
+      - Buy_and_Hold: 1/N inicial sin rebalanceo
+      - Cartera_60_40: 60% IVV / 40% BND (solo si ambos disponibles)
+      - Markowitz_MV: media-varianza con ventana 252d, reoptimizacion mensual
+      - Random_Uniform: pesos aleatorios del simplex, rebalanceo mensual (seed fijo)
+      - Momentum_TopK: top-3 por momentum a 60d, rebalanceo mensual
 
     Parameters
     ----------
@@ -454,12 +468,202 @@ def run_baselines(df_prices: pd.DataFrame,
     print("  Simulando Markowitz Media-Varianza (puede tardar unos segundos)...")
     results['Markowitz_MV'] = simulate_markowitz(df_prices, initial_balance=initial_balance)
 
+    print("  Simulando Random Uniform (lower bound de cordura)...")
+    results['Random_Uniform'] = simulate_random_uniform(
+        df_prices, initial_balance, commission
+    )
+
+    print("  Simulando Momentum Top-K (factor momentum cross-sectional)...")
+    results['Momentum_TopK'] = simulate_momentum_topk(
+        df_prices, lookback=60, top_k=3,
+        initial_balance=initial_balance, commission=commission
+    )
+
     return results
 
 
-# # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# Baseline 5: Random Uniform (lower bound de cordura)
+# # # # # # # # # # # # # # # # # # # # # # # # #
+
+def simulate_random_uniform(df_prices: pd.DataFrame,
+                            initial_balance: float = 10000,
+                            commission: float = 0.001,
+                            seed: int = 42) -> pd.Series:
+    """
+    Cartera con pesos uniformemente aleatorios sobre el simplex, rebalanceo mensual.
+
+    En cada primer dia de mes se muestrean nuevos pesos w ~ Dirichlet(1, ..., 1)
+    (equivalente a muestrear uniformemente del simplex de pesos no-negativos que
+    suman 1) y se rebalancea la cartera a esos pesos, aplicando comisiones por el
+    turnover generado. Entre rebalanceos los pesos derivan con el mercado.
+
+    Rol en el TFM:
+      Es la baseline mas elemental: lower bound de cordura. Si el agente DRL no
+      supera consistentemente al Random Uniform en metricas ajustadas por riesgo
+      (Sharpe, Sortino), entonces el aprendizaje del agente no esta aportando
+      valor por encima del azar y la propuesta del TFM no se sostiene. Es la
+      primera baseline que un tribunal exigira para descartar suerte.
+
+    Reproducibilidad:
+      Se fija una seed (default 42) para que el resultado sea identico en
+      ejecuciones sucesivas. Si se desea estimar la varianza del random (no
+      una sola realizacion), llamar varias veces con seeds distintas y promediar.
+
+    Parameters
+    ----------
+    df_prices : pd.DataFrame
+        DataFrame de precios de cierre (columnas = activos, indice = fechas ASC).
+    initial_balance : float
+        Capital inicial en dolares.
+    commission : float
+        Tasa de comision por transaccion (0.001 = 0.1%).
+    seed : int
+        Semilla para el generador aleatorio (reproducibilidad).
+
+    Returns
+    -------
+    pd.Series
+        Valor de la cartera en cada dia, indexada por fecha.
+    """
+    assert df_prices.index.is_monotonic_increasing, \
+        "Los precios deben estar ordenados ascendentemente."
+
+    rng = np.random.default_rng(seed)
+    n = len(df_prices.columns)
+
+    # Pesos iniciales: muestra uniforme del simplex (Dirichlet con alphas=1)
+    current_weights = rng.dirichlet(np.ones(n))
+    balance = initial_balance
+    values = [initial_balance]
+    returns = df_prices.pct_change().fillna(0)
+
+    for i in range(1, len(df_prices)):
+        today = pd.to_datetime(df_prices.index[i])
+        yesterday = pd.to_datetime(df_prices.index[i - 1])
+
+        # Rebalanceo mensual: nuevos pesos aleatorios del simplex
+        if _is_month_start(today, yesterday):
+            target_weights = rng.dirichlet(np.ones(n))
+            balance, current_weights = _rebalance(
+                balance, target_weights, current_weights, commission
+            )
+
+        rets = returns.iloc[i].values
+        balance = balance * np.sum(current_weights * (1 + rets))
+        balance = max(balance, 1e-6)
+
+        new_vals = current_weights * (1 + rets)
+        current_weights = new_vals / (new_vals.sum() + 1e-8)
+
+        values.append(balance)
+
+    return pd.Series(values, index=df_prices.index, name='Random_Uniform')
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # #
+# Baseline 6: Momentum Top-K (factor momentum cross-sectional)
+# # # # # # # # # # # # # # # # # # # # # # # # #
+
+def simulate_momentum_topk(df_prices: pd.DataFrame,
+                           lookback: int = 60,
+                           top_k: int = 3,
+                           initial_balance: float = 10000,
+                           commission: float = 0.001) -> pd.Series:
+    """
+    Cartera momentum cross-sectional con rebalanceo mensual.
+
+    En cada primer dia de mes:
+      1. Calcula el retorno acumulado de cada activo en los ultimos `lookback` dias.
+      2. Selecciona los `top_k` activos con mejor retorno (mayor momentum).
+      3. Asigna peso 1/top_k a cada uno de esos activos; resto a 0.
+      4. Aplica comisiones por el turnover.
+
+    Antes de disponer de `lookback` dias de historico, la cartera mantiene
+    una asignacion equiponderada (1/N) entre todos los activos.
+
+    Justificacion academica:
+      El factor momentum (Jegadeesh & Titman, 1993) documenta que los activos
+      que han subido en los ultimos 6-12 meses tienden a seguir subiendo en el
+      corto plazo. Con `lookback=60` (~3 meses) se captura un momentum de medio
+      plazo. Es un baseline competitivo del sector cuantitativo: si el agente
+      DRL solo replica momentum, no aporta valor sobre esta baseline.
+
+    Rol en el TFM:
+      Sirve para verificar que el agente PPO no es solo un proxy del momentum,
+      sino que aprende una politica con valor anadido (por ejemplo, anticipar
+      cambios de regimen y reducir exposicion antes de las correcciones).
+
+    Parameters
+    ----------
+    df_prices : pd.DataFrame
+        DataFrame de precios de cierre (columnas = activos, indice = fechas ASC).
+    lookback : int
+        Numero de dias hacia atras para calcular el momentum (default 60 ~ 3 meses).
+    top_k : int
+        Numero de activos a mantener en la cartera tras el ranking de momentum.
+        Si top_k > n_activos, se usa min(top_k, n_activos).
+    initial_balance : float
+        Capital inicial en dolares.
+    commission : float
+        Tasa de comision por transaccion (0.001 = 0.1%).
+
+    Returns
+    -------
+    pd.Series
+        Valor de la cartera en cada dia, indexada por fecha.
+    """
+    assert df_prices.index.is_monotonic_increasing, \
+        "Los precios deben estar ordenados ascendentemente."
+
+    n = len(df_prices.columns)
+    k = min(top_k, n)
+
+    # Pesos iniciales: equiponderado hasta tener histórico suficiente
+    current_weights = np.ones(n) / n
+    balance = initial_balance
+    values = [initial_balance]
+    returns = df_prices.pct_change().fillna(0)
+    prices_arr = df_prices.values  # acceso rapido por indice
+
+    for i in range(1, len(df_prices)):
+        today = pd.to_datetime(df_prices.index[i])
+        yesterday = pd.to_datetime(df_prices.index[i - 1])
+
+        if _is_month_start(today, yesterday):
+            if i >= lookback:
+                # Retorno acumulado en ventana lookback: (p_t / p_{t-lookback}) - 1
+                past = prices_arr[i - lookback]
+                now = prices_arr[i]
+                # Evitar division por cero o NaN
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    momentum = np.where(past > 0, now / past - 1.0, -np.inf)
+                # Top-K activos por momentum descendente
+                top_idx = np.argsort(momentum)[-k:]
+                target_weights = np.zeros(n)
+                target_weights[top_idx] = 1.0 / k
+            else:
+                target_weights = np.ones(n) / n  # fallback equiponderado
+
+            balance, current_weights = _rebalance(
+                balance, target_weights, current_weights, commission
+            )
+
+        rets = returns.iloc[i].values
+        balance = balance * np.sum(current_weights * (1 + rets))
+        balance = max(balance, 1e-6)
+
+        new_vals = current_weights * (1 + rets)
+        current_weights = new_vals / (new_vals.sum() + 1e-8)
+
+        values.append(balance)
+
+    return pd.Series(values, index=df_prices.index, name='Momentum_TopK')
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # #
 # Metricas financieras
-# # # # # # # # # # # # # # # # # # # # # # # # # 
+# # # # # # # # # # # # # # # # # # # # # # # # #
 
 def compute_metrics(series: pd.Series, annual_rf: float = 0.04) -> dict:
     """
