@@ -114,39 +114,33 @@ from ta import add_all_ta_features
 # Ventanas de calculo: corta (ruido), media (senal), larga (tendencia)
 DEFAULT_WINDOWS = [5, 20, 60]
 
-# Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos
-# en vez de medir correlaciones a lo loco entre todos los activos, elijo 3 pares con historia que contar al agente. 
+# Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos.
+# Tres pares con interpretación financiera explícita — evita ruido de correlacionar
+# todos los activos contra todos.
 DEFAULT_CORRELATION_PAIRS = [
     ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable — activo de riesgo o refugio?
     ('IBIT', 'BND'),  # Bitcoin vs Bonos — diversificador o activo especulativo?
     ('IVV',  'BND'),  # Renta Variable vs Bonos — correlacion clasica de cartera
 ]
 
-#todo: implmenentar esto y verlo con Ruben!!!!
-#¿Tienen sentido los 3 pares actuales en TFM?
-#Sí, los tres son defendibles, pero respondo solo a 2 de las 3 preguntas centrales del 
-# TFM:
-#Par actual	Pregunta financiera	Relevancia TFM
-#IBIT-IVV	"¿Bitcoin actúa como activo de riesgo o como refugio?"	Alta — central a la tesis "criptoactivos en inversión tradicional"
-#IBIT-BND	"¿Bitcoin descorrelaciona con bonos?"	Media — interesante pero la dinámica histórica BTC-bonos es débil
-#IVV-BND	"¿Sigue funcionando la 60/40 clásica?"	Alta — el benchmark del TFM lleva una variante 60/40
-
-#El problema que — ETHA está ausente
-# Problema gordo,  TFM: "Integrando Criptoactivos en la Inversión Tradicional" 
-# Cripto-ETFs obligatorios (IBIT + ETHA) precisamente para diferenciarlos como clases de 
-# activo distintas.
-
-# ETHA no aparece en NINGÚN par. El agente no recibe ninguna señal de correlación dinámica 
-# de Ethereum. Eso significa:
-# No aprende la diferencia entre "Bitcoin actúa como reserva de valor" vs "Ethereum actúa 
-# como activo tecnológico/DeFi".
-# No detecta cuándo ETHA y IBIT divergen (información clave para diversificación cripto).
-# No mide cómo ETHA se comporta frente a renta variable o bonos.
-# Es una incoherencia entre el ALCANCE del TFM y los datos que recibe el modelo.
-# Pares que faltan
-# ('ETHA', 'IBIT'),  # Ethereum vs Bitcoin — ¿son la misma cosa o se mueven distinto?
-# Por qué: es el par más TFM-relevante de todos. Si ambos cripto-ETFs siempre correlacionan 
-# a 0.95, el TFM defiende algo trivial ("añadir cripto a la cartera" = "añadir Bitcoin"). 
+# TODO (trabajo futuro): añadir ('ETHA', 'IBIT') y ('ETHA', 'IVV') a
+# DEFAULT_CORRELATION_PAIRS para que el agente reciba señal de correlación
+# dinámica de Ethereum.
+#
+# Justificación: el alcance del TFM ("Integrando Criptoactivos en la Inversión
+# Tradicional") incluye dos cripto-ETFs (IBIT y ETHA) precisamente para
+# diferenciarlos como clases de activo distintas, pero ETHA no aparece en
+# ningún par actual y el agente no puede aprender:
+#   - La diferencia entre "Bitcoin como reserva de valor" y "Ethereum como
+#     activo tecnológico/DeFi".
+#   - Cuándo ETHA e IBIT divergen (información clave para diversificación
+#     intra-cripto).
+#   - El comportamiento de ETHA frente a renta variable y bonos.
+#
+# Implicación: añadir los pares requiere reentrenar el modelo (cambia el
+# espacio de observación). Documentado como limitación conocida en la
+# memoria; por ahora se mantienen los tres pares originales para no romper
+# la reproducibilidad del modelo final entregado.
 # Si la correlación cambia, puede estar bien (0.7 en bonanza, 0.95 en crisis), demuestro que diferenciar 
 # entre criptos aporta valor real al modelo. Es el argumento que justifica por qué tengo
 # 2 cripto-ETFs y no solo 1.

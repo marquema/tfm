@@ -99,25 +99,25 @@ from src.benchmarking.baselines import compute_metrics
 # saber cuál config está corriendo en cada momento del análisis.
 
 CONFIGS = {
-    'A (actual)': {
+    'A (balanced)': {
         'phi': 0.02,
         'gamma': 0.01,
-        'description': 'Configuración actual: balance entre retorno y control de riesgo',
+        'description': 'Perfil balanced: balance entre retorno y control de riesgo',
     },
-    'B (más MDD)': {
+    'B (conservative)': {
         'phi': 0.05,
         'gamma': 0.01,
-        'description': 'Mayor penalización por drawdown: prioriza preservar capital',
+        'description': 'Perfil conservative: mayor penalización por drawdown, prioriza preservar capital',
     },
-    'C (más turnover)': {
+    'C (actual / low_turnover)': {
         'phi': 0.02,
         'gamma': 0.02,
-        'description': 'Mayor penalización por rotación: fuerza al agente a mantener posiciones',
+        'description': 'Perfil low_turnover (PRINCIPAL DEL TFM): mayor penalización por rotación, fuerza al agente a mantener posiciones',
     },
-    'D (agresivo)': {
+    'D (aggressive)': {
         'phi': 0.01,
         'gamma': 0.005,
-        'description': 'Menos penalizaciones: el agente busca máximo retorno con libertad',
+        'description': 'Perfil aggressive: mínimas penalizaciones, máxima libertad para buscar retorno',
     },
 }
 

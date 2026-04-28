@@ -28,36 +28,55 @@ Los perfiles se usan en:
   - BD (TrainedModel.train_metrics): se guarda el perfil usado en cada
     modelo entrenado para poder mostrarlo en el dashboard y en la tabla final.
 
-Fundamentación de los valores (orden de magnitud):
-  La calibración busca que cada componente del reward tenga peso comparable
-  para que ninguno domine al resto. Tomando como referencia un retorno diario
-  típico de ~0.1 % (≈0.001 en escala lineal):
+Fundamentación de los valores:
+  La reward por step del entorno es:
 
-    - phi=0.02 con un MDD del 20 %  → penalty ≈ 0.004 (mismo orden que el
-      retorno diario; hace que un drawdown profundo "duela" tanto como un día
-      bueno).
-    - gamma=0.01 con un turnover completo (cambio total de cartera)
-      → penalty ≈ 0.02 (~20 días de retorno positivo; rotar todo solo merece
-      la pena si la mejora esperada lo compensa).
+      r_t = sharpe_rolling_20d(t) − phi · MDD(t) − gamma · turnover(t)
 
-  Nota: la reward actual es Sharpe rolling 20d − phi·MDD − gamma·Turnover,
-  no log_return. Las penalizaciones se calibraron originalmente con
-  log_return como referencia y se mantienen porque el Sharpe rolling diario
-  produce reward por step en una escala similar (~ ±0.5/√20 ≈ ±0.1) al log_return.
-  
-  Es decir, cambiamos la receta del premio pero no tocamos los castigos. 
-    ¿Por qué no pasa nada? Porque el premio nuevo y el viejo dan números parecidos en 
-    tamaño, así que los castigos siguen pesando lo mismo en proporción. Si en vez de 
-    eso hubiéramos puesto un premio en escala 1000 (por ejemplo el valor de la cartera
-    entera), tendríamos que haber subido phi y gamma a la misma escala. Pero no es el 
-    caso.
-  
+  recortada a [-1, 1]. La unidad del reward es por tanto el Sharpe rolling
+  diario (rango típico por step ~ ±0.1), NO el log-retorno diario. Cualquier
+  intuición del tipo "esta penalización equivale a X días de retorno
+  positivo" mezcla dos magnitudes distintas (Sharpe vs log-retorno) y
+  resulta engañosa.
 
-Referencia:
-  Los valores se contrastaron mediante el análisis de sensibilidad
-  (sensitivity_analysis.py) sobre el periodo out-of-sample. Resultado:
-  todos los perfiles obtienen Sharpe > 2.2, lo que evidencia robustez
-  frente a variaciones de phi/gamma dentro del rango explorado.
+  Magnitud cruda de cada penalización en unidades de reward, en escenarios
+  extremos:
+
+    - phi = 0.02 con un drawdown del 20 % (MDD = 0.20):
+        penalty_MDD = 0.02 × 0.20 = 0.004 por step
+        Magnitud comparable a la oscilación diaria del Sharpe rolling.
+
+    - gamma = 0.02 con una rotación completa de la cartera:
+        Si el agente vende todas las posiciones previas y compra activos
+        distintos, el cambio total de pesos es 2.0 (1.0 vendido + 1.0
+        comprado, sumando valores absolutos). Por tanto:
+        penalty_turnover = 0.02 × 2.0 = 0.04 por step.
+        Para perfil balanced (gamma = 0.01) la magnitud es la mitad: 0.02.
+
+  Justificación empírica (no narrativa):
+    La calibración final no se justifica por un argumento dimensional sobre
+    "días de retorno", sino por el resultado del análisis de sensibilidad
+    sobre el periodo out-of-sample (200 k pasos por config, split 80/20):
+
+      Config                  phi    gamma   Sharpe   Retorno   MDD
+      ----------------------  -----  ------  -------  --------  -------
+      A  balanced             0.02   0.010    1.368   112.4 %   -31.8 %
+      B  conservative         0.05   0.010    1.613   170.6 %   -40.8 %
+      C  low_turnover (TFM)   0.02   0.020    1.770   182.2 %   -40.0 %
+      D  aggressive           0.01   0.005    1.310   102.6 %   -31.1 %
+
+    Lectura:
+      - low_turnover gana en Sharpe (1.77) y retorno acumulado (182 %);
+        por eso es el perfil principal del TFM.
+      - balanced y aggressive obtienen MDD menor (~32 %) frente al ~40 %
+        de conservative y low_turnover. Elegir low_turnover por Sharpe
+        asume que el equilibrio retorno/riesgo prima sobre el MDD
+        absoluto: el Sharpe ya pondera retorno por volatilidad, y el
+        propio gamma penaliza turnover dentro del entrenamiento.
+      - El rango de Sharpe (1.31 a 1.77) es estrecho frente a la
+        magnitud de las variaciones de phi/gamma, lo que evidencia
+        robustez de la política frente a la calibración exacta de la
+        recompensa dentro del rango explorado.
 """
 
 
@@ -68,9 +87,11 @@ RISK_PROFILES = {
         'name': 'Equilibrado',
         'description': (
             'Balance entre retorno y control de riesgo. Perfil alternativo '
-            'y baseline conservador del catálogo. phi=0.02 penaliza drawdowns '
-            'proporcionalmente al retorno diario; gamma=0.01 desincentiva '
-            'rotación excesiva sin impedir al agente reaccionar a cambios de mercado.'
+            'y baseline del catálogo. phi=0.02 penaliza drawdowns con magnitud '
+            'comparable a la oscilación diaria del Sharpe rolling; gamma=0.01 '
+            'desincentiva rotación excesiva sin impedir al agente reaccionar a '
+            'cambios de mercado. En el sensitivity obtiene Sharpe 1.37 con MDD '
+            '~32 %, frente al 1.77 / MDD ~40 % de low_turnover.'
         ),
     },
     'conservative': {
@@ -91,11 +112,12 @@ RISK_PROFILES = {
         'description': (
             'PERFIL PRINCIPAL DEL TFM. Fuerza al agente a mantener posiciones, '
             'reduciendo costes de transacción. gamma=0.02 hace que una rotación '
-            'completa de cartera cueste 0.04 en reward, equivalente a ~40 días de '
-            'retorno positivo. El agente solo opera cuando la mejora esperada '
-            'compensa ampliamente el coste de mover capital. Identificado como la '
-            'configuración con mejor Sharpe out-of-sample en el análisis de '
-            'sensibilidad — el modelo final del TFM se entrena con este perfil.'
+            'completa de cartera (cambio total de pesos = 2.0) reste 0.04 al '
+            'reward de ese step, el doble que en el perfil balanced. El agente '
+            'solo rota cuando la mejora esperada en Sharpe compensa ese coste. '
+            'Identificado empíricamente como la configuración con mejor Sharpe '
+            'out-of-sample en el análisis de sensibilidad (Sharpe 1.77 vs 1.31-1.61 '
+            'del resto): el modelo final del TFM se entrena con este perfil.'
         ),
     },
     'aggressive': {
