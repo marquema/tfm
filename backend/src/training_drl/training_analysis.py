@@ -467,13 +467,22 @@ def walk_forward_validation(features_path: str,
               f"Train: {date_start} a {date_split} ({split-start}d) | "
               f"Test: {date_split} a {date_end} ({end-split}d)")
 
-        # Entrenamiento dentro de la ventana
+        # Entrenamiento dentro de la ventana.
+        # Hiperparámetros PPO unificados con la configuración de producción y
+        # del análisis de sensibilidad (n_steps=2048, batch_size=128,
+        # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
+        # validación y modelo final entregado.
         train_env = PortfolioEnv(features_path, prices_path,
                                  start_idx=start, end_idx=split)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=LEARNING_RATE, n_steps=1024, batch_size=64,
-            clip_range=CLIP_RANGE, ent_coef=0.01,
+            learning_rate=LEARNING_RATE,
+            n_steps=2048,
+            batch_size=128,
+            clip_range=CLIP_RANGE,
+            ent_coef=0.01,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
         )
@@ -740,13 +749,22 @@ def expanding_window_validation(features_path: str,
               f"Train: {date_start} -> {date_split} ({train_size}d, {train_size/252:.1f}a) | "
               f"Test: {date_split} -> {date_end} ({end-split_idx}d)")
 
-        # Entrenamiento con toda la historia hasta split_idx
+        # Entrenamiento con toda la historia hasta split_idx.
+        # Hiperparámetros PPO unificados con la configuración de producción y
+        # del análisis de sensibilidad (n_steps=2048, batch_size=128,
+        # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
+        # validación y modelo final entregado.
         train_env = PortfolioEnv(features_path, prices_path,
                                  start_idx=start, end_idx=split_idx)
         model = PPO(
             "MlpPolicy", train_env,
-            learning_rate=LEARNING_RATE, n_steps=1024, batch_size=64,
-            clip_range=CLIP_RANGE, ent_coef=0.01,
+            learning_rate=LEARNING_RATE,
+            n_steps=2048,
+            batch_size=128,
+            clip_range=CLIP_RANGE,
+            ent_coef=0.01,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
             policy_kwargs=dict(net_arch=[256, 256]),
             verbose=0
         )
