@@ -121,8 +121,7 @@ Impl_tfm/
 │       ├── validation/   investor/simulator/
 │       └── investor/results/
 │
-├── frontend-vue/                         # Vue 3 — placeholder evolución futura
-├── mobile/                               # App móvil — placeholder evolución futura
+├── roadmap/                              # placeholders de evolución futura (Vue, móvil)
 └── README.md                             # este fichero
 ```
 
