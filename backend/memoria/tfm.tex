@@ -451,6 +451,8 @@ La arquitectura se organiza en torno a una capa de servicio basada en \textbf{Fa
 
 La capa de persistencia está soportada por una base de datos relacional gestionada mediante un ORM, en la que se almacenan los universos de activos seleccionados por el screener, los modelos entrenados con su configuración de recompensa, y el historial de simulaciones realizadas por los usuarios. Esta capa, junto con la persistencia en disco de los CSVs de \textit{features} y los modelos serializados, constituye la base de la trazabilidad experimental del sistema.
 
+Como herramienta complementaria de visualización y consulta de los resultados, el sistema incorpora un \textit{front-end} web desarrollado en Angular, que expone los \textit{endpoints} de la API en distintas pantallas (\textit{dashboard} de administración, comparativa de \textit{baselines}, simulador para el rol inversor). Este \textit{front-end} no constituye una contribución metodológica del trabajo, sino una capa de presentación destinada a facilitar la inspección de los experimentos. La descripción detallada del mismo se incluye, a título informativo, en el anexo correspondiente y en el repositorio del código fuente.
+
 \subsection{Ingesta de Datos en Entornos Restrictivos}
 
 La ingesta de datos se ha diseñado teniendo en cuenta restricciones habituales en entornos corporativos, tales como la presencia de \textit{proxies} SSL y la posibilidad de bloqueos a las cabeceras estándar utilizadas por las librerías Python más comunes. Para mitigar estas dificultades, se ha integrado la librería \texttt{curl\_cffi}, que permite emular la huella TLS de un navegador Chrome moderno y, con ello, acceder a fuentes públicas como Yahoo Finance sin comprometer las políticas de seguridad de la red.
@@ -460,31 +462,45 @@ Esta solución se ha encapsulado tras una abstracción de fuente de datos (\text
 \section{Universo de Activos}
 \label{sec:universo}
 
-El sistema opera sobre un universo híbrido de nueve activos seleccionados para reflejar tanto las clases tradicionales (renta variable, renta fija, sectores defensivos) como la nueva clase de activos digitales accesible mediante ETFs regulados. La tabla \ref{tab:universo} resume el universo y la naturaleza de cada inclusión.
+El universo de activos sobre el que opera el sistema se construye mediante un proceso semi-automatizado que combina dos componentes: un \textit{screener} financiero sobre el S\&P~500 y un núcleo de cuatro activos obligatorios incorporados al universo independientemente de los criterios cuantitativos del \textit{screener}.
+
+\subsection{Núcleo Obligatorio: IVV, BND, IBIT y ETHA}
+\label{sec:universo_nucleo}
+
+Cuatro activos se incorporan al universo de forma incondicional. Esta decisión no se basa en criterios estadísticos del \textit{screener} sino en el alcance del propio TFM: el trabajo se titula \textit{``Integrando Criptoactivos en la Inversión Tradicional''}, y la pregunta de investigación exige que la cartera disponga, simultáneamente, de exposición a renta variable, renta fija y a la nueva clase de activos digitales. La tabla \ref{tab:universo_core} resume estos cuatro tickers y su función dentro de la cartera.
 
 \begin{table}[h]
 \centering
 \renewcommand{\arraystretch}{1.25}
-\begin{tabular}{|l|l|p{6.5cm}|}
+\begin{tabular}{|l|l|p{8.5cm}|}
 \hline
-\textbf{Ticker} & \textbf{Clase} & \textbf{Función en la cartera} \\ \hline
-IVV & Renta variable USA & Réplica del S\&P 500; proxy del mercado bursátil estadounidense. \\ \hline
-BND & Renta fija agregada & ETF de Vanguard sobre el mercado total de bonos USA. \\ \hline
-IBIT & Cripto regulada & ETF \textit{spot} de Bitcoin (iShares); foco principal del TFM. \\ \hline
-ETHA & Cripto regulada & ETF \textit{spot} de Ethereum; segunda exposición cripto del universo. \\ \hline
-MO & Defensivo (tabaco) & Activo defensivo de alta dividend yield. \\ \hline
-JNJ & Defensivo (salud) & Defensivo de gran capitalización con dividendo estable. \\ \hline
-SCU & Diversificación & Activo del sector financiero alternativo. \\ \hline
-AWK & Defensivo (utilities) & Servicios públicos regulados. \\ \hline
-CB & Defensivo (seguros) & Aseguradora global de gran capitalización. \\ \hline
+\textbf{Ticker} & \textbf{Clase} & \textbf{Justificación de su inclusión obligatoria} \\ \hline
+IVV & Renta variable USA & Réplica del S\&P 500. Es el pilar de la cartera tradicional y, además, es necesario como segundo componente de la \textit{baseline} 60/40 (60\% IVV + 40\% BND). Sin IVV, la comparativa con la cartera institucional canónica del sector quedaría imposibilitada. \\ \hline
+BND & Renta fija agregada & ETF de Vanguard sobre el mercado total de bonos USA. Aporta exposición a renta fija diversificada y es el segundo componente de la \textit{baseline} 60/40. Sin BND, no hay comparación con carteras tradicionales mixtas. \\ \hline
+IBIT & Cripto regulada (BTC) & ETF \textit{spot} de Bitcoin (iShares, BlackRock). Es el activo central del trabajo: la institucionalización del Bitcoin a través de ETFs regulados motiva el problema de investigación. \\ \hline
+ETHA & Cripto regulada (ETH) & ETF \textit{spot} de Ethereum (iShares). Su inclusión, junto con IBIT, permite estudiar la diferenciación entre dos clases de criptoactivos y la dinámica intra-cripto, en línea con el alcance declarado del TFM. \\ \hline
 \end{tabular}
-\caption{Universo de activos del sistema.}
-\label{tab:universo}
+\caption{Núcleo obligatorio del universo de activos.}
+\label{tab:universo_core}
 \end{table}
 
-La selección busca representar una cartera realista de inversión institucional sobre la que evaluar la integración de criptoactivos: dispone de un núcleo amplio (IVV/BND), una exposición cripto diferenciada (IBIT y ETHA, dos clases con riesgo similar pero dinámica distinta) y una capa de activos defensivos sectoriales que aportan baja correlación con los activos de riesgo en periodos de tensión.
+Estos cuatro tickers se inyectan al \textit{screener} mediante el parámetro \texttt{force\_include}, que garantiza tres comportamientos: (i) si no aparecen en la lista base del S\&P~500 (IBIT y ETHA no son componentes del índice), se añaden manualmente al conjunto de activos a evaluar; (ii) los filtros estadísticos estándar (historial mínimo, liquidez, volatilidad, Sharpe positivo) no se aplican sobre ellos, lo que evita su exclusión por motivos como el corto histórico real de IBIT y ETHA; (iii) en la fase final de selección entran los primeros, antes de los candidatos del ranking por Sharpe, asegurando su presencia en el universo final.
 
-\paragraph{Limitación conocida.} La construcción actual de las correlaciones \textit{rolling} como variable de estado del entorno utiliza tres pares (IBIT--IVV, IBIT--BND, IVV--BND). ETHA, aunque sí participa como activo asignable de la cartera, no aparece en ninguno de los pares de correlación dinámica del estado, lo que constituye una limitación documentada en la implementación cuya extensión queda como trabajo futuro.
+\subsection{Selección Cuantitativa Adicional: Screener sobre el S\&P~500}
+\label{sec:universo_screener}
+
+El resto del universo se completa hasta un total de quince activos mediante un \textit{screener} cuantitativo sobre los componentes del S\&P~500. El procedimiento aplica cuatro filtros secuenciales —historial mínimo de dos años, liquidez (volumen medio diario superior a 5\,M\$), volatilidad anualizada en el rango 5--80\,\% y \textit{Sharpe rolling} positivo— y, sobre los supervivientes, ordena por \textit{Sharpe rolling} descendente. La selección final aplica además dos restricciones de diversidad: un máximo de tres activos por sector GICS y un mecanismo de deduplicación de \textit{tickers} hermanos (clases A/B/C de la misma compañía, como GOOG y GOOGL en Alphabet o BRK.A y BRK.B en Berkshire Hathaway), evitando que la cartera diversifique aparentemente entre activos cuya correlación es prácticamente uno.
+
+El número final de activos se fija en quince como compromiso entre tres exigencias contrapuestas: mantener una dimensionalidad del espacio de acciones manejable para PPO, asegurar diversidad sectorial suficiente para el análisis de regímenes y evitar la dilución del peso por activo que ocurriría con universos mucho mayores. La identidad concreta de los once activos no obligatorios depende del periodo de evaluación del \textit{screener}, lo que confiere al sistema flexibilidad operativa: el universo se puede regenerar aplicando el \textit{screener} sobre periodos distintos sin modificar el código.
+
+\subsection{Sustitución por Subyacente en el Periodo Pre-Lanzamiento}
+\label{sec:proxy}
+
+IBIT comenzó a cotizar el 11 de enero de 2024 y ETHA el 23 de julio de 2024. Para garantizar un histórico de entrenamiento suficiente que abarque múltiples regímenes de mercado (\textit{bull market} cripto 2017, crash 2018, COVID~2020, \textit{bull run} 2021, mercado bajista 2022 y recuperación 2024), el \textit{pipeline} de adquisición de datos sustituye IBIT por el subyacente Bitcoin spot (BTC-USD) y ETHA por Ethereum spot (ETH-USD) en el periodo anterior a la fecha de lanzamiento de cada ETF. La sustitución se acompaña de un escalado multiplicativo que hace coincidir el último precio del subyacente con el primer precio real del ETF, eliminando saltos artificiales en el día del empalme. El volumen del periodo \textit{proxy} se rellena con el primer volumen real del ETF mediante \textit{forward-fill} hacia atrás, manteniendo así un orden de magnitud realista del activo final desplegable.
+
+Este enfoque es defendible bajo el supuesto, sustentado por la propia naturaleza del producto, de que un ETF \textit{spot} replica la dinámica del activo subyacente con un \textit{tracking error} muy reducido (comisiones del orden del 0.25\,\% anual y desfases de minutos en la cotización), magnitudes despreciables frente a la volatilidad típica del Bitcoin (3--5\,\% diario en condiciones normales). La transformación queda registrada en los \textit{logs} del sistema, incluyendo el factor de escala empleado y la fecha exacta del empalme, para garantizar trazabilidad y reproducibilidad del experimento.
+
+\paragraph{Ventana temporal de entrenamiento.} El \textit{screener} evalúa los activos sobre el rango más amplio disponible (2014--2026) para que las métricas de \textit{Sharpe rolling}, volatilidad y liquidez se calculen sobre el máximo histórico posible. El dataset de entrenamiento, en cambio, arranca en \textbf{2017-11-09}: primer día con datos reales o proxy real para todos los activos del universo. La razón es que ETH-USD (proxy de ETHA pre-lanzamiento) solo está disponible en Yahoo Finance desde esa fecha; arrancar antes obligaría a rellenar ETHA con \textit{bfill} silencioso durante varios años, una práctica que el tutor académico desaconsejó por introducir un activo artificial en periodos donde no existía señal observable. La ventana resultante (~8.5 años) abarca múltiples regímenes de mercado y resulta suficiente para entrenar un agente PPO sobre series financieras con la robustez requerida.
 
 \section{Ingeniería de Características}
 \label{sec:features}
@@ -525,6 +541,8 @@ El entorno de simulación se ha implementado siguiendo la interfaz Gymnasium est
     \item \textbf{Dinámica del entorno}. Dado el vector de pesos $\mathbf{w}_t$, el entorno aplica el rebalanceo, descuenta comisiones de transacción proporcionales al \textit{turnover} y un \textit{slippage} parametrizable, y actualiza el valor de la cartera según los retornos del día. La transición hacia el siguiente estado consiste en avanzar un paso en la serie temporal de \textit{features}.
     \item \textbf{Recompensa}. Función multiobjetivo que combina retorno ajustado por riesgo y penalizaciones por riesgo realizado y rotación, descrita formalmente en la sección \ref{sec:recompensa}.
 \end{itemize}
+
+\paragraph{Justificación de la restricción \textit{long-only}.} El entorno se restringe deliberadamente a estrategias \textit{long-only} ($\mathbf{w}_t \geq \mathbf{0}$). Esta decisión mantiene la formulación comparable con la gestión institucional regulada de carteras tradicionales y evita introducir supuestos adicionales sobre apalancamiento, préstamo de activos, costes de margen, riesgo de liquidación y restricciones regulatorias asociadas a las posiciones cortas. La extensión del entorno para admitir posiciones cortas constituye una línea natural de trabajo futuro, pero queda fuera del alcance del presente trabajo.
 
 \section{Función de Recompensa y Perfiles de Riesgo}
 \label{sec:recompensa}

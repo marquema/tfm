@@ -114,76 +114,34 @@ from ta import add_all_ta_features
 # Ventanas de calculo: corta (ruido), media (senal), larga (tendencia)
 DEFAULT_WINDOWS = [5, 20, 60]
 
-# Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos.
-# Tres pares con interpretación financiera explícita — evita ruido de correlacionar
-# todos los activos contra todos.
+# Pares de correlacion: cripto vs tradicional + correlacion clasica acciones/bonos
+# + pares intra-cripto y cripto-Ethereum vs renta variable.
+#
+# Cinco pares con interpretacion financiera explicita — evita ruido de correlacionar
+# todos los activos contra todos. La inclusion de los dos pares con ETHA permite
+# al agente aprender:
+#   (1) Cuando ETHA e IBIT divergen (diversificacion intra-cripto).
+#   (2) Si Ethereum se mueve como riesgo correlacionado con bolsa o como activo
+#       tecnologico con dinamica propia.
 DEFAULT_CORRELATION_PAIRS = [
-    ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable — activo de riesgo o refugio?
-    ('IBIT', 'BND'),  # Bitcoin vs Bonos — diversificador o activo especulativo?
-    ('IVV',  'BND'),  # Renta Variable vs Bonos — correlacion clasica de cartera
+    ('IBIT', 'IVV'),   # Bitcoin vs Renta Variable — activo de riesgo o refugio?
+    ('IBIT', 'BND'),   # Bitcoin vs Bonos — diversificador o activo especulativo?
+    ('IVV',  'BND'),   # Renta Variable vs Bonos — correlacion clasica de cartera
+    ('ETHA', 'IBIT'),  # Ethereum vs Bitcoin — divergencia intra-cripto
+    ('ETHA', 'IVV'),   # Ethereum vs Renta Variable — perfil similar a IBIT-IVV
 ]
 
-# TODO (trabajo futuro): añadir ('ETHA', 'IBIT') y ('ETHA', 'IVV') a
-# DEFAULT_CORRELATION_PAIRS para que el agente reciba señal de correlación
-# dinámica de Ethereum.
+# Justificacion para la memoria: cinco pares cubren tres ejes analiticos —
+# cripto vs tradicional, intra-cripto, y la cartera clasica 60/40— permitiendo
+# al agente detectar cambios de regimen en los pilares del TFM (criptoactivos
+# como diversificadores, diferenciacion entre Bitcoin y Ethereum, robustez
+# de la 60/40 frente a mercados modernos).
 #
-# Justificación: el alcance del TFM ("Integrando Criptoactivos en la Inversión
-# Tradicional") incluye dos cripto-ETFs (IBIT y ETHA) precisamente para
-# diferenciarlos como clases de activo distintas, pero ETHA no aparece en
-# ningún par actual y el agente no puede aprender:
-#   - La diferencia entre "Bitcoin como reserva de valor" y "Ethereum como
-#     activo tecnológico/DeFi".
-#   - Cuándo ETHA e IBIT divergen (información clave para diversificación
-#     intra-cripto).
-#   - El comportamiento de ETHA frente a renta variable y bonos.
-#
-# Implicación: añadir los pares requiere reentrenar el modelo (cambia el
-# espacio de observación). Documentado como limitación conocida en la
-# memoria; por ahora se mantienen los tres pares originales para no romper
-# la reproducibilidad del modelo final entregado.
-# Si la correlación cambia, puede estar bien (0.7 en bonanza, 0.95 en crisis), demuestro que diferenciar 
-# entre criptos aporta valor real al modelo. Es el argumento que justifica por qué tengo
-# 2 cripto-ETFs y no solo 1.
-# 
-# Importantes. Validar Ruben!
-# ('ETHA', 'IVV'),   # Ethereum vs Renta Variable — perfil idéntico al de IBIT-IVV
-# Por qué: paraleliza el análisis que hago con IBIT. Sin este par, el modelo "ve" 
-# cómo Bitcoin se relaciona con la bolsa pero no Ethereum — inconsistente con TFM.
-
-# Posibles, pero weno, no relevantes
-# ('ETHA', 'BND'),   # Ethereum vs Bonos
-# Por qué dudo: misma debilidad que IBIT-BND — la dinámica histórica cripto-bonos es 
-# ruido en gran medida?? Lo añadiría x simetría con el análisis de IBIT.
-#
-# Más features?? no siempre es mejor:
-
-#DEFAULT_CORRELATION_PAIRS = [
-#    # Bloque "cripto vs tradicional" — ¿son las criptos activos de riesgo o refugio?
-#    ('IBIT', 'IVV'),  # Bitcoin vs Renta Variable
-#    ('ETHA', 'IVV'),  # Ethereum vs Renta Variable
-#    # Bloque "cripto vs renta fija" — ¿descorrelacionan con bonos?
-#    ('IBIT', 'BND'),
-#    # Bloque "intra-cripto" — ¿BTC y ETH son la misma cosa o se diferencian?
-#    ('ETHA', 'IBIT'),  # CLAVE para defender la elección de 2 cripto-ETFs
-#    # Cartera clásica
-#    ('IVV',  'BND'),  # 60/40 — ¿sigue funcionando?
-#]
-
-#Justificación para la memoria del TFM: "Se seleccionaron 5 pares de correlación dinámica 
-# que cubren tres ejes analíticos: cripto-vs-tradicional, intra-cripto, y la cartera 
-# clásica 60/40. Esta selección permite al agente detectar cambios de régimen en cada uno
-# de los pilares de la tesis (criptoactivos como diversificadores, diferenciación entre 
-# Bitcoin y Ethereum, robustez de la 60/40 ante mercados modernos)."
-
-#Riesgo a vigilar. RUben help
-# ETHA solo existe desde julio 2024. Para backtests sobre 2018-2024, las correlaciones 
-# que involucren ETHA serán NaN la mayor parte del periodo. El pipeline ya contempla eso 
-# (limpieza columnar en generate_dataset), pero conviene saber que:
-# Si entreno con dataset largo (ej. 2018-2026), las features de ETHA tendrán datos 
-# válidos solo en los últimos 2 años.
-# Si la ventana rolling de 60d empieza antes de julio 2024, generará NaN durante los 
-# primeros 60d posteriores al listado.
-# mencionarlo en la memoria como "limitación de datos" cuando explique esas correlaciones.
+# Nota sobre disponibilidad temporal: IBIT cotiza desde enero 2024 y ETHA
+# desde julio 2024. Para entrenar sobre periodos largos (2014+), el data
+# downloader sustituye IBIT/ETHA por sus subyacentes (BTC-USD, ETH-USD)
+# en el periodo previo a su lanzamiento — proxy academico documentado en
+# la memoria, basado en el supuesto de tracking error despreciable.
 
 
 

@@ -139,6 +139,42 @@ except ImportError:
 
 
 # ─────────────────────────────────────────────
+# Tickers hermanos: deduplicación
+# ─────────────────────────────────────────────
+#
+# Algunas compañías cotizan con dos clases de acción diferentes que se mueven
+# prácticamente al unísono (correlación >0.99). Si el screener seleccionara
+# las dos, el agente "diversificaría" 50/50 entre ellas pensando que está
+# repartiendo riesgo cuando realmente tiene 100 % de la misma compañía.
+#
+# Para evitar esa redundancia tóxica, se mantiene un registro de pares
+# hermanos. Cuando el ranking selecciona uno, su hermano queda excluido
+# automáticamente de las siguientes posiciones.
+#
+# Si en el futuro aparecen más casos relevantes en el universo (Fox FOX/FOXA,
+# News Corp NWS/NWSA, etc.), basta con añadirlos aquí.
+SISTER_GROUPS = [
+    {'GOOG', 'GOOGL'},      # Alphabet — clase A vs C, mismo subyacente.
+    {'BRK.A', 'BRK.B'},     # Berkshire Hathaway — class A vs B, ratio 1500:1
+    {'BRK-A', 'BRK-B'},     # Variante Yahoo Finance del separador (- vs .).
+    {'FOX', 'FOXA'},        # Fox Corporation — clase A vs B.
+    {'NWS', 'NWSA'},        # News Corp — clase A vs B.
+]
+
+
+def _sister_of(ticker: str) -> set:
+    """
+    Retorna el conjunto de hermanos del ticker dado (sin incluirse a si mismo).
+
+    Si `ticker` no tiene hermanos registrados, devuelve un set vacio.
+    """
+    for group in SISTER_GROUPS:
+        if ticker in group:
+            return group - {ticker}
+    return set()
+
+
+# ─────────────────────────────────────────────
 # Obtención del universo base
 # ─────────────────────────────────────────────
 
@@ -479,6 +515,28 @@ class MarketScreener:
         if universe_df is None:
             universe_df = fetch_sp500_tickers()
 
+        # Asegurar que los force_include esten en el universo a evaluar.
+        # IBIT y ETHA no estan en el S&P 500, asi que hay que anadirlos
+        # explicitamente; si no se hace, el _download_basic_data no se
+        # ejecuta sobre ellos y luego al construir `selected` no aparecen
+        # en df['ticker'] y se pierden silenciosamente.
+        existing_tickers = set(universe_df['ticker'].tolist())
+        sector_overrides = {
+            'IBIT': 'Crypto ETF',
+            'ETHA': 'Crypto ETF',
+            'IVV':  'Index ETF',
+            'BND':  'Bond ETF',
+        }
+        for t in force_include:
+            if t not in existing_tickers:
+                universe_df = pd.concat([
+                    universe_df,
+                    pd.DataFrame([{
+                        'ticker': t,
+                        'sector': sector_overrides.get(t, 'Unknown'),
+                    }]),
+                ], ignore_index=True)
+
         all_tickers = universe_df['ticker'].tolist()
         sectors = dict(zip(universe_df['ticker'], universe_df.get('sector', ['Unknown'] * len(universe_df))))
 
@@ -509,6 +567,16 @@ class MarketScreener:
         if df.empty:
             return {'candidates': force_include, 'details': pd.DataFrame(),
                     'filtered_out': {'no_data': len(all_tickers)}}
+
+        # Separar los force_include del resto antes de aplicar filtros.
+        # Razon: los force_include son obligatorios por requisito del TFM
+        # (justificacion academica documentada en la memoria) y no deben
+        # excluirse aunque no cumplan algun filtro (ej. ETHA con < 2 anos
+        # de historial real, IBIT recien listado).
+        df_forced = df[df['ticker'].isin(force_include)].copy()
+        df = df[~df['ticker'].isin(force_include)].copy()
+        if not df_forced.empty:
+            print(f"  Force-include reservados (saltan filtros): {df_forced['ticker'].tolist()}")
 
         # ── PASO 3: aplicar filtros del embudo ──────────────────────────────
         # Cuatro filtros secuenciales. Cada uno descarta los que no cumplen,
@@ -574,31 +642,44 @@ class MarketScreener:
 
         selected = []
         sector_count = {}
+        excluded_sisters = set()  # tickers descartados por tener hermano ya seleccionado
 
         # Primero, garantizar los force_include (IBIT, ETHA, IVV, BND para
         # el TFM). Estos son obligatorios y no respetan el límite de sector
         # — su justificación está en el alcance del trabajo, no en los datos.
+        # Se toman de df_forced (que se separo antes de aplicar filtros), de
+        # modo que se incluyen aunque no cumplan los filtros estandar.
         for t in force_include:
-            if t in df['ticker'].values:
-                row = df[df['ticker'] == t].iloc[0]
+            if t in df_forced['ticker'].values:
+                row = df_forced[df_forced['ticker'] == t].iloc[0]
                 selected.append(row.to_dict())
                 s = row['sector']
                 sector_count[s] = sector_count.get(s, 0) + 1
+                # Si el force_include tiene hermanos, marcarlos como excluidos
+                # (poco probable en este TFM, pero protege ante futuros cambios).
+                excluded_sisters.update(_sister_of(t))
 
         # Después rellenamos hasta top_n recorriendo el ranking. Aplicamos
         # `max_per_sector` para evitar que el resultado sea, por ejemplo,
         # 10 tecnológicas + 5 financieras. La diversificación sectorial es
         # más importante para PPO que coger los 15 mejores Sharpes absolutos.
+        # Tambien aplicamos deduplicacion de hermanos: si seleccionamos GOOG,
+        # GOOGL queda automaticamente excluido (ver SISTER_GROUPS arriba).
         for _, row in df.iterrows():
             if len(selected) >= top_n:
                 break
-            if row['ticker'] in [s['ticker'] for s in selected]:
+            ticker = row['ticker']
+            if ticker in [s['ticker'] for s in selected]:
                 continue  # ya entró vía force_include
+            if ticker in excluded_sisters:
+                continue  # su hermano ya está seleccionado
             s = row['sector']
             if sector_count.get(s, 0) >= self.max_per_sector:
                 continue  # sector saturado, saltamos a buscar otro distinto
             selected.append(row.to_dict())
             sector_count[s] = sector_count.get(s, 0) + 1
+            # Marcar hermanos del ticker recien seleccionado como excluidos.
+            excluded_sisters.update(_sister_of(ticker))
 
         df_selected = pd.DataFrame(selected)
         candidates = df_selected['ticker'].tolist()

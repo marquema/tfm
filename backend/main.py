@@ -92,8 +92,12 @@ app.include_router(investor_router)
 
 class DownloadConfig(BaseModel):
     tickers: Optional[List[str]] = None  # None = usa último screener o CORE_UNIVERSE
-    start: str = "2014-01-01"
-    end: str = "2026-03-01"
+    # start = 2017-11-09 (no 2014-01-01) porque ETH-USD —proxy de ETHA—
+    # solo existe en Yahoo Finance desde esa fecha. Arrancar antes obligaria
+    # a rellenar ETHA con bfill durante ~3.8 anos, practica desaconsejada
+    # por el tutor en su revision academica.
+    start: str = "2017-11-09"
+    end: str = "2026-04-16"
 
 
 # ─── Helpers para background tasks 
@@ -458,7 +462,7 @@ async def get_system_status():
 #podemos pensar en una clase pydantic que tenga un depends, en lugar de parametros disgregados.
 @app.post("/admin/fase1/screener", tags=["Admin"])
 async def run_screener(
-    start_date: str = "2020-01-01",
+    start_date: str = "2014-01-01",
     end_date: str = "2026-04-01",
     top_n: int = 15,
     max_per_sector: int = 3,
@@ -470,6 +474,12 @@ async def run_screener(
 
     Los candidatos seleccionados se guardan en BD y se usan automáticamente como tickers por defecto en /admin/fase1/preparar-datos.
     No es necesario copiar tickers manualmente entre endpoints.
+
+    El periodo por defecto comienza en 2014 para abarcar multiples regimenes
+    de mercado (alcistas, COVID 2020, subida de tipos 2022, recuperacion 2024).
+    Los criptoactivos IBIT y ETHA solo cotizan desde 2024; el data_downloader
+    aplica una sustitucion por sus subyacentes (BTC-USD y ETH-USD) en el
+    periodo previo a su lanzamiento, asumida como proxy academico defendible.
     """
     screener = MarketScreener(max_per_sector=max_per_sector)
     result = screener.run(

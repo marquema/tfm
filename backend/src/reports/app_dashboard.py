@@ -143,8 +143,27 @@ split_pct   = st.sidebar.slider("Split train/test (%)", 60, 90, 80) / 100
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("**Universo de activos**")
-with st.sidebar.expander("Ver activos del portfolio"):
-    for t in get_tickers('core'):
+
+
+def _real_universe_tickers() -> list:
+    """
+    Lee los tickers reales del CSV de precios actual. Refleja exactamente
+    el universo con el que se entreno el modelo PPO actualmente desplegado,
+    en lugar de la lista estatica CORE_UNIVERSE (que es solo fallback).
+    """
+    prices_path = 'data/original_prices.csv'
+    if not os.path.exists(prices_path):
+        return get_tickers('core')  # fallback si aun no se ha preparado data
+    try:
+        cols = pd.read_csv(prices_path, index_col=0, nrows=0).columns.tolist()
+        return [c.replace('_Close', '') for c in cols]
+    except Exception:
+        return get_tickers('core')
+
+
+_real_tickers = _real_universe_tickers()
+with st.sidebar.expander(f"Ver activos del portfolio ({len(_real_tickers)})"):
+    for t in _real_tickers:
         info = get_asset_info(t)
         st.sidebar.caption(f"**{t}** — {info['name']}  \n{info['category']} · {info['sector']}")
 
@@ -287,6 +306,59 @@ DESCRIPCIONES_METRICAS = {
     ),
 }
 
+
+# Diccionario de estrategias mostrado en el segundo glosario del dashboard.
+# Describe que hace cada baseline y por que esta en la comparativa, para que
+# un evaluador del TFM o un usuario no tecnico entienda con que se compara
+# al agente PPO.
+DESCRIPCIONES_ESTRATEGIAS = {
+    'IA PPO (DRL)': (
+        'Agente de Deep Reinforcement Learning entrenado con Proximal Policy Optimization (PPO). '
+        'Aprende a asignar pesos del 0 al 100 % a cada activo del universo en funcion del estado de mercado, '
+        'optimizando una recompensa que combina Sharpe rolling 20d, penalizacion por Maximum Drawdown y por turnover. '
+        'Es la propuesta central del TFM.'
+    ),
+    'Equal Weight': (
+        'Cartera equiponderada (1/N) sobre el universo, con rebalanceo mensual. '
+        'Es la baseline pasiva clasica: \"reparte el capital igual entre todos los activos y olvidate\". '
+        'Sin pretensiones de pronostico, solo diversificacion mecanica.'
+    ),
+    'Buy & Hold': (
+        'Compra inicial 1/N y nunca rebalancea. El activo mas rentable va ganando peso progresivamente. '
+        'Baseline de minima friccion: cero costes de transaccion mas alla de la compra inicial. '
+        'En mercados alcistas amplios, es muy dificil de batir.'
+    ),
+    'Cartera 60/40': (
+        'Cartera institucional canonica: 60 % renta variable (IVV, S&P 500) + 40 % renta fija (BND, bonos USA). '
+        'Es el benchmark de referencia en gestion patrimonial conservadora desde decadas. '
+        'Rebalanceo mensual al 60/40 objetivo.'
+    ),
+    'Markowitz MV': (
+        'Optimizacion media-varianza clasica de Markowitz (1952). En cada inicio de mes mira los retornos '
+        'y correlaciones de los ultimos 12 meses, calcula la combinacion de pesos que maximiza el ratio '
+        'de Sharpe esperado, y rebalancea a esos pesos. Es el baseline teorico financiero.'
+    ),
+    'Random Uniform': (
+        'Cartera con pesos aleatorios uniformes sobre el simplex (Dirichlet con todos los alfas iguales a 1), '
+        'rebalanceo mensual con semilla fija para reproducibilidad. '
+        'Es el "lower bound de cordura" del estudio: si el agente PPO no supera consistentemente a esta '
+        'estrategia, no esta aprendiendo nada que el azar no haga.'
+    ),
+    'Momentum Top-3 (60d)': (
+        'Cada mes selecciona los 3 activos con mejor retorno acumulado en los ultimos 60 dias y les asigna '
+        'pesos equiponderados (33 % cada uno), poniendo el resto a cero. Implementa el factor "momentum '
+        'cross-sectional" documentado por Jegadeesh & Titman (1993). Es una baseline competitiva del sector '
+        'cuantitativo: si PPO no la bate, no aporta valor sobre un factor financiero conocido y trivial.'
+    ),
+    'Especulativo (GMM+KMeans)': (
+        'Agente no supervisado de contraste: detecta el regimen de mercado con un Gaussian Mixture Model '
+        '(3 estados) y agrupa los activos en clusters por momentum con K-Means. Una matriz heuristica fija '
+        'asigna pesos por cluster segun el regimen detectado. No aprende por reward — es un agente '
+        'estructurado fijo, util para responder a la pregunta: "ipara este problema hace falta DRL o basta '
+        'con segmentacion clasica?".'
+    ),
+}
+
 LAYOUT_OSCURO = dict(template='plotly_dark', hovermode='x unified',
                      legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
 
@@ -373,22 +445,35 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         "Una estrategia con Sharpe alto y MDD bajo es la que un inversor real puede mantener sin entrar en pánico."
     )
 
-    cols = st.columns(len(df_metrics))
-    for col, name in zip(cols, df_metrics.index):
-        sharpe      = df_metrics.loc[name, 'Sharpe Ratio']
-        total_ret   = df_metrics.loc[name, 'Retorno Total (%)']
-        mdd         = df_metrics.loc[name, 'Max Drawdown (%)']
-        col.metric(
-            label=NOMBRES.get(name, name),
-            value=f"Sharpe {sharpe:.2f}",
-            delta=f"Ret {total_ret:.1f}%  |  MDD {mdd:.1f}%",
-            delta_color="normal" if total_ret >= 0 else "inverse"
-        )
+    # Cards en filas de 4 para que las etiquetas y valores sean legibles
+    # incluso con 7-8 estrategias (con 8 columnas en una sola fila el
+    # texto se truncaba a "Sharpe..." y no se distinguian las estrategias).
+    estrategias = list(df_metrics.index)
+    CARDS_POR_FILA = 4
+    for i in range(0, len(estrategias), CARDS_POR_FILA):
+        fila = estrategias[i:i + CARDS_POR_FILA]
+        cols = st.columns(CARDS_POR_FILA)
+        for col, name in zip(cols, fila):
+            sharpe    = df_metrics.loc[name, 'Sharpe Ratio']
+            total_ret = df_metrics.loc[name, 'Retorno Total (%)']
+            mdd       = df_metrics.loc[name, 'Max Drawdown (%)']
+            col.metric(
+                label=NOMBRES.get(name, name),
+                value=f"Sharpe {sharpe:.2f}",
+                delta=f"Ret {total_ret:.1f}%  |  MDD {mdd:.1f}%",
+                delta_color="normal" if total_ret >= 0 else "inverse"
+            )
 
     st.markdown("### Tabla completa")
     with st.expander("📖  Glosario — qué significa cada métrica"):
         for metric_name, desc in DESCRIPCIONES_METRICAS.items():
             st.markdown(f"**{metric_name}**")
+            st.markdown(f"> {desc}")
+            st.markdown("")
+
+    with st.expander("🧭  Glosario — qué hace cada estrategia"):
+        for strat_name, desc in DESCRIPCIONES_ESTRATEGIAS.items():
+            st.markdown(f"**{strat_name}**")
             st.markdown(f"> {desc}")
             st.markdown("")
 
@@ -612,35 +697,37 @@ de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
         else:
             col.info(f"Pendiente de generar.\n\n`{file_path}`")
 
-    # Walk-Forward y Expanding Window a ancho completo (son más grandes)
-    col_wf1, col_wf2 = st.columns(2)
+    # Walk-Forward y Expanding Window apilados a ancho completo. Antes
+    # estaban en col_wf1/col_wf2 (mitad pantalla cada uno) y la tabla de
+    # detalle quedaba ilegible. Apilados ocupan todo el ancho disponible
+    # y la tabla embebida en el PNG es legible.
 
-    with col_wf1:
-        st.markdown("**3. Walk-Forward (Rolling Window)**")
-        st.caption(
-            "Ventana de entrenamiento fija que se desliza en el tiempo. "
-            "Cada ventana entrena con los últimos N días y evalúa en los siguientes. "
-            "Muestra si la estrategia funciona en distintos regímenes de mercado."
-        )
-        wf_png = 'src/reports/walk_forward_analysis.png'
-        if os.path.exists(wf_png):
-            st.image(wf_png, use_container_width=True)
-        else:
-            st.info("Pendiente. Ejecuta POST /admin/fase3/walk-forward")
+    st.markdown("**3. Walk-Forward (Rolling Window)**")
+    st.caption(
+        "Ventana de entrenamiento fija que se desliza en el tiempo. "
+        "Cada ventana entrena con los últimos N días y evalúa en los siguientes. "
+        "Muestra si la estrategia funciona en distintos regímenes de mercado."
+    )
+    wf_png = 'src/reports/walk_forward_analysis.png'
+    if os.path.exists(wf_png):
+        st.image(wf_png, use_container_width=True)
+    else:
+        st.info("Pendiente. Ejecuta POST /admin/fase3/walk-forward")
 
-    with col_wf2:
-        st.markdown("**4. Expanding Window**")
-        st.caption(
-            "El entrenamiento empieza siempre desde el primer día y crece progresivamente. "
-            "Cada ventana usa TODA la historia disponible hasta ese momento y evalúa "
-            "en los siguientes 3 meses. Simula lo que harías en producción: "
-            "\"uso todo lo que sé hasta hoy para predecir mañana\"."
-        )
-        ew_png = 'src/reports/expanding_window_analysis.png'
-        if os.path.exists(ew_png):
-            st.image(ew_png, use_container_width=True)
-        else:
-            st.info("Pendiente. Ejecuta POST /admin/fase3/expanding-window")
+    st.markdown("")  # separador visual
+
+    st.markdown("**4. Expanding Window**")
+    st.caption(
+        "El entrenamiento empieza siempre desde el primer día y crece progresivamente. "
+        "Cada ventana usa TODA la historia disponible hasta ese momento y evalúa "
+        "en los siguientes 3 meses. Simula lo que harías en producción: "
+        "\"uso todo lo que sé hasta hoy para predecir mañana\"."
+    )
+    ew_png = 'src/reports/expanding_window_analysis.png'
+    if os.path.exists(ew_png):
+        st.image(ew_png, use_container_width=True)
+    else:
+        st.info("Pendiente. Ejecuta POST /admin/fase3/expanding-window")
 
     # ════════════════════════════════════
     # SECCIÓN 6: Retornos Diarios del PPO

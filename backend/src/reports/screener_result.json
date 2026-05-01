@@ -1,0 +1,35 @@
+{
+  "start_date": "2014-01-01",
+  "end_date": "2026-04-16",
+  "top_n": 15,
+  "max_per_sector": 3,
+  "force_include": [
+    "IVV",
+    "BND",
+    "IBIT",
+    "ETHA"
+  ],
+  "candidates": [
+    "IVV",
+    "BND",
+    "IBIT",
+    "ETHA",
+    "WDC",
+    "LITE",
+    "CIEN",
+    "CAT",
+    "FIX",
+    "JNJ",
+    "C",
+    "BK",
+    "VRT",
+    "GOOGL",
+    "WBD"
+  ],
+  "filtered_out": {
+    "history_too_short": 2,
+    "low_liquidity": 0,
+    "vol_out_of_range": 2,
+    "negative_sharpe": 109
+  }
+}

@@ -325,26 +325,76 @@ class AcademicMonitorCallback(BaseCallback):
 
 LEARNING_RATE=1e-4
 CLIP_RANGE=0.1
-# TODO (rigor académico): los CSVs de entrada llegan ya normalizados con z-score
-# calculado sobre el split train global del dataset (~2018-2024). 
-# z-score es una forma de "estandarizar" un número. La fórmula es: z = (valor - media) / desviación
-# Para que el todas las features (RSI, MACD, volumen...) estén en una escala parecida y la red neuronal pueda compararlas.
-# Para que walk-forward sea académicamente puro, cada ventana debería recalcular sus
-# propios stats con el train de esa ventana — si no, hay un leakage sutil
-# porque la escala de los features de cada ventana refleja info futura.
-# En la práctica el efecto es pequeño (z-score en mercados financieros estables
-# es bastante robusto) pero conviene mencionarlo en la memoria.
 
-# Opción A (correcta): usar solo los datos de train de cada ventana. Si V3 entrena con 2020-2022, calculo media/desviación con esos años exclusivamente.
-# TODO: alerta de dataleakage
-# Opción B (lo que hacemos hoy): media/desviación calculadas una sola vez al principio, sobre el split train global del dataset entero (~2018-2024).
-# Conclusión que saco para la memoria:
-# En el TFM, el z-score se calcula sobre el split train global, no por ventana. Esto introduce un leakage sutil pero conviene reconocerlo. En la práctica el efecto es pequeño porque las medias/desviaciones de un activo financiero son razonablemente estables a lo largo de varios años (no cambian drásticamente entre 2018 y 2024). Para una versión académicamente impecable habría que recalcular stats por ventana — queda como mejora futura."
+
+# ---------------------------------------------------------------------------
+# Helper: normalizacion z-score por ventana (anti lookahead)
+# ---------------------------------------------------------------------------
+#
+# Justificacion academica:
+#   El z-score (z = (x - mu) / sigma) reescala las features para que la red
+#   neuronal trabaje con todas en una escala comparable. Si mu y sigma se
+#   calculan sobre TODO el dataset (incluido el futuro de cada ventana), se
+#   introduce lookahead bias residual: cada ventana "ve" implicitamente
+#   informacion estadistica de periodos posteriores a su propio train.
+#
+#   Para eliminar ese bias, en walk-forward y expanding-window:
+#     1. Se cargan las features sin normalizar (`original_features.csv`).
+#     2. Por cada ventana, se calcula mu y sigma usando solamente el bloque
+#        de train de esa ventana.
+#     3. Esa misma transformacion se aplica al test correspondiente.
+#     4. El DataFrame resultante se vuelca a un CSV temporal que se pasa al
+#        PortfolioEnv para el entrenamiento y la evaluacion.
+#
+# Tras la ventana, el CSV temporal se elimina con un try/finally.
+def _normalize_window(df_raw: pd.DataFrame,
+                      start_idx: int,
+                      split_idx: int,
+                      end_idx: int = None) -> pd.DataFrame:
+    """
+    Calcula mu y sigma con el bloque de train [start_idx, split_idx) y aplica
+    esa transformacion al DataFrame completo (manteniendo el indice global).
+
+    Por que se transforma el dataset entero y no solo la ventana:
+        El PortfolioEnv consume `features_path` y `prices_path` con indices
+        globales y selecciona internamente las filas relevantes por
+        start_idx / end_idx. Si se acortara el CSV de features a la ventana,
+        los indices dejarian de coincidir con los precios. Al transformar el
+        dataset completo con mu/sigma de la ventana, los indices se
+        preservan; las filas fuera de la ventana nunca se leen, pero no
+        introducen lookahead porque mu y sigma vienen exclusivamente del
+        train.
+
+    Devuelve el DataFrame normalizado, conservando el indice original.
+    """
+    train  = df_raw.iloc[start_idx:split_idx]
+    mu     = train.mean()
+    sigma  = train.std() + 1e-8
+    return (df_raw - mu) / sigma
+
+
+def _resolve_raw_features_path(features_path: str) -> str:
+    """
+    Deduce la ruta del CSV de features sin normalizar a partir del path
+    pasado de features normalizadas. Si no existe, devuelve None.
+
+    Convencion: `data/normalized_features.csv` -> `data/original_features.csv`.
+    Si el caller pasa un path con otro nombre, el helper aplica el reemplazo
+    `normalized_features.csv` -> `original_features.csv` y verifica existencia.
+    """
+    candidate = features_path.replace('normalized_features.csv',
+                                      'original_features.csv')
+    if os.path.exists(candidate):
+        return candidate
+    return None
+
+
 def walk_forward_validation(features_path: str,
                             prices_path: str,
                             train_days: int = 504,
                             test_days: int  = 252,
-                            total_timesteps: int = 100000) -> pd.DataFrame:
+                            total_timesteps: int = 100000,
+                            raw_features_path: str = None) -> pd.DataFrame:
     """
     Validación Walk-Forward con ventanas deslizantes de tamaño fijo.
 
@@ -416,7 +466,23 @@ def walk_forward_validation(features_path: str,
         if os.path.exists(old_file):
             os.remove(old_file)
 
-    df_f = pd.read_csv(features_path, index_col=0)
+    # Resolver rutas de features. Para z-score por ventana necesitamos las
+    # features SIN normalizar (`original_features.csv`). Si no estan
+    # disponibles, hacemos fallback al fichero pre-normalizado y avisamos.
+    if raw_features_path is None:
+        raw_features_path = _resolve_raw_features_path(features_path)
+
+    using_per_window_zscore = raw_features_path is not None
+    if using_per_window_zscore:
+        print(f"  [WF] z-score por ventana activado: leyendo {raw_features_path}")
+        df_raw = pd.read_csv(raw_features_path, index_col=0)
+        df_f = df_raw  # df_f se usa para indexar fechas y contar dias
+    else:
+        print(f"  [WF] [AVISO] No se encontro original_features.csv. "
+              f"Usando {features_path} con z-score global "
+              f"(lookahead bias residual; documentado como limitacion).")
+        df_f = pd.read_csv(features_path, index_col=0)
+        df_raw = None
     n_total = len(df_f)
 
     # -- Ventanas adaptativas --
@@ -459,6 +525,8 @@ def walk_forward_validation(features_path: str,
     print(f"Ventanas calculadas automaticamente: {n_windows}")
     print(f"{'='*60}")
 
+    import tempfile
+
     for i, (start, split, end) in enumerate(windows):
         date_start = df_f.index[start][:10]
         date_split = df_f.index[split][:10]
@@ -467,38 +535,71 @@ def walk_forward_validation(features_path: str,
               f"Train: {date_start} a {date_split} ({split-start}d) | "
               f"Test: {date_split} a {date_end} ({end-split}d)")
 
-        # Entrenamiento dentro de la ventana.
-        # Hiperparámetros PPO unificados con la configuración de producción y
-        # del análisis de sensibilidad (n_steps=2048, batch_size=128,
-        # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
-        # validación y modelo final entregado.
-        train_env = PortfolioEnv(features_path, prices_path,
-                                 start_idx=start, end_idx=split)
-        model = PPO(
-            "MlpPolicy", train_env,
-            learning_rate=LEARNING_RATE,
-            n_steps=2048,
-            batch_size=128,
-            clip_range=CLIP_RANGE,
-            ent_coef=0.01,
-            vf_coef=0.5,
-            max_grad_norm=0.5,
-            policy_kwargs=dict(net_arch=[256, 256]),
-            verbose=0
-        )
-        model.learn(total_timesteps=total_timesteps)
+        # Si tenemos las features sin normalizar, normalizamos esta ventana
+        # con mu/sigma calculados solo sobre el bloque de train de la ventana
+        # (eliminando el lookahead bias). Volcamos el resultado a un CSV
+        # temporal que el PortfolioEnv consumira mediante su API estandar.
+        # Si trabajamos en modo fallback (sin original_features.csv), seguimos
+        # apuntando al features_path normalizado globalmente.
+        tmp_features_path = None
+        try:
+            # Si tenemos las features sin normalizar, generamos un CSV
+            # temporal con z-score de esta ventana (mu/sigma del train de la
+            # propia ventana) y lo pasamos al PortfolioEnv. El CSV mantiene
+            # indices globales, asi que los start_idx/end_idx que pasa el
+            # caller siguen siendo los del dataset completo.
+            if using_per_window_zscore:
+                df_window_norm = _normalize_window(df_raw, start, split)
+                tmp = tempfile.NamedTemporaryFile(
+                    mode='w', suffix=f'_wf_w{i+1}.csv',
+                    delete=False, encoding='utf-8-sig',
+                )
+                tmp.close()
+                tmp_features_path = tmp.name
+                df_window_norm.to_csv(tmp_features_path)
+                env_features_path = tmp_features_path
+            else:
+                env_features_path = features_path
 
-        # Evaluación out-of-sample en la ventana de test
-        test_env = PortfolioEnv(features_path, prices_path,
-                                start_idx=split, end_idx=end)
-        obs, _ = test_env.reset()
-        done   = False
-        values = [test_env.initial_balance]
+            # Entrenamiento dentro de la ventana.
+            # Hiperparámetros PPO unificados con la configuración de producción y
+            # del análisis de sensibilidad (n_steps=2048, batch_size=128,
+            # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
+            # validación y modelo final entregado.
+            train_env = PortfolioEnv(env_features_path, prices_path,
+                                     start_idx=start, end_idx=split)
+            model = PPO(
+                "MlpPolicy", train_env,
+                learning_rate=LEARNING_RATE,
+                n_steps=2048,
+                batch_size=128,
+                clip_range=CLIP_RANGE,
+                ent_coef=0.01,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+                policy_kwargs=dict(net_arch=[256, 256]),
+                verbose=0
+            )
+            model.learn(total_timesteps=total_timesteps)
 
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, _, done, _, info = test_env.step(action)
-            values.append(info['value'])
+            # Evaluación out-of-sample en la ventana de test
+            test_env = PortfolioEnv(env_features_path, prices_path,
+                                    start_idx=split, end_idx=end)
+            obs, _ = test_env.reset()
+            done   = False
+            values = [test_env.initial_balance]
+
+            while not done:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, _, done, _, info = test_env.step(action)
+                values.append(info['value'])
+        finally:
+            # Limpiar el CSV temporal de esta ventana, gane o falle el train.
+            if tmp_features_path is not None and os.path.exists(tmp_features_path):
+                try:
+                    os.remove(tmp_features_path)
+                except OSError:
+                    pass
 
         series = pd.Series(values)
         window_metrics = calcular_metricas(series)
@@ -658,7 +759,8 @@ def expanding_window_validation(features_path: str,
                                  prices_path: str,
                                  min_train_days: int = 504,
                                  test_days: int = 63,
-                                 total_timesteps: int = 100000) -> pd.DataFrame:
+                                 total_timesteps: int = 100000,
+                                 raw_features_path: str = None) -> pd.DataFrame:
     """
     Validación Expanding Window: el conjunto de entrenamiento crece en cada ventana.
 
@@ -712,7 +814,23 @@ def expanding_window_validation(features_path: str,
         if os.path.exists(old_file):
             os.remove(old_file)
 
-    df_f    = pd.read_csv(features_path, index_col=0)
+    # Resolver rutas de features. Para z-score por ventana necesitamos las
+    # features SIN normalizar (`original_features.csv`). Si no estan
+    # disponibles, hacemos fallback al fichero pre-normalizado y avisamos.
+    if raw_features_path is None:
+        raw_features_path = _resolve_raw_features_path(features_path)
+
+    using_per_window_zscore = raw_features_path is not None
+    if using_per_window_zscore:
+        print(f"  [EW] z-score por ventana activado: leyendo {raw_features_path}")
+        df_raw = pd.read_csv(raw_features_path, index_col=0)
+        df_f = df_raw
+    else:
+        print(f"  [EW] [AVISO] No se encontro original_features.csv. "
+              f"Usando {features_path} con z-score global "
+              f"(lookahead bias residual; documentado como limitacion).")
+        df_f = pd.read_csv(features_path, index_col=0)
+        df_raw = None
     n_total = len(df_f)
 
     if n_total < min_train_days + test_days:
@@ -739,6 +857,8 @@ def expanding_window_validation(features_path: str,
     print(f"Ventanas calculadas: {n_windows}")
     print(f"{'='*60}")
 
+    import tempfile
+
     for i, (start, split_idx, end) in enumerate(windows):
         date_start = df_f.index[start][:10]
         date_split = df_f.index[split_idx][:10]
@@ -749,38 +869,64 @@ def expanding_window_validation(features_path: str,
               f"Train: {date_start} -> {date_split} ({train_size}d, {train_size/252:.1f}a) | "
               f"Test: {date_split} -> {date_end} ({end-split_idx}d)")
 
-        # Entrenamiento con toda la historia hasta split_idx.
-        # Hiperparámetros PPO unificados con la configuración de producción y
-        # del análisis de sensibilidad (n_steps=2048, batch_size=128,
-        # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
-        # validación y modelo final entregado.
-        train_env = PortfolioEnv(features_path, prices_path,
-                                 start_idx=start, end_idx=split_idx)
-        model = PPO(
-            "MlpPolicy", train_env,
-            learning_rate=LEARNING_RATE,
-            n_steps=2048,
-            batch_size=128,
-            clip_range=CLIP_RANGE,
-            ent_coef=0.01,
-            vf_coef=0.5,
-            max_grad_norm=0.5,
-            policy_kwargs=dict(net_arch=[256, 256]),
-            verbose=0
-        )
-        model.learn(total_timesteps=total_timesteps)
+        # Si tenemos el raw, recalculamos z-score con mu/sigma del train de
+        # esta ventana especifica y volcamos a un CSV temporal con indices
+        # globales. Esto elimina el lookahead bias residual del z-score
+        # global. Si no hay raw, fallback al features_path normalizado.
+        tmp_features_path = None
+        try:
+            if using_per_window_zscore:
+                df_window_norm = _normalize_window(df_raw, start, split_idx)
+                tmp = tempfile.NamedTemporaryFile(
+                    mode='w', suffix=f'_ew_w{i+1}.csv',
+                    delete=False, encoding='utf-8-sig',
+                )
+                tmp.close()
+                tmp_features_path = tmp.name
+                df_window_norm.to_csv(tmp_features_path)
+                env_features_path = tmp_features_path
+            else:
+                env_features_path = features_path
 
-        # Evaluación out-of-sample
-        test_env = PortfolioEnv(features_path, prices_path,
-                                start_idx=split_idx, end_idx=end)
-        obs, _ = test_env.reset()
-        done   = False
-        values = [test_env.initial_balance]
+            # Entrenamiento con toda la historia hasta split_idx.
+            # Hiperparámetros PPO unificados con la configuración de producción y
+            # del análisis de sensibilidad (n_steps=2048, batch_size=128,
+            # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
+            # validación y modelo final entregado.
+            train_env = PortfolioEnv(env_features_path, prices_path,
+                                     start_idx=start, end_idx=split_idx)
+            model = PPO(
+                "MlpPolicy", train_env,
+                learning_rate=LEARNING_RATE,
+                n_steps=2048,
+                batch_size=128,
+                clip_range=CLIP_RANGE,
+                ent_coef=0.01,
+                vf_coef=0.5,
+                max_grad_norm=0.5,
+                policy_kwargs=dict(net_arch=[256, 256]),
+                verbose=0
+            )
+            model.learn(total_timesteps=total_timesteps)
 
-        while not done:
-            action, _ = model.predict(obs, deterministic=True)
-            obs, _, done, _, info = test_env.step(action)
-            values.append(info['value'])
+            # Evaluación out-of-sample
+            test_env = PortfolioEnv(env_features_path, prices_path,
+                                    start_idx=split_idx, end_idx=end)
+            obs, _ = test_env.reset()
+            done   = False
+            values = [test_env.initial_balance]
+
+            while not done:
+                action, _ = model.predict(obs, deterministic=True)
+                obs, _, done, _, info = test_env.step(action)
+                values.append(info['value'])
+        finally:
+            # Limpiar el CSV temporal de esta ventana, gane o falle el train.
+            if tmp_features_path is not None and os.path.exists(tmp_features_path):
+                try:
+                    os.remove(tmp_features_path)
+                except OSError:
+                    pass
 
         series = pd.Series(values)
         window_metrics = calcular_metricas(series)

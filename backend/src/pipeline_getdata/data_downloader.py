@@ -432,17 +432,36 @@ def generate_dataset(tickers: list,
     # Media y std se calculan sobre el primer 80% de filas y se aplican a todas.
     dataset_norm = normalizar_zscore(dataset)
 
-    # Paso 5: Guardar CSVs en orden ascendente (fecha más antigua primero)
-    features_path = os.path.join(DATA_DIR, "normalized_features.csv")
-    prices_path   = os.path.join(DATA_DIR, "original_prices.csv")
+    # Paso 5: Guardar CSVs en orden ascendente (fecha más antigua primero).
+    #
+    # Se guardan TRES ficheros con un proposito distinto cada uno:
+    #
+    #   - normalized_features.csv : features normalizadas con z-score
+    #     calculado sobre el train global (80%). Es el fichero que consume
+    #     el modelo principal (entrenamiento academico con split fijo).
+    #
+    #   - original_features.csv : MISMAS features pero SIN normalizar.
+    #     Necesario para walk_forward_validation y expanding_window_validation,
+    #     que deben recalcular el z-score por ventana usando solo el train
+    #     de esa ventana — eliminando asi el lookahead bias residual que
+    #     introduce el z-score global cuando se aplica a ventanas anteriores
+    #     al final del dataset.
+    #
+    #   - original_prices.csv : precios de cierre sin transformar, para
+    #     calcular retornos reales de cartera.
+    features_path     = os.path.join(DATA_DIR, "normalized_features.csv")
+    raw_features_path = os.path.join(DATA_DIR, "original_features.csv")
+    prices_path       = os.path.join(DATA_DIR, "original_prices.csv")
 
     dataset_norm.sort_index(ascending=True).to_csv(features_path, encoding="utf-8-sig")
+    dataset.sort_index(ascending=True).to_csv(raw_features_path, encoding="utf-8-sig")
     close_prices.sort_index(ascending=True).to_csv(prices_path, encoding="utf-8-sig")
 
     n_feat = len(dataset_norm.columns)
     n_days = len(dataset_norm)
     print(f"  Dataset generado: {n_feat} features x {n_days} días de trading")
     print(f"  -> {features_path}")
+    print(f"  -> {raw_features_path}")
     print(f"  -> {prices_path}")
 
     return dataset_norm, close_prices
