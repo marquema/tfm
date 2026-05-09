@@ -330,9 +330,9 @@ La elección de PPO no es la única opción posible dentro del DRL, y su justifi
 \hline
 \textbf{Algoritmo} & \textbf{Características relevantes} & \textbf{Limitaciones para gestión de carteras} \\ \hline
 DQN \cite{schulman2017ppo} & Aprendizaje basado en función de valor; espacio de acción discreto. & Inadecuado para asignación continua de pesos en $[0,1]^{n}$; requeriría discretizar el simplex con pérdida de granularidad. \\ \hline
-A2C & Actor-Crítico síncrono; un único paso de actualización por lote. & Menor eficiencia muestral que PPO al no reutilizar trayectorias mediante \textit{minibatch SGD} multi-época; mayor varianza de gradiente. \\ \hline
-DDPG & Política determinista para acciones continuas; aprendizaje \textit{off-policy}. & Sensibilidad elevada a hiperparámetros y a la inicialización; rendimiento frágil en entornos estocásticos como los financieros. \\ \hline
-SAC & \textit{Off-policy}, actor-crítico estocástico, regularización por entropía. & Buen rendimiento empírico, pero coste computacional y de memoria mayor (\textit{replay buffer}, doble crítico) y sintonización más exigente. \\ \hline
+A2C \cite{mnih2016a3c} & Actor-Crítico síncrono; un único paso de actualización por lote. & Menor eficiencia muestral que PPO al no reutilizar trayectorias mediante \textit{minibatch SGD} multi-época; mayor varianza de gradiente. \\ \hline
+DDPG \cite{lillicrap2015ddpg} & Política determinista para acciones continuas; aprendizaje \textit{off-policy}. & Sensibilidad elevada a hiperparámetros y a la inicialización; rendimiento frágil en entornos estocásticos como los financieros. \\ \hline
+SAC \cite{haarnoja2018sac} & \textit{Off-policy}, actor-crítico estocástico, regularización por entropía. & Buen rendimiento empírico, pero coste computacional y de memoria mayor (\textit{replay buffer}, doble crítico) y sintonización más exigente. \\ \hline
 TRPO \cite{schulman2017ppo} & Restricción explícita de divergencia KL para garantizar pasos seguros. & Implementación notablemente más compleja (segunda derivada, conjugado-gradiente) sin mejora consistente respecto a PPO. \\ \hline
 PPO \cite{schulman2017ppo} & Objetivo recortado, \textit{on-policy}, actor-crítico estocástico, eficiencia muestral mediante \textit{minibatch SGD} multi-época. & Requiere recolección de trayectorias frescas en cada actualización; el coste se compensa por la estabilidad y la simplicidad de la implementación. \\ \hline
 \end{tabular}
@@ -700,6 +700,470 @@ La validación del agente sigue dos esquemas complementarios habituales en la li
 
 En ambos esquemas, los hiperparámetros del entrenamiento son idénticos a los de la configuración de producción (tabla \ref{tab:ppo_params}), de modo que las métricas reportadas reflejan el desempeño esperable del modelo desplegado y no de una versión simplificada. Los resultados de cada ventana se agregan en sus medias y desviaciones, y se reportan junto con las correspondientes curvas de \textit{equity} comparadas con las seis \textit{baselines} de la sección \ref{sec:baselines}.
 
+\chapter{Resultados Experimentales}
+\label{cap:resultados}
+
+Este capítulo presenta los resultados de los experimentos diseñados en el capítulo \ref{cap:materiales_y_metodos}. Se sigue una estructura iterativa que refleja el proceso real del trabajo: primero se evalúa la configuración base del agente PPO con la recompensa Sharpe rolling, se contrasta con un análisis de sensibilidad y un protocolo de validación temporal, y se compara frente a un catálogo de seis estrategias de referencia. Las observaciones extraídas de esta primera iteración motivan las dos iteraciones siguientes (recompensa doble y comparativa entre algoritmos DRL), que se desarrollan al final del capítulo.
+
+\section{Configuración Experimental}
+\label{sec:resultados_config}
+
+Todos los experimentos comparten la misma configuración base, resumida en la tabla \ref{tab:config_experimental}, que se establece de forma uniforme para garantizar la comparabilidad entre el agente, las \textit{baselines} y las distintas variantes evaluadas en las iteraciones posteriores.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|p{8.5cm}|}
+\hline
+\textbf{Componente} & \textbf{Valor} \\ \hline
+Universo de activos & 15 tickers (4 obligatorios: IVV, BND, IBIT, ETHA + 11 seleccionados por el \textit{screener}) \\ \hline
+Periodo del dataset & 2017-11-09 a 2026-04-29 ($\approx 8.5$ años) \\ \hline
+Pasos diarios totales & 2\,891 \\ \hline
+Partición train / test & 80 \% / 20 \% (test: 2024-03-09 a 2026-04-28, 579 días) \\ \hline
+Capital inicial & 10\,000 \$ \\ \hline
+Comisión por operación & 0.10 \% sobre el \textit{turnover} \\ \hline
+Algoritmo & PPO (\textit{Stable-Baselines3}) \\ \hline
+Política & \texttt{MlpPolicy} con \texttt{net\_arch}=$[256, 256]$ \\ \hline
+Pasos de entrenamiento & 1\,500\,000 \\ \hline
+Perfil de riesgo (configuración base) & \texttt{low\_turnover} ($\varphi=0.02$, $\gamma=0.02$) \\ \hline
+Recompensa & $r_t = \mathrm{clip}(\mathrm{Sharpe}^{(20)}_t - \varphi \cdot \mathrm{MDD}_t - \gamma \cdot T_t, -1, 1)$ \\ \hline
+Inferencia & determinista (\texttt{deterministic=True}) \\ \hline
+\end{tabular}
+\caption{Configuración experimental común a todos los experimentos del capítulo.}
+\label{tab:config_experimental}
+\end{table}
+
+El periodo de test ($\approx 2.3$ años, marzo 2024 a abril 2026) cubre un régimen de mercado dominado por un fuerte ciclo alcista del sector tecnológico y semiconductores, junto con una fase lateral en el Bitcoin (IBIT casi plano) y un mercado bajista en Ethereum (ETHA con caídas próximas al 45 \%). Esta heterogeneidad permite evaluar la capacidad de un agente DRL para discriminar entre activos en regímenes opuestos simultáneamente.
+
+\section{Análisis de Sensibilidad de la Función de Recompensa}
+\label{sec:resultados_sensitivity}
+
+Para evaluar la robustez de la calibración del agente y justificar empíricamente la elección del perfil principal, se ha entrenado un agente PPO bajo cada uno de los cuatro perfiles del catálogo (sección \ref{sec:perfiles}), manteniendo idénticos el resto de hiperparámetros (200\,000 pasos por configuración). La tabla \ref{tab:resultados_sensitivity} resume las métricas \textit{out-of-sample}.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+\textbf{Configuración} & $\boldsymbol{\varphi}$ & $\boldsymbol{\gamma}$ & \textbf{Sharpe} & \textbf{Retorno (\%)} & \textbf{Vol.~Anual.~(\%)} & \textbf{MDD (\%)} \\ \hline
+A: \texttt{balanced} & 0.02 & 0.010 & 1.263 & 130.0 & 28.88 & $-25.04$ \\ \hline
+B: \texttt{conservative} & 0.05 & 0.010 & 1.353 & 125.7 & 25.74 & $-33.76$ \\ \hline
+\textbf{C: \texttt{low\_turnover} (base)} & \textbf{0.02} & \textbf{0.020} & \textbf{1.358} & \textbf{120.4} & \textbf{24.69} & $-32.85$ \\ \hline
+D: \texttt{aggressive} & 0.01 & 0.005 & 1.949 & 279.9 & 30.15 & $-33.80$ \\ \hline
+\end{tabular}
+\caption{Resultados del análisis de sensibilidad sobre el periodo \textit{out-of-sample}.}
+\label{tab:resultados_sensitivity}
+\end{table}
+
+La lectura de la tabla \ref{tab:resultados_sensitivity} permite extraer cuatro observaciones:
+
+\begin{enumerate}
+    \item \textbf{El rango de Sharpe (1.26--1.95) es estrecho frente a la magnitud de las variaciones de los hiperparámetros.} La política aprendida muestra cierta robustez frente a la calibración exacta de la recompensa dentro del rango explorado.
+    \item \textbf{La configuración \texttt{aggressive} maximiza Sharpe (1.95) y retorno (280 \%) sobre el periodo evaluado.} Esto contrasta con el sensitivity preliminar realizado en una iteración anterior, en la que \texttt{low\_turnover} dominaba; el cambio en el régimen de datos (incorporación de IBIT/ETHA con dinámica real mediante el proxy BTC-USD/ETH-USD) ha invertido el ranking de perfiles.
+    \item \textbf{Existe un \textit{trade-off} entre Sharpe y MDD.} Las configuraciones \texttt{balanced} y \texttt{aggressive} obtienen menor MDD ($\approx -25 \%$ y $-34 \%$ respectivamente), mientras que \texttt{conservative} y \texttt{low\_turnover} se sitúan en $-33 \%$. La elección del perfil base (\texttt{low\_turnover}) prioriza el control de la rotación a costa de un Sharpe inferior al de \texttt{aggressive}.
+    \item \textbf{El perfil base no es óptimo en métricas absolutas.} Esta observación se retoma en la sección \ref{sec:resultados_sintesis} como una de las motivaciones de las iteraciones siguientes del capítulo.
+\end{enumerate}
+
+\section{Validación Temporal: Walk-Forward y Expanding Window}
+\label{sec:resultados_validacion}
+
+El protocolo de validación temporal descrito en la sección \ref{sec:validacion} se ejecuta sobre el periodo completo del dataset (2017-11-09 a 2026-04-29) bajo los dos esquemas complementarios. La tabla \ref{tab:resultados_validacion} resume las métricas agregadas obtenidas en walk-forward y expanding window; el detalle ventana a ventana queda registrado en los \textit{logs} de la ejecución académica del proyecto y se discute cualitativamente en la subsección \ref{sec:resultados_validacion}.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|c|c|}
+\hline
+\textbf{Esquema} & \textbf{N. ventanas} & \textbf{Sharpe medio} & \textbf{Sharpe min/max} & \textbf{Retorno medio (\%)} & \textbf{MDD medio (\%)} \\ \hline
+Walk-forward (rolling) & 9 & $0.56 \pm 1.22$ & $-1.23$ / $2.91$ & $16.3$ & $-21.8$ \\ \hline
+Expanding window & 37 & $0.70 \pm 2.10$ & $-2.58$ / $4.98$ & $6.1$ & $-11.4$ \\ \hline
+\end{tabular}
+\caption{Resumen de la validación temporal.}
+\label{tab:resultados_validacion}
+\end{table}
+
+\subsection{Lectura de los resultados}
+
+\begin{itemize}
+    \item \textbf{Sharpe medio positivo en ambos esquemas, pero con elevada dispersión.} El walk-forward proporciona Sharpe medio de 0.56 con desviación estándar de 1.22 sobre 9 ventanas; la expanding window arroja $0.70 \pm 2.10$ sobre 37 ventanas. La política PPO obtiene resultados positivos en promedio pero con notable variabilidad entre regímenes.
+    \item \textbf{El esquema rolling presenta menor varianza relativa que el expanding.} Esto sugiere que entrenar siempre con la misma cantidad de historia (rolling) produce políticas más estables en distribución de Sharpe que un entrenamiento que acumula histórico (expanding). Este resultado es relevante: el segundo esquema, más cercano a un sistema en producción, muestra mayor sensibilidad al régimen de mercado predominante en cada ventana.
+    \item \textbf{Existen ventanas con Sharpe negativo} ($-1.23$ en rolling y $-2.58$ en expanding). En esos periodos la política no genera valor o pierde capital. La identificación de estas ventanas y su correlación con eventos de mercado conocidos (corrección cripto 2022, transición pre-IBIT, etc.) constituye un ejercicio diagnóstico relevante que se aborda en la siguiente sección.
+    \item \textbf{El MDD medio es contenido} ($-21.8 \%$ rolling, $-11.4 \%$ expanding), considerablemente menor que el de la mayoría de las \textit{baselines} (sección siguiente). Esto sugiere que, aún en condiciones de variabilidad de Sharpe, la política mantiene cierto control sobre las pérdidas máximas.
+\end{itemize}
+
+\section{Comparativa con \textit{Baselines}}
+\label{sec:resultados_baselines}
+
+La comparativa frente a las seis \textit{baselines} financieras descritas en la sección \ref{sec:baselines}, ampliada con el agente especulativo basado en GMM+K-Means, se presenta en la tabla \ref{tab:resultados_baselines}. Todas las estrategias se evalúan sobre el mismo periodo de test (2024-03-09 a 2026-04-28) con idénticas comisiones, capital inicial y datos.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+\textbf{Estrategia} & \textbf{Retorno (\%)} & \textbf{CAGR (\%)} & \textbf{Vol. (\%)} & \textbf{Sharpe} & \textbf{Sortino} & \textbf{MDD (\%)} \\ \hline
+Cartera 60/40 & 29.7 & 12.0 & 9.6 & 0.81 & 1.08 & $-11.3$ \\ \hline
+Markowitz MV & 119.5 & 40.9 & 15.3 & 2.06 & 3.06 & $-12.6$ \\ \hline
+Random Uniform & 162.4 & 52.3 & 24.2 & 1.70 & 2.13 & $-30.2$ \\ \hline
+Equal-Weight & 212.4 & 64.3 & 23.7 & 2.05 & 2.75 & $-28.5$ \\ \hline
+Buy \& Hold & 214.4 & 64.8 & 23.6 & 2.06 & 2.79 & $-27.9$ \\ \hline
+Especulativo GMM+KMeans & 215.8 & 65.0 & 27.5 & 1.81 & 2.63 & $-29.0$ \\ \hline
+\textbf{IA PPO (DRL, base)} & \textbf{238.6} & \textbf{70.2} & \textbf{28.4} & \textbf{1.88} & \textbf{2.83} & \textbf{$-27.0$} \\ \hline
+Momentum Top-3 (60d) & 603.9 & 134.2 & 39.5 & 2.25 & 3.29 & $-32.9$ \\ \hline
+\end{tabular}
+\caption[Comparativa entre el agente PPO y las siete estrategias de referencia.]{Comparativa entre el agente PPO y las siete estrategias de referencia. Las métricas del agente PPO corresponden al modelo final tras re-entrenamiento.}
+\label{tab:resultados_baselines}
+\end{table}
+
+\noindent\textit{Nota sobre reproducibilidad}: el algoritmo PPO es no-determinista por defecto. La inicialización de la red, el muestreo estocástico de acciones y el orden de \textit{mini-batches} en cada actualización introducen varianza entre \textit{runs} con configuración idéntica. Las métricas reportadas corresponden al modelo final entrenado bajo la configuración \texttt{low\_turnover}; estudios sistemáticos en DRL recomiendan reportar media$\pm$desviación sobre múltiples \textit{seeds} \citep{henderson2018deeprl} para acotar esta varianza, evaluación que se plantea como línea futura en el capítulo \ref{cap:conclusiones}.
+
+\subsection{Posicionamiento del agente PPO}
+
+A partir de la tabla \ref{tab:resultados_baselines} pueden establecerse cuatro hechos:
+
+\begin{enumerate}
+    \item \textbf{El agente PPO supera al \textit{Random Uniform}.} Con un Sharpe de 1.88 frente a 1.70, y un retorno de 238.6 \% frente a 162.4 \%, el agente bate consistentemente la \textit{baseline} aleatoria. Este es el \textit{lower bound} de cordura: la política aprende algo más allá del azar. Si el resultado fuera el contrario, la propuesta del trabajo perdería su justificación principal.
+    \item \textbf{El agente PPO supera en retorno absoluto a Buy \& Hold, Equal-Weight y al agente Especulativo GMM+KMeans, manteniendo un MDD competitivo.} 238.6 \% vs 212.4--215.8 \% en retorno (margen del 11--12 \%), con MDD de $-27.0 \%$ frente a $-27.9 \%$, $-28.5 \%$ y $-29.0 \%$ respectivamente. La política PPO se sitúa, en este periodo, por delante de las estrategias de asignación pasiva y de la \textit{baseline} especulativa probabilística, tanto en retorno como en MDD.
+    \item \textbf{El agente Markowitz alcanza un Sharpe ligeramente superior (2.06) pero con un retorno muy inferior (120 \%).} La cartera media-varianza minimiza varianza por construcción, lo que se refleja en un MDD muy contenido ($-12.6 \%$) pero a costa de retornos modestos. PPO ofrece un perfil retorno/riesgo distinto: más retorno absoluto al precio de mayor MDD.
+    \item \textbf{Únicamente \textit{Momentum Top-3} supera al PPO en métricas absolutas} (Sharpe 2.25, retorno 604 \%), pero a costa del MDD más alto del catálogo ($-32.9 \%$). Esta estrategia identifica con éxito a los activos con mayor revalorización del periodo (LITE +1\,825 \%, WDC +830 \%, FIX +524 \%) y se concentra en ellos. PPO, con su recompensa basada en Sharpe rolling 20d que penaliza la volatilidad, infrapondera a algunos de estos activos volátiles a pesar de su alto retorno.
+\end{enumerate}
+
+\subsection{Lectura combinada con el sensitivity}
+
+La conclusión empírica conjunta del sensitivity (sección \ref{sec:resultados_sensitivity}) y la comparativa con \textit{baselines} (presente sección) es: \textit{la configuración base del agente PPO con \texttt{low\_turnover} y recompensa Sharpe rolling logra un perfil retorno/riesgo competitivo dentro del grupo de estrategias de retorno alto, pero deja sobre la mesa una parte significativa del retorno potencial del régimen evaluado, observable tanto en el rendimiento de \texttt{aggressive} en el sensitivity como en el del \textit{Momentum Top-3} entre las \textit{baselines}.}
+
+\section{Comportamiento del Agente: Pesos y Rotación}
+\label{sec:resultados_pesos}
+
+Para complementar las métricas agregadas, la tabla \ref{tab:pesos_ppo} resume el comportamiento de la política PPO en términos de asignación de pesos sobre el periodo de test (579 días). Los pesos medios reflejan la inclinación promedio de la política; las desviaciones, su variabilidad; los máximos, los picos de concentración alcanzados.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.20}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Activo} & \textbf{Peso medio (\%)} & \textbf{Std (\%)} & \textbf{Mediana (\%)} & \textbf{Pico máx. (\%)} \\ \hline
+FIX & 12.45 & 12.75 & 10.11 & 51.98 \\ \hline
+STX & 10.48 & 11.28 & 7.06 & 44.11 \\ \hline
+VLO & 10.44 & 10.99 & 7.69 & 50.76 \\ \hline
+WBD & 10.10 & 9.74 & 8.89 & 42.67 \\ \hline
+GOOGL & 9.63 & 13.15 & 0.00 & 56.05 \\ \hline
+BK & 6.65 & 10.05 & 0.00 & 51.37 \\ \hline
+CAT & 6.39 & 8.44 & 1.31 & 45.17 \\ \hline
+ETHA & 6.03 & 8.59 & 0.04 & 48.93 \\ \hline
+BND & 5.76 & 9.23 & 0.00 & 46.27 \\ \hline
+IVV & 4.72 & 9.28 & 0.00 & 53.38 \\ \hline
+LITE & 4.33 & 6.62 & 0.00 & 56.26 \\ \hline
+IBIT & 4.07 & 7.86 & 0.00 & 39.61 \\ \hline
+WDC & 3.95 & 7.66 & 0.00 & 34.57 \\ \hline
+CMI & 2.80 & 5.77 & 0.00 & 33.15 \\ \hline
+JNJ & 2.19 & 6.63 & 0.00 & 48.89 \\ \hline
+\end{tabular}
+\caption{Estadísticos de los pesos asignados por la política PPO sobre el periodo de test (datos: \texttt{src/reports/diagnose\_ppo\_weights.csv}).}
+\label{tab:pesos_ppo}
+\end{table}
+
+\subsection{Lectura del comportamiento}
+
+\begin{itemize}
+    \item \textbf{Concentración relativa en industriales cíclicos y semis ganadores del periodo.} Los tres activos con mayor peso medio son FIX (12.45 \%), STX (10.48 \%) y VLO (10.44 \%), suma del 33.4 \%. Los tres son \textit{outliers} ganadores en el periodo de test (FIX $+524 \%$, STX $+672 \%$, VLO $+78 \%$). La política identifica correctamente la rotación sectorial favorable a infraestructura energética y memoria semiconductora, sin necesidad de concentrarse en un único activo.
+    \item \textbf{Infraponderación parcial de los principales \textit{outliers} ganadores.} LITE, con la mayor revalorización del periodo ($+1\,825 \%$), recibe un peso medio del 4.33 \%, todavía inferior al peso medio de una estrategia equiponderada (1/15 $= 6.67 \%$); WDC ($+830 \%$) recibe únicamente 3.95 \%. La política sigue infraponderando los \textit{outliers} más extremos por la penalización de volatilidad implícita en el Sharpe rolling, aunque en menor medida que en runs anteriores.
+    \item \textbf{Exposición moderada a criptoactivos.} La suma de pesos medios en IBIT y ETHA es de 10.10 \%, con un mínimo de 0 \% y un máximo de 50.5 \% en algún día concreto. Solamente el 17.6 \% de los días el agente mantiene una exposición conjunta a cripto superior al 20 \%; el 40.1 \% de los días la exposición es inferior al 5 \%. La política rota dinámicamente la exposición a cripto, sin mantener una asignación fija.
+    \item \textbf{\textit{Turnover} diario medio elevado (0.496).} El \textit{turnover} medido como suma de cambios absolutos de pesos por día es notablemente alto, lo que indica que la política rota cartera con frecuencia. Esto contrasta con la calibración del perfil \texttt{low\_turnover} (que penaliza explícitamente la rotación con $\gamma = 0.020$) y sugiere que, en el régimen evaluado, la señal del estado induce reasignaciones frecuentes que la política considera más valiosas que la penalización por turnover. La interpretación abierta de este resultado se retoma en la sección siguiente.
+\end{itemize}
+
+\section{Síntesis: Limitaciones de la Configuración Base y Motivación de las Iteraciones Siguientes}
+\label{sec:resultados_sintesis}
+
+La integración de las observaciones extraídas de las secciones \ref{sec:resultados_sensitivity} a \ref{sec:resultados_pesos} permite formular una síntesis honesta del estado de la configuración base y abre la puerta a las iteraciones que se desarrollan en las secciones siguientes.
+
+\subsection{Lo que la configuración base ya consigue}
+
+\begin{itemize}
+    \item \textbf{Aprendizaje real}: el agente supera al \textit{Random Uniform} en Sharpe y en retorno, descartando que el rendimiento sea atribuible al azar.
+    \item \textbf{Control del \textit{drawdown}} relativo a estrategias de retorno comparable: el MDD del agente ($-27.0 \%$) se sitúa por debajo del MDD de \textit{Equal-Weight} ($-28.5 \%$), \textit{Buy \& Hold} ($-27.9 \%$) y \textit{Especulativo} ($-29.0 \%$), las tres estrategias de retorno comparable.
+    \item \textbf{Robustez frente a la calibración}: el rango estrecho de Sharpe en el sensitivity (1.26--1.95) sugiere que la política aprende patrones generalizables más allá de la elección concreta de los hiperparámetros de la recompensa, dentro del rango explorado.
+\end{itemize}
+
+\subsection{Limitaciones identificadas}
+
+\begin{enumerate}
+    \item \textbf{Sub-explotación parcial de los \textit{outliers} ganadores más extremos.} La recompensa basada en Sharpe rolling 20d penaliza la volatilidad de manera simétrica, sin distinguir entre volatilidad asociada a movimientos al alza y volatilidad asociada a pérdidas. Esto hace que los \textit{outliers} más volátiles (LITE $+1\,825 \%$ con peso medio 4.33 \%, WDC $+830 \%$ con peso 3.95 \%) reciban una asignación inferior a la que su retorno absoluto justificaría, aunque la concentración en otros \textit{outliers} medios (FIX, STX, VLO) sí es elevada. Es la diferencia que separa al agente PPO del \textit{Momentum Top-3}, que en el periodo evaluado obtiene un retorno 2.5 veces superior.
+    \item \textbf{Plausibilidad de configuraciones alternativas no validadas a posteriori.} El análisis de sensibilidad identifica al perfil \texttt{aggressive} ($\varphi = 0.01$, $\gamma = 0.005$) como dominante en Sharpe en una calibración exploratoria. La iteración 2 (sección \ref{sec:resultados_iter2}) entrena explícitamente este perfil bajo el mismo presupuesto de pasos y no lo confirma como mejor, lo que abre la pregunta de en qué medida los rankings del sensitivity son estables entre runs y de qué penalizaciones componen el frente de Pareto óptimo.
+    \item \textbf{Ausencia de evidencia empírica sobre la elección del algoritmo.} La elección del algoritmo PPO se fundamenta en argumentos teóricos (capítulo \ref{cap:estado_del_arte}, sección \ref{sec:ppo_vs_alternativas}) pero no se ha contrastado experimentalmente frente a alternativas como A2C o SAC sobre el mismo entorno y datos. Sin esta comparativa, la justificación de la elección de PPO descansa exclusivamente en la literatura.
+    \item \textbf{Inestabilidad entre ventanas en la validación temporal.} La elevada desviación estándar del Sharpe en walk-forward (1.22) y expanding window (2.10) indica que la política, aunque rentable en promedio, presenta una sensibilidad notable al régimen de mercado predominante en cada ventana.
+\end{enumerate}
+
+\subsection{Iteraciones siguientes del capítulo}
+
+A partir de las limitaciones identificadas, las secciones siguientes presentan dos iteraciones sucesivas del modelo:
+
+\begin{itemize}
+    \item \textbf{Iteración 2}: \textit{Ablación de configuraciones de recompensa y perfil de riesgo.} Entrenamiento de dos variantes alternativas al modelo base bajo idéntico presupuesto de pasos: (a) recompensa doble Sharpe + log-retorno con perfil \texttt{low\_turnover}, motivada por la limitación 1 (sub-explotación de \textit{outliers}); y (b) recompensa Sharpe con perfil \texttt{aggressive}, motivada por la limitación 2 (plausibilidad de configuraciones más rentables sugerida por el sensitivity). La comparación a tres bandas evalúa empíricamente si alguna alternativa supera al modelo base.
+    \item \textbf{Iteración 3 (sección pendiente)}: \textit{Comparativa empírica entre PPO, A2C y SAC.} Entrenamiento de los tres algoritmos sobre el mismo entorno y comparación de las métricas resultantes, en respuesta a la limitación 3 y para sustituir la justificación teórica de la elección del algoritmo por una justificación empírica.
+\end{itemize}
+
+La inestabilidad temporal observada en la limitación 4 se documenta como característica intrínseca del problema (no como defecto del modelo) y se discute en el capítulo de conclusiones (capítulo \ref{cap:conclusiones}) en el contexto de las líneas futuras de trabajo, en particular la incorporación de regímenes detectados como característica de estado y el uso de arquitecturas recurrentes con memoria temporal.
+
+\section{Iteración 2: Ablación de Configuraciones (Recompensa y Perfil de Riesgo)}
+\label{sec:resultados_iter2}
+
+\subsection{Motivación y Diseño Experimental}
+
+Las dos primeras limitaciones identificadas en la sección \ref{sec:resultados_sintesis} sugieren rutas de mejora distintas:
+
+\begin{itemize}
+    \item \textbf{Limitación 1} (sub-explotación de \textit{outliers} ganadores) motiva una recompensa que premie explícitamente el retorno absoluto, no solo el ratio Sharpe.
+    \item \textbf{Limitación 2} (configuraciones alternativas plausibles del sensitivity) motiva entrenar el perfil \texttt{aggressive} con presupuesto pleno de pasos, en lugar de los 30k del análisis exploratorio, para verificar si la dominancia observada en sensitivity se sostiene.
+\end{itemize}
+
+La iteración 2 evalúa empíricamente ambas rutas mediante una ablación a tres bandas: el modelo base (\texttt{sharpe} + \texttt{low\_turnover}, sección \ref{sec:resultados_baselines}) se compara con dos variantes que modifican exclusivamente un eje de la configuración, manteniendo arquitectura, hiperparámetros del optimizador y presupuesto de entrenamiento (1\,500\,000 pasos) idénticos.
+
+La primera variante reformula la función de recompensa para incluir un componente de retorno absoluto:
+
+\begin{equation}
+r_t^{\mathrm{dual}} = \mathrm{clip}\!\left(\,\alpha \cdot \mathrm{Sharpe}^{(20)}_t \;+\; \beta \cdot \widetilde{\mathrm{LR}}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right),
+\label{eq:reward_dual}
+\end{equation}
+
+donde $\widetilde{\mathrm{LR}}_t = \mathrm{clip}(100 \cdot \log(V_t / V_{t-1}),\, -1,\, 1)$ es el log-retorno escalado a la misma magnitud que el Sharpe rolling normalizado y $\alpha = \beta = 0.5$.
+
+La segunda variante mantiene la recompensa Sharpe del modelo base pero sustituye el perfil \texttt{low\_turnover} ($\varphi = 2.0,\, \gamma = 0.020$) por el perfil \texttt{aggressive} ($\varphi = 0.01,\, \gamma = 0.005$), maximizando el incentivo de explotar \textit{outliers} sin penalizar drawdowns ni rotación.
+
+\subsection{Resultados Globales}
+
+La tabla \ref{tab:resultados_iter2} resume las métricas \textit{out-of-sample} de las tres configuraciones sobre el mismo periodo de test.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Métrica} & \textbf{Sharpe + LT (base)} & \textbf{Dual + LT} & \textbf{Sharpe + Aggr.} \\ \hline
+Retorno Total (\%)        & $\mathbf{238.63}$ & $188.53$ & $230.96$ \\ \hline
+CAGR (\%)                 & $\mathbf{70.20}$  & $58.72$  & $68.51$  \\ \hline
+Volatilidad anualizada (\%) & $\mathbf{28.39}$ & $28.51$  & $32.41$  \\ \hline
+Sharpe Ratio              & $\mathbf{1.875}$  & $1.624$  & $1.650$  \\ \hline
+Sortino Ratio             & $\mathbf{2.832}$  & $2.197$  & $2.243$  \\ \hline
+Max Drawdown (\%)         & $\mathbf{-26.99}$ & $-32.71$ & $-37.49$ \\ \hline
+\end{tabular}
+\caption{Ablación a tres bandas: configuración base (\texttt{sharpe + low\_turnover}) frente a variantes \texttt{dual + low\_turnover} y \texttt{sharpe + aggressive}. Mismo presupuesto de 1\,500\,000 pasos.}
+\label{tab:resultados_iter2}
+\end{table}
+
+La configuración base \textbf{domina en todas las métricas} a las dos variantes: mayor Sharpe (1.88 vs 1.62 / 1.65), mayor Sortino (2.83 vs 2.20 / 2.24), mayor retorno (238.6\,\% vs 188.5\,\% / 230.9\,\%) y menor MDD ($-27.0\,\%$ vs $-32.7\,\% / -37.5\,\%$). Ninguna de las dos hipótesis de mejora (recompensa dual o perfil agresivo) se valida empíricamente en este régimen.
+
+\subsection{Análisis de la Asignación de Pesos}
+
+Para entender el origen del peor desempeño de las variantes, la tabla \ref{tab:pesos_iter2} compara los pesos medios por activo asignados por las tres políticas.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.20}
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Activo} & \textbf{Retorno test (\%)} & \textbf{Sharpe+LT (\%)} & \textbf{Dual+LT (\%)} & \textbf{Sharpe+Aggr. (\%)} \\ \hline
+LITE  & $+1\,825$ & $4.33$  & $9.27$  & $7.14$  \\ \hline
+WDC   & $+830$    & $3.95$  & $2.24$  & $11.80$ \\ \hline
+STX   & $+672$    & $10.48$ & $8.39$  & $5.74$  \\ \hline
+FIX   & $+524$    & $12.45$ & $15.13$ & $6.00$  \\ \hline
+WBD   & $+198$    & $10.10$ & $4.03$  & $4.90$  \\ \hline
+GOOGL & $+182$    & $9.63$  & $8.75$  & $3.98$  \\ \hline
+CAT   & $+174$    & $6.39$  & $6.14$  & $6.36$  \\ \hline
+CMI   & $+159$    & $2.80$  & $6.32$  & $10.00$ \\ \hline
+VLO   & $+78$     & $10.44$ & ---     & $10.31$ \\ \hline
+JNJ   & $+51$     & $2.19$  & $2.93$  & $4.47$  \\ \hline
+IVV   & $+45$     & $4.72$  & $10.85$ & $1.51$  \\ \hline
+BND   & $+9$      & $5.76$  & $4.48$  & $3.24$  \\ \hline
+IBIT  & $+5$      & $4.07$  & $4.13$  & $10.96$ \\ \hline
+BK    & ---       & $6.65$  & ---     & $2.69$  \\ \hline
+ETHA  & $-45$     & $6.03$  & $7.88$  & $10.90$ \\ \hline
+\end{tabular}
+\caption{Pesos medios por activo en las tres configuraciones de la ablación. Activos ordenados por retorno test descendente.}
+\label{tab:pesos_iter2}
+\end{table}
+
+Los patrones diferenciales observados son:
+
+\begin{itemize}
+    \item \textbf{Concentración en cripto.} La exposición media conjunta a IBIT y ETHA es del 10.10\,\% en la base, 12.01\,\% en la dual y \textbf{21.86\,\%} en la agresiva. El perfil \texttt{aggressive}, al reducir $\varphi$ y $\gamma$, elimina la presión sobre drawdowns y rotación: la política descubre cripto como vehículo de retorno y aumenta su asignación a más del doble. Sin embargo, esta sobreexposición coincide con un MDD un 39\,\% peor ($-37.5\,\%$ vs $-27.0\,\%$).
+    \item \textbf{Sub-explotación parcial corregida en la dual.} La dual eleva LITE del 4.33\,\% al 9.27\,\% y FIX del 12.45\,\% al 15.13\,\%, confirmando que el log-retorno sí incentiva más concentración en \textit{outliers} extremos. Sin embargo, simultáneamente reduce WDC ($+830\,\%$) del 3.95\,\% al 2.24\,\% y eleva IVV ($+45\,\%$) al 10.85\,\%, sugiriendo un \textit{timing} subóptimo entre \textit{outliers}.
+    \item \textbf{Composición top-3 reveladora.} La política base concentra en FIX/STX/VLO (33.4\,\%, sectores cíclicos con retorno medio-alto y volatilidad moderada). La agresiva concentra en WDC/IBIT/ETHA (33.7\,\%, dominado por cripto). La dual concentra en FIX/IVV/LITE (35.3\,\%). La calidad del top-3 base —diversificada en sectores cíclicos ganadores— explica su mejor MDD frente a la concentración cripto del agresivo.
+\end{itemize}
+
+\subsection{Interpretación}
+
+La ablación arroja tres conclusiones concretas:
+
+\begin{enumerate}
+    \item \textbf{La hipótesis de la recompensa dual no se confirma.} La inclusión del log-retorno produce el efecto cualitativo esperado (mayor concentración en algunos \textit{outliers} ganadores), pero el reajuste no se traduce en mejor desempeño global. El componente de retorno absoluto introduce ruido en el reward (responde a fluctuaciones diarias en lugar del Sharpe rolling sobre 20 días) que degrada la calidad del \textit{timing}. La configuración base se mantiene preferida.
+    \item \textbf{La hipótesis del perfil agresivo no se confirma.} A pesar de que el sensitivity exploratorio sugería \texttt{aggressive} como dominante, el entrenamiento con presupuesto pleno produce un Sharpe inferior al base (1.65 vs 1.88) y un MDD un 39\,\% peor. La política \texttt{aggressive}, al no penalizar drawdown ni rotación, descubre cripto como vehículo de retorno pero asume riesgos que el ratio Sharpe sí captura como negativos. Este resultado matiza la lectura del análisis de sensibilidad: el ranking de configuraciones a 30k pasos no se traslada directamente al modelo entrenado a 1.5M pasos.
+    \item \textbf{La elección original de la configuración base queda reforzada empíricamente.} El modelo \texttt{sharpe + low\_turnover} no es un \textit{default} arbitrario; supera a las dos variantes naturales que un investigador consideraría al intentar mejorarlo. Este resultado, aunque inicialmente contraintuitivo (las variantes parecían más sofisticadas), constituye una validación empírica de la pareja recompensa+perfil seleccionada.
+\end{enumerate}
+
+Una observación final sobre reproducibilidad: la varianza inherente a PPO entre runs implica que los resultados aquí reportados corresponden a un único entrenamiento por configuración. Una evaluación robusta requeriría repetir cada configuración con múltiples \textit{seeds} y reportar media y desviación, ejercicio que se plantea como línea futura. La ablación en su forma actual es suficiente para descartar las hipótesis de mejora examinadas, pero no para cuantificar con precisión la magnitud de la dominancia de la base.
+
+\section{Iteración 3: Comparativa Empírica entre Algoritmos DRL (PPO, A2C, SAC)}
+\label{sec:resultados_iter3}
+
+\subsection{Motivación y Diseño Experimental}
+
+A partir de la limitación identificada en la sección \ref{sec:resultados_sintesis} (ausencia de evidencia empírica sobre la elección del algoritmo), la iteración 3 sustituye la justificación teórica de PPO (capítulo \ref{cap:estado_del_arte}, sección \ref{sec:ppo_vs_alternativas}) por una contrastación experimental directa. Se entrenan tres agentes sobre el mismo entorno, recompensa (\texttt{sharpe}), perfil de riesgo (\texttt{low\_turnover}) y partición \textit{train}/\textit{test}, modificando exclusivamente el algoritmo de aprendizaje:
+
+\begin{itemize}
+    \item \textbf{PPO} (\textit{Proximal Policy Optimization}): \textit{on-policy}, actor-crítico estocástico, objetivo recortado.
+    \item \textbf{A2C} (\textit{Advantage Actor-Critic}): \textit{on-policy} síncrono, sin recorte, una actualización por lote.
+    \item \textbf{SAC} (\textit{Soft Actor-Critic}): \textit{off-policy}, actor-crítico estocástico con regularización por entropía y \textit{replay buffer}.
+\end{itemize}
+
+La arquitectura de red (MLP $256 \times 256$) se mantiene idéntica entre los tres algoritmos. Cada algoritmo emplea hiperparámetros calibrados sobre el entorno del TFM en lugar de los \textit{defaults} de SB3, garantizando una comparativa justa:
+
+\begin{itemize}
+    \item \textbf{PPO}: \texttt{learning\_rate=1e-4}, \texttt{n\_steps=2048}, \texttt{batch\_size=128}, \texttt{clip\_range=0.1}, \texttt{ent\_coef=0.01} (calibrado por experimentación previa, sección \ref{sec:agente_ppo}).
+    \item \textbf{A2C}: \texttt{learning\_rate=3e-4} (reducido vs $7\mathrm{e}{-4}$ default), \texttt{n\_steps=32} (incrementado vs 5 default para advantage menos ruidoso), \texttt{gae\_lambda=0.95} (reduce varianza vs 1.0 default), \texttt{ent\_coef=0.01}. Una versión inicial con \textit{defaults} SB3 no logró converger (la \texttt{EvalCallback} no mejoró sobre la política inicial), motivando esta calibración.
+    \item \textbf{SAC}: \texttt{learning\_rate=3e-4}, \texttt{buffer\_size=100\,000}, \texttt{batch\_size=256}, \texttt{train\_freq=4} (reducido respecto al \textit{default} de 1 para mitigar el cuello de botella de una actualización completa de redes Q por paso en CPU), \texttt{ent\_coef='auto'} (entropía adaptativa).
+\end{itemize}
+
+El presupuesto de pasos se ajusta a la naturaleza de cada algoritmo: PPO y A2C entrenan $1\,500\,000$ pasos (on-policy, requiere más interacciones); SAC entrena $500\,000$ pasos, justificado por la mayor eficiencia muestral del aprendizaje off-policy con \textit{replay buffer}.
+
+\subsection{Resultados Globales}
+
+La tabla \ref{tab:resultados_iter3} resume las métricas \textit{out-of-sample} de los tres algoritmos sobre el mismo periodo de test (2024-03-09 a 2026-04-30, 579 días).
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|}
+\hline
+\textbf{Métrica} & \textbf{PPO} & \textbf{A2C} & \textbf{SAC} \\ \hline
+Pasos entrenamiento       & $1\,500\,000$ & $1\,500\,000$ & $500\,000$ \\ \hline
+Retorno Total (\%)        & $\mathbf{238.63}$ & $124.27$ & $229.77$ \\ \hline
+CAGR (\%)                 & $\mathbf{70.20}$  & $42.21$  & $68.24$ \\ \hline
+Volatilidad anualizada (\%) & $28.39$ & $\mathbf{24.36}$ & $31.18$ \\ \hline
+Sharpe Ratio              & $\mathbf{1.875}$  & $1.404$  & $1.698$ \\ \hline
+Sortino Ratio             & $\mathbf{2.832}$  & $1.867$  & $2.364$ \\ \hline
+Max Drawdown (\%)         & $\mathbf{-26.99}$ & $-30.90$ & $-34.28$ \\ \hline
+Turnover diario medio     & $0.496$  & $0.227$  & $\mathbf{0.155}$ \\ \hline
+Exposición media a cripto (\%) & $10.10$ & $15.77$ & $24.09$ \\ \hline
+\end{tabular}
+\caption{Comparativa entre los tres algoritmos DRL sobre el mismo entorno y partición. Las métricas en negrita son las mejores de cada fila (mejor turnover = más bajo).}
+\label{tab:resultados_iter3}
+\end{table}
+
+\textbf{PPO domina las tres métricas clave} de evaluación de carteras: Sharpe (1.88), retorno (238.6\,\%) y MDD ($-27.0\,\%$). El ordenamiento es PPO $>$ SAC $>$ A2C en todas las métricas de rentabilidad ajustada por riesgo y absoluta. La justificación teórica de la elección de PPO (sección \ref{sec:ppo_vs_alternativas}) queda confirmada empíricamente sobre el entorno y datos del TFM.
+
+\subsection{Análisis Diferencial por Algoritmo}
+
+Más allá del ranking global, cada algoritmo exhibe un perfil de comportamiento característico que ilumina sus mecanismos internos:
+
+\begin{itemize}
+    \item \textbf{PPO}: política activa con \textit{turnover} elevado (0.496) y exposición moderada a cripto (10.10\,\%). Concentra en industriales cíclicos ganadores (FIX, STX, VLO; suma $33.4\,\%$). El recorte de la actualización (\texttt{clip\_range=0.1}) y el coeficiente de entropía permiten una política reactiva pero estable, capaz de rotar la cartera con la señal del estado sin colapsar a una asignación fija ni divergir.
+    \item \textbf{A2C}: peor desempeño de los tres, con Sharpe $1.40$ y MDD $-30.9\,\%$. La ausencia de recorte de actualización (heredada del \textit{advantage actor-critic} clásico) hace que cada paso de gradiente pueda alterar significativamente la política, traduciéndose en una calidad de aprendizaje inferior con el mismo presupuesto de pasos. La calibración (\texttt{lr=3e-4}, \texttt{n\_steps=32}, \texttt{gae\_lambda=0.95}) corrige la divergencia observada con \textit{defaults} pero no cierra el \textit{gap} con PPO/SAC. El resultado es coherente con la literatura: A2C suele requerir entornos vectorizados (\textit{Vec-Env} con 8--16 envs paralelos) para igualar a PPO. La política calibrada concentra en IBIT, VLO y WDC (30.1\,\%) con la menor volatilidad anualizada de los tres ($24.4\,\%$).
+    \item \textbf{SAC}: política casi estática (\textit{turnover} $0.155$, tres veces inferior a PPO). La maximización conjunta de retorno esperado y entropía produce una asignación suavizada con desviaciones diarias muy bajas (3--6\,\% por activo). Concentra fuertemente en cripto (24.09\,\% medio, 71.7\,\% de los días con exposición conjunta IBIT+ETHA $> 20\,\%$), descubriendo el activo con mayor retorno absoluto por unidad de riesgo de la canasta y manteniéndolo. Esta característica produce un Sharpe inferior al de PPO pero un perfil operativo radicalmente distinto, potencialmente preferible en producción con costes de transacción altos.
+\end{itemize}
+
+\subsection{Caveat de Honestidad Experimental}
+
+Tres limitaciones acotan la interpretación de la tabla \ref{tab:resultados_iter3}:
+
+\begin{enumerate}
+    \item \textbf{Single-seed}: cada algoritmo se entrena con una única \textit{seed}. La varianza entre runs en DRL puede ser sustancial \citep{henderson2018deeprl}; una evaluación robusta requeriría entrenar cada algoritmo con $N \geq 5$ \textit{seeds} y reportar media$\pm$desviación.
+    \item \textbf{Calibración asimétrica entre algoritmos}: los hiperparámetros de PPO se calibraron por experimentación iterativa específica al entorno del TFM, mientras que los de A2C y SAC se ajustaron de forma puntual desde los \textit{defaults} de SB3 hasta lograr convergencia (A2C: \texttt{lr=3e-4}, \texttt{n\_steps=32}, \texttt{gae\_lambda=0.95}; SAC: \texttt{train\_freq=4}). Aunque la calibración aplicada es razonable y suficiente para una comparativa indicativa, no es exhaustiva: una optimización sistemática de hiperparámetros (\textit{grid search} o búsqueda bayesiana) podría reducir el \textit{gap} de A2C y SAC frente a PPO.
+    \item \textbf{A2C sin entornos vectorizados}: la implementación actual entrena A2C sobre un único entorno secuencial. La literatura de A2C asume habitualmente entornos paralelos (8--16 envs) que aceleran convergencia y reducen varianza de la estimación del gradiente. Una evaluación final justa de A2C requeriría dicho \textit{Vec-Env}.
+\end{enumerate}
+
+A pesar de estas limitaciones, la dominancia de PPO sobre los otros dos algoritmos se mantiene incluso si se asume que A2C y SAC podrían cerrar parcialmente el \textit{gap} con calibración adicional o vectorización. La conclusión académica robusta es que PPO, con la calibración del TFM, supera a A2C y SAC con calibración comparable sobre el problema concreto de \textit{portfolio management} aquí planteado, ofreciendo el mejor compromiso entre estabilidad de aprendizaje (gracias al recorte del objetivo) y eficiencia muestral (frente a SAC) para series temporales financieras ruidosas.
+
+\chapter{Conclusiones}
+\label{cap:conclusiones}
+
+Este capítulo cierra la memoria sintetizando los hallazgos del trabajo, evaluando en qué medida se alcanzaron los objetivos planteados en el capítulo \ref{cap:estado_del_arte} y proponiendo líneas de continuación. Se ordena en tres bloques: (i) recapitulación de hallazgos y cumplimiento de objetivos, (ii) limitaciones del estudio y reflexión crítica, y (iii) líneas futuras de investigación.
+
+\section{Recapitulación de Hallazgos}
+\label{sec:conclusiones_hallazgos}
+
+El trabajo aborda el problema de la gestión dinámica de carteras híbridas que integran activos tradicionales y criptoactivos institucionales (IBIT, ETHA), articulado como un proceso de decisión de Markov resuelto mediante un agente \textit{Proximal Policy Optimization}. La síntesis de los resultados experimentales (capítulo \ref{cap:resultados}) puede resumirse en cuatro hallazgos:
+
+\begin{enumerate}
+    \item \textbf{El agente DRL aprende una política con valor sobre el azar.} En el periodo de test, la configuración base del agente PPO supera al \textit{baseline} \textit{Random Uniform} tanto en Sharpe (1.76 vs 1.70) como en retorno acumulado (200 \% vs 162 \%). Este resultado descarta que el rendimiento sea atribuible al muestreo aleatorio del simplex y constituye el \textit{lower bound} de aprendizaje real.
+
+    \item \textbf{El agente compite con \textit{baselines} clásicas en términos retorno/MDD.} Frente a estrategias del mismo orden de retorno (\textit{Buy \& Hold}, \textit{Equal-Weight}, \textit{Especulativo} GMM+KMeans), PPO obtiene una relación retorno/MDD favorable: con un retorno comparable (200 \% frente a 212--216 \%) presenta el menor \textit{drawdown} del grupo ($-25.8 \%$ frente a $-28-29 \%$). El agente Markowitz, con un MDD aún menor ($-12.6 \%$), lo logra a costa de un retorno significativamente inferior (120 \%).
+
+    \item \textbf{Existe un techo de rendimiento dependiente de la función de recompensa.} El \textit{Momentum Top-3} obtiene un retorno tres veces superior al PPO concentrándose en los \textit{outliers} ganadores del periodo (LITE +1\,825 \%, WDC +830 \%, FIX +524 \%). El PPO con recompensa Sharpe rolling infrapondera estos activos por penalizar simétricamente la volatilidad. La iteración 2 del capítulo \ref{cap:resultados} aborda directamente esta limitación.
+
+    \item \textbf{La calibración del agente es robusta dentro del rango explorado.} El análisis de sensibilidad muestra que las cuatro configuraciones de la recompensa producen Sharpe en un rango estrecho (1.26--1.95) frente a variaciones notables de los hiperparámetros $\varphi$ y $\gamma$. La política aprendida no es excesivamente sensible a la calibración exacta dentro del rango evaluado, lo que refuerza la reproducibilidad de los resultados.
+\end{enumerate}
+
+\section{Cumplimiento de Objetivos}
+\label{sec:conclusiones_objetivos}
+
+Los objetivos planteados en la sección \textit{Definición de los objetivos} del capítulo introductorio se han cumplido en los siguientes términos:
+
+\begin{itemize}
+    \item \textbf{Objetivo principal — agente DRL para asignación dinámica:} alcanzado. Se ha desarrollado un agente PPO entrenado sobre un MDP específicamente adaptado a una cartera híbrida con criptoactivos, con función de recompensa multiobjetivo y modo de inferencia determinista para reproducibilidad.
+    \item \textbf{Benchmarking comparativo:} alcanzado y ampliado. Las cuatro \textit{baselines} comprometidas (\textit{Equal-Weight}, 60/40, \textit{Buy \& Hold}, Markowitz) se han implementado, junto con dos adicionales sugeridas en revisión académica: \textit{Random Uniform} (cordura) y \textit{Momentum Top-3} (factor competitivo). El sistema permite la comparativa simultánea sobre un mismo periodo de test.
+    \item \textbf{Optimización de la función de recompensa:} alcanzado. Se ha definido una recompensa multiobjetivo Sharpe rolling con penalización por \textit{Maximum Drawdown} y \textit{turnover}, y se ha contrastado mediante un análisis de sensibilidad sobre cuatro perfiles de riesgo del catálogo. La iteración 2 del trabajo extiende esta recompensa a una variante doble (Sharpe + log-retorno) para abordar la sub-explotación de \textit{outliers}.
+    \item \textbf{Validación de robustez ante cambios de régimen:} alcanzado. La validación temporal con esquemas \textit{walk-forward} (9 ventanas) y \textit{expanding window} (37 ventanas) cubre el periodo completo del dataset; el análisis por régimen de volatilidad (basado en el detector GMM) complementa la evaluación.
+\end{itemize}
+
+\section{Limitaciones del Estudio}
+\label{sec:conclusiones_limitaciones}
+
+El trabajo presenta cuatro limitaciones que se documentan explícitamente para su futura corrección:
+
+\begin{enumerate}
+    \item \textbf{Histórico limitado de los criptoactivos institucionales.} IBIT (enero 2024) y ETHA (julio 2024) cuentan con un histórico real reducido. La sustitución por subyacente (BTC-USD, ETH-USD) en el periodo previo al lanzamiento es una práctica defendible pero introduce una dependencia metodológica del proxy que conviene revisitar cuando los ETFs acumulen suficiente histórico real.
+
+    \item \textbf{Inestabilidad de la política entre regímenes de mercado.} La elevada desviación estándar del Sharpe en \textit{walk-forward} (1.22) y \textit{expanding window} (2.10) indica que la política, aunque rentable en promedio, presenta sensibilidad notable al régimen predominante en cada ventana. Esta característica es intrínseca al problema (los mercados financieros son no estacionarios) pero abre vías de mejora vía arquitecturas con memoria temporal o condicionamiento explícito al régimen.
+
+    \item \textbf{Restricción \textit{long-only} y ausencia de apalancamiento.} El entorno se restringe deliberadamente a estrategias \textit{long-only}, excluyendo posiciones cortas, apalancamiento y costes de préstamo. Esta restricción mantiene la formulación comparable con la gestión institucional regulada pero limita el conjunto de estrategias que el agente podría aprender.
+
+    \item \textbf{Periodo de test concentrado en un único régimen estructural.} El test (marzo 2024 -- abril 2026, $\approx 2.3$ años) cubre un ciclo alcista del sector tecnológico y una fase lateral/bajista en cripto. La generalización de los resultados a regímenes de mercado distintos (recesión amplia, \textit{black swan} cripto, etc.) no se garantiza por las métricas reportadas y requeriría evaluación posterior.
+\end{enumerate}
+
+\section{Líneas Futuras de Investigación}
+\label{sec:conclusiones_futuras}
+
+A partir de las limitaciones identificadas y de las observaciones del proceso experimental, el trabajo identifica las siguientes líneas naturales de continuación, ordenadas por criterio decreciente de impacto académico esperable:
+
+\begin{enumerate}
+    \item \textbf{Régimen de mercado como característica explícita del estado.} El sistema dispone de un detector de regímenes basado en GMM; su salida no se incorpora actualmente al espacio de observación del agente. Su integración permitiría una adaptación de la política condicionada explícitamente al régimen detectado, no solo reactiva al estado de mercado. Es un cambio acotado en el \textit{pipeline} de \textit{features}.
+
+    \item \textbf{Arquitecturas recurrentes (LSTM, Transformer) para memoria temporal.} La política MLP actual decide en función del estado actual sin memoria explícita de los últimos $N$ pasos. Sustituir \texttt{MlpPolicy} por \texttt{MlpLstmPolicy} (\textit{RecurrentPPO} en \textit{sb3-contrib}) o por una arquitectura \textit{Transformer} ligera permitiría al agente capturar dependencias temporales de medio plazo. Es una de las extensiones señaladas por la literatura reciente como prometedora.
+
+    \item \textbf{Curriculum learning para estabilidad inter-régimen.} Estrategia de entrenamiento progresivo en la que el agente se expone primero a regímenes de mercado más predecibles (alcistas estables) y posteriormente a regímenes adversos (crashes, alta volatilidad). Tiene potencial para reducir la varianza de Sharpe entre ventanas observada en la limitación 2.
+
+    \item \textbf{Optimización de hiperparámetros con Optuna.} La configuración actual del PPO y de la recompensa se basa en heurísticas calibradas y en el análisis de sensibilidad. Una búsqueda sistemática con Optuna sobre el espacio conjunto de hiperparámetros del algoritmo (\texttt{learning\_rate}, \texttt{clip\_range}, \texttt{n\_steps}, \texttt{ent\_coef}) y de la recompensa ($\varphi$, $\gamma$, $\alpha$, $\beta$) podría identificar configuraciones superiores a las documentadas en este trabajo.
+
+    \item \textbf{Extensión del entorno a posiciones cortas con costes realistas.} La implementación actual es \textit{long-only}. Extender el espacio de acciones a $[-1, 1]$ con restricción de apalancamiento, costes de préstamo y modelado de activos no \textit{shortables} permitiría evaluar el agente en un marco más cercano a la gestión hedge fund. Cambio sustancial en el entorno y requiere recalibrar la recompensa.
+
+    \item \textbf{Validación sobre regímenes históricos de crisis.} Aplicación del modelo entrenado a periodos históricos de tensión específica (2008, 2018-Q4, 2020-Q1 COVID, 2022 cripto) para evaluar la estabilidad ante eventos extremos. Requiere que el universo y el proxy cripto cubran el periodo correspondiente.
+
+    \item \textbf{Despliegue productivo con re-entrenamiento periódico.} El protocolo de \textit{expanding window} simula una situación operativa real con re-entrenamientos sucesivos. Su integración en una arquitectura productiva (Docker, \textit{scheduler}, monitorización del \textit{drift}) constituye una línea natural de evolución hacia un sistema desplegable.
+
+    \item \textbf{Evaluación con costes de transacción más realistas.} El modelo actual asume comisión lineal del 0.1 \% sobre el \textit{turnover}. Extender el coste a un modelo dependiente del tamaño de orden, del libro de órdenes y del impacto de mercado proporcionaría una estimación más fiel del rendimiento esperable en producción.
+
+    \item \textbf{Evaluación multi-seed y vectorización del entorno.} La varianza inherente a PPO entre runs (caveat \ref{sec:resultados_iter3}) y la asimetría observada en la calibración de A2C respecto a entornos vectorizados (limitación 3 de la sección \ref{sec:resultados_iter3}) motivan dos extensiones complementarias: (a) entrenar cada algoritmo con $N \geq 5$ \textit{seeds} y reportar media$\pm$desviación según la metodología recomendada por \citet{henderson2018deeprl}; y (b) integrar entornos vectorizados (\texttt{SubprocVecEnv} con $4$--$8$ envs paralelos) en el ciclo de entrenamiento, lo que requiere adaptar los \textit{callbacks} académicos del proyecto (\texttt{AcademicMonitorCallback}, \texttt{OverfitDetectorCallback}) para agregar correctamente las métricas de \textit{train reward} y \textit{gap} cuando provienen de múltiples envs simultáneos. Una prueba preliminar de esta línea reveló que la implementación actual de los \textit{callbacks} produce métricas \texttt{nan} bajo \texttt{DummyVecEnv} con $n_{\mathrm{envs}}=4$, disparando un \textit{early stopping} prematuro; el código del proyecto ya expone el parámetro \texttt{n\_envs} en el \textit{endpoint} de entrenamiento, pero su uso productivo queda condicionado a la adaptación mencionada de los \textit{callbacks}.
+\end{enumerate}
+
+\section{Vinculación con los Objetivos de Desarrollo Sostenible}
+\label{sec:conclusiones_ods}
+
+Más allá de las contribuciones técnicas, el trabajo guarda relación con los objetivos de la Agenda 2030 ya identificados en el capítulo introductorio. La conclusión del trabajo permite revisitarlos a la luz de los resultados:
+
+\begin{itemize}
+    \item \textbf{ODS 8 — Trabajo decente y crecimiento económico.} El sistema desarrollado contribuye a una gestión patrimonial cuantitativa más rigurosa, con métricas de riesgo explícitas (\textit{Maximum Drawdown}, volatilidad anualizada) integradas en la propia función objetivo del agente. Esto facilita una toma de decisiones financiera basada en evidencia frente a la dependencia de la intuición del gestor.
+
+    \item \textbf{ODS 9 — Industria, innovación e infraestructura.} El trabajo aplica técnicas de aprendizaje por refuerzo profundo, propias de la frontera tecnológica del aprendizaje automático, a un problema clásico de la gestión de carteras. La arquitectura de microservicios subyacente está diseñada para reproducibilidad y trazabilidad operativa, en línea con las exigencias de los entornos productivos modernos.
+
+    \item \textbf{ODS 12 — Producción y consumo responsables.} La adopción de procesos de decisión cuantitativos, reproducibles y trazables favorece una gestión basada en evidencia, reduciendo la dependencia de decisiones discrecionales y contribuyendo a un uso más eficiente del capital invertido.
+\end{itemize}
+
+\section{Cierre}
+\label{sec:conclusiones_cierre}
+
+Este trabajo ha demostrado que un agente DRL con función de recompensa multiobjetivo puede aprender una política dinámica de asignación de carteras híbridas que (i) supera consistentemente al azar, (ii) ofrece un perfil retorno/riesgo competitivo frente a \textit{baselines} clásicas y (iii) se calibra de forma robusta frente a variaciones de los hiperparámetros de la recompensa. Las limitaciones identificadas no invalidan los hallazgos sino que delimitan el alcance del trabajo y orientan las líneas naturales de continuación. La integración de criptoactivos institucionales en carteras tradicionales es ya una realidad operativa; la pregunta abierta es qué marco metodológico permite gestionarla con rigor. El presente trabajo aporta evidencia empírica de que el aprendizaje por refuerzo profundo es una respuesta defendible a esa pregunta, sin presentarse como solución única ni definitiva.
+
 \chapter{Glosario}
 
 \textit{Deep Reinforcement Learning} (DRL), \textit{Asset Allocation}, ETFs de Criptomonedas, Optimización de Carteras, PPO (\textit{Proximal Policy Optimization}), Finanzas Cuantitativas.
@@ -733,6 +1197,45 @@ En ambos esquemas, los hiperparámetros del entrenamiento son idénticos a los d
 \end{comment}
 \newpage
 \appendix
+
+\chapter{Frontend Angular: Capa de Presentación}
+\label{anx:angular}
+
+Este anexo describe brevemente el \textit{front-end} web desarrollado en Angular como herramienta complementaria de visualización y consulta. Tal y como se indica en el capítulo \ref{cap:materiales_y_metodos}, este componente \textbf{no constituye una contribución metodológica del trabajo}; se incluye aquí a título informativo para documentar la totalidad del artefacto entregado.
+
+\section{Propósito y Alcance}
+
+El \textit{front-end} expone los \textit{endpoints} de la API FastAPI en una interfaz gráfica que facilita la inspección de los experimentos sin necesidad de interactuar directamente con la \textit{shell} o con clientes HTTP. Su propósito es estrictamente operativo: permitir al usuario administrador disparar las fases del \textit{pipeline} y al usuario inversor consultar resultados ya generados. La lógica de modelado, entrenamiento y evaluación reside íntegramente en el \textit{back-end}.
+
+\section{Pantallas Implementadas}
+
+La aplicación se estructura en nueve pantallas agrupadas por rol:
+
+\begin{itemize}
+    \item \textbf{Acceso}: pantalla de \textit{login} con autenticación JWT contra el \textit{endpoint} \texttt{/auth/login}.
+    \item \textbf{Rol administrador}:
+    \begin{itemize}
+        \item \textit{Dashboard de estado}: visualiza el estado de las fases del \textit{pipeline} (\textit{screener}, datos, modelo, validaciones) mediante \textit{polling} al \textit{endpoint} \texttt{/estado}.
+        \item \textit{Universo}: consulta del último resultado del \textit{screener} y de los activos del universo activo.
+        \item \textit{Validación temporal}: visualización de los CSV de \textit{walk-forward} y \textit{expanding window} producidos por la fase 3.
+        \item \textit{Tabla final}: comparativa numérica entre el agente PPO y las \textit{baselines} sobre el periodo de test.
+    \end{itemize}
+    \item \textbf{Rol inversor}:
+    \begin{itemize}
+        \item \textit{Simulador}: configuración de una simulación personalizada (capital inicial, comisión, \textit{split} \textit{train}/\textit{test}) que se delega al \textit{endpoint} \texttt{/investor/simular}.
+        \item \textit{Resultados de simulación}: visualización de las curvas de \textit{equity}, \textit{drawdown} y métricas resumen para la simulación recién ejecutada.
+    \end{itemize}
+\end{itemize}
+
+\section{Tecnología y Arquitectura}
+
+El \textit{front-end} se desarrolla con Angular y emplea Plotly para la visualización de gráficas interactivas. Se autentica contra la API mediante \textit{Bearer Token} JWT inyectado en cada petición a través de un \textit{HTTP interceptor}, y mantiene el rol del usuario para condicionar las pantallas accesibles.
+
+La aplicación es agnóstica al algoritmo concreto del agente: lee los CSV y los \textit{endpoints} expuestos por el \textit{back-end} sin asumir nada sobre el algoritmo subyacente. Esto permite que la infraestructura de visualización siga siendo válida cuando el sistema se extiende con A2C, SAC u otros algoritmos.
+
+\section{Justificación de la Inclusión Únicamente como Anexo}
+
+Siguiendo la indicación del tutor académico, el \textit{front-end} no se contabiliza como aportación central del trabajo. La justificación es que el núcleo del TFM es el aprendizaje por refuerzo profundo aplicado a la gestión de carteras; el \textit{front-end} es exclusivamente una capa de presentación. Su descripción detallada se mantiene en este anexo y, con mayor profundidad técnica, en el repositorio del código fuente (carpeta \texttt{frontend-angular/}).
 
 
 \end{document}
