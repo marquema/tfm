@@ -127,6 +127,9 @@ def run_sensitivity_analysis(
     prices_path: str = 'data/original_prices.csv',
     total_timesteps: int = 200000,
     split_pct: float = 0.8,
+    reward_type: str = 'sharpe',
+    alpha: float = 0.5,
+    beta: float = 0.5,
 ) -> pd.DataFrame:
     """
     Ejecuta el análisis de sensibilidad completo de la función de recompensa.
@@ -277,16 +280,20 @@ def run_sensitivity_analysis(
 
         # ── 1. Entornos con (phi, gamma) específicos de esta config
         # Los entornos toman los mismos CSVs y el mismo split_idx que las
-        # otras configs. La ÚNICA diferencia entre las 4 ejecucioes son los
+        # otras configs. La ÚNICA diferencia entre las 4 ejecuciones son los
         # valores de phi y gamma → cualquier diferencia en métricas es
         # atribuible al reward, no a azar de datos.
+        # `reward_type` (sharpe/dual) y alpha/beta se mantienen FIJOS entre
+        # configs: el sensitivity barre solo phi/gamma. Para barrer reward_type
+        # se ejecuta el sensitivity dos veces (una con sharpe, otra con dual).
+        env_kwargs = dict(reward_type=reward_type, alpha=alpha, beta=beta)
         train_env = PortfolioEnv(
             features_path, prices_path,
-            end_idx=split_idx, phi=phi, gamma=gamma,
+            end_idx=split_idx, phi=phi, gamma=gamma, **env_kwargs,
         )
         eval_env = PortfolioEnv(
             features_path, prices_path,
-            start_idx=split_idx, phi=phi, gamma=gamma,
+            start_idx=split_idx, phi=phi, gamma=gamma, **env_kwargs,
         )
 
         # ── 2. EvalCallback: nos guarda el MEJOR modelo durante el train 
@@ -338,7 +345,7 @@ def run_sensitivity_analysis(
         # paso a paso para construir la curva de equity.
         test_env = PortfolioEnv(
             features_path, prices_path,
-            start_idx=split_idx, phi=phi, gamma=gamma,
+            start_idx=split_idx, phi=phi, gamma=gamma, **env_kwargs,
         )
         obs, _ = test_env.reset()
         done = False

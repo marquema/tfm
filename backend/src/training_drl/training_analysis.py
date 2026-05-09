@@ -73,8 +73,90 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, A2C, SAC
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+
+
+SUPPORTED_ALGORITHMS = ('PPO', 'A2C', 'SAC')
+
+
+def _build_drl_model(algorithm: str, train_env, learning_rate: float, n_envs: int = 1):
+    """Construye el modelo DRL según el algoritmo solicitado.
+
+    Si ``n_envs > 1`` los hiperparámetros on-policy (PPO/A2C) se ajustan para
+    mantener un buffer total constante: ``n_steps_efectivo = n_steps_base / n_envs``.
+    Esto preserva la cantidad de transiciones por update mientras paraleliza
+    la recolección de experiencia, reduciendo varianza del gradiente.
+
+    Hiperparámetros calibrados:
+      - PPO: configuración base del TFM (lr=1e-4, n_steps=2048, batch=128,
+        clip=0.1, MLP 256x256). Estable en series financieras ruidosas.
+      - A2C: on-policy síncrono. n_steps=5 (defecto SB3), gae_lambda=1.0.
+        Misma red 256x256 para comparabilidad. lr ligeramente superior por
+        actualizaciones más frecuentes.
+      - SAC: off-policy con replay buffer + entropía adaptativa. lr=3e-4,
+        buffer_size=100k, batch=256, train_freq=1, ent_coef='auto'.
+    """
+    algo = (algorithm or 'PPO').upper()
+    if algo not in SUPPORTED_ALGORITHMS:
+        raise ValueError(
+            f"Algoritmo no soportado: {algorithm!r}. "
+            f"Use uno de {SUPPORTED_ALGORITHMS}."
+        )
+
+    n_envs = max(1, int(n_envs))
+
+    if algo == 'PPO':
+        # n_steps_eff por env: mantenemos buffer total ≈ 2048 transitions/update
+        n_steps_eff = max(2048 // n_envs, 64)
+        return PPO(
+            "MlpPolicy",
+            train_env,
+            learning_rate=learning_rate,
+            n_steps=n_steps_eff,
+            batch_size=128,
+            clip_range=0.1,
+            ent_coef=0.01,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            policy_kwargs=dict(net_arch=[256, 256]),
+            verbose=1,
+            tensorboard_log="./logs/",
+        )
+    if algo == 'A2C':
+        # n_steps_eff: mantenemos buffer total ≈ 32 transitions/update
+        n_steps_eff = max(32 // n_envs, 4)
+        return A2C(
+            "MlpPolicy",
+            train_env,
+            learning_rate=3e-4,
+            n_steps=n_steps_eff,
+            gae_lambda=0.95,
+            ent_coef=0.01,
+            vf_coef=0.5,
+            max_grad_norm=0.5,
+            policy_kwargs=dict(net_arch=[256, 256]),
+            verbose=1,
+            tensorboard_log="./logs/",
+        )
+    # SAC: off-policy, n_envs no escala buffer; suele usarse con 1 env
+    return SAC(
+        "MlpPolicy",
+        train_env,
+        learning_rate=3e-4,
+        buffer_size=100_000,
+        learning_starts=1_000,
+        batch_size=256,
+        tau=0.005,
+        gamma=0.99,
+        train_freq=4,
+        gradient_steps=1,
+        ent_coef='auto',
+        policy_kwargs=dict(net_arch=[256, 256]),
+        verbose=1,
+        tensorboard_log="./logs/",
+    )
 
 try:
     from src.training_drl.environment_trading import PortfolioEnv
@@ -319,6 +401,267 @@ class AcademicMonitorCallback(BaseCallback):
         return self.metrics
 
 
+class A2CMonitorCallback(BaseCallback):
+    """
+    Captura métricas internas de A2C durante el entrenamiento.
+
+    A2C carece de los mecanismos específicos de PPO (clip_range, KL contra
+    la política antigua), por lo que este callback monitoriza un conjunto
+    distinto de señales:
+
+      - entropy_loss: igual que en PPO, mide la exploración residual.
+      - policy_loss: pérdida del actor (gradiente de política).
+      - value_loss: error de la red de valor.
+      - explained_variance: R² de la value function.
+      - learning_rate: imprescindible si se usa schedule.
+    """
+
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+        self.metrics = {
+            'timesteps':      [],
+            'entropy':        [],
+            'policy_loss':    [],
+            'value_loss':     [],
+            'explained_var':  [],
+            'learning_rate':  [],
+        }
+
+    def _on_step(self) -> bool:
+        return True
+
+    def _on_rollout_end(self) -> None:
+        logger = self.model.logger
+        if not hasattr(logger, 'name_to_value'):
+            return
+        vals = logger.name_to_value
+        self.metrics['timesteps'].append(self.num_timesteps)
+        self.metrics['entropy'].append(vals.get('train/entropy_loss', np.nan))
+        self.metrics['policy_loss'].append(vals.get('train/policy_loss', np.nan))
+        self.metrics['value_loss'].append(vals.get('train/value_loss', np.nan))
+        self.metrics['explained_var'].append(vals.get('train/explained_variance', np.nan))
+        self.metrics['learning_rate'].append(vals.get('train/learning_rate', np.nan))
+
+    def save_report(self, path: str = 'src/reports/training_diagnostics_a2c.png') -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        steps = self.metrics['timesteps']
+        if not steps:
+            print("[AVISO] A2C: sin métricas capturadas.")
+            return
+
+        fig = plt.figure(figsize=(16, 10))
+        fig.suptitle('Diagnóstico Académico del Entrenamiento A2C',
+                     fontsize=14, fontweight='bold')
+        gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
+
+        panels = [
+            (0, 0, 'entropy', 'Entropía de Política',
+             'Debe decrecer lentamente\n(colapso rápido = memorización)', 'steelblue'),
+            (0, 1, 'policy_loss', 'Policy Loss (Actor)',
+             'Tiende a 0 según converge\n(grandes oscilaciones = inestable)', 'orchid'),
+            (0, 2, 'value_loss', 'Value Function Loss',
+             'Debe estabilizarse\n(crecimiento = red de valor inestable)', 'tomato'),
+            (1, 0, 'explained_var', 'Explained Variance',
+             'Objetivo > 0.5\n(< 0 = peor que predecir la media)', 'mediumseagreen'),
+            (1, 1, 'learning_rate', 'Learning Rate',
+             'Constante o schedule\n(verifica si se usa decay)', 'mediumpurple'),
+        ]
+
+        for row, col, key, title, note, color in panels:
+            ax = fig.add_subplot(gs[row, col])
+            values = self.metrics[key]
+            ax.plot(steps, values, color=color, linewidth=1.5, alpha=0.85)
+            if len(values) >= 10:
+                window = max(5, len(values) // 10)
+                ma = pd.Series(values).rolling(window, min_periods=1).mean()
+                ax.plot(steps, ma, color=color, linewidth=2.5, alpha=0.5,
+                        linestyle='--')
+            if key == 'explained_var':
+                ax.axhline(0.5, color='green', linestyle=':', alpha=0.6, label='objetivo > 0.5')
+                ax.axhline(0.0, color='red',   linestyle=':', alpha=0.6, label='umbral crítico')
+            ax.set_title(title, fontsize=10, fontweight='bold')
+            ax.set_xlabel('Pasos de entrenamiento', fontsize=8)
+            ax.text(0.98, 0.02, note, transform=ax.transAxes,
+                    fontsize=7, ha='right', va='bottom', color='gray',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='lightyellow', alpha=0.7))
+            ax.grid(True, alpha=0.3)
+
+        # Panel 6: resumen diagnóstico
+        ax_text = fig.add_subplot(gs[1, 2])
+        ax_text.axis('off')
+        summary = self._diagnostic_summary()
+        ax_text.text(0.05, 0.95, summary, transform=ax_text.transAxes,
+                     fontsize=9, va='top', fontfamily='monospace',
+                     bbox=dict(boxstyle='round', facecolor='#f0f0f0', alpha=0.8))
+
+        plt.savefig(path, dpi=120, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Diagnóstico A2C guardado en {path}")
+
+    def _diagnostic_summary(self) -> str:
+        lines = ["DIAGNÓSTICO A2C\n" + "-" * 28]
+
+        def last_valid(k):
+            vals = [v for v in self.metrics[k] if not np.isnan(v)]
+            return vals[-1] if vals else None
+
+        ev = last_valid('explained_var')
+        if ev is not None:
+            status = "OK" if ev > 0.5 else ("REGULAR" if ev > 0 else "MAL")
+            lines.append(f"Explained Var: {ev:.3f} {status}")
+
+        pl = last_valid('policy_loss')
+        if pl is not None:
+            lines.append(f"Policy Loss final: {pl:+.4f}")
+
+        vl = last_valid('value_loss')
+        if vl is not None:
+            lines.append(f"Value Loss final: {vl:.4f}")
+
+        ent = self.metrics['entropy']
+        if len(ent) >= 10:
+            valid = [e for e in ent if not np.isnan(e)]
+            if len(valid) >= 2:
+                drop = (valid[0] - valid[-1]) / (abs(valid[0]) + 1e-8)
+                if drop > 0.8:
+                    lines.append("Entropía colapsó rápido\n   (posible memorización)")
+                elif drop < 0.1:
+                    lines.append("Entropía sin cambio\n   (agente no aprendió)")
+                else:
+                    lines.append("Entropía decrece gradualmente")
+
+        lines.append("\nNota: A2C carece de clip_range/KL")
+        lines.append("propios de PPO; estabilidad se infiere")
+        lines.append("de policy/value loss y entropía.")
+        return "\n".join(lines)
+
+
+class SACMonitorCallback(BaseCallback):
+    """
+    Captura métricas internas de SAC durante el entrenamiento.
+
+    SAC es off-policy con dos redes Q (críticos) y entropía adaptativa.
+    Sus métricas relevantes difieren de PPO/A2C:
+
+      - actor_loss: pérdida de la política (negativo del Q esperado).
+      - critic_loss: MSE de las redes Q frente al target.
+      - ent_coef: coeficiente de entropía (log_alpha auto-tuning).
+      - ent_coef_loss: pérdida del optimizador de log_alpha.
+      - learning_rate: del optimizador principal.
+    """
+
+    def __init__(self, verbose=0):
+        super().__init__(verbose)
+        self.metrics = {
+            'timesteps':      [],
+            'actor_loss':     [],
+            'critic_loss':    [],
+            'ent_coef':       [],
+            'ent_coef_loss':  [],
+            'learning_rate':  [],
+        }
+
+    def _on_step(self) -> bool:
+        return True
+
+    def _on_rollout_end(self) -> None:
+        logger = self.model.logger
+        if not hasattr(logger, 'name_to_value'):
+            return
+        vals = logger.name_to_value
+        self.metrics['timesteps'].append(self.num_timesteps)
+        self.metrics['actor_loss'].append(vals.get('train/actor_loss', np.nan))
+        self.metrics['critic_loss'].append(vals.get('train/critic_loss', np.nan))
+        self.metrics['ent_coef'].append(vals.get('train/ent_coef', np.nan))
+        self.metrics['ent_coef_loss'].append(vals.get('train/ent_coef_loss', np.nan))
+        self.metrics['learning_rate'].append(vals.get('train/learning_rate', np.nan))
+
+    def save_report(self, path: str = 'src/reports/training_diagnostics_sac.png') -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        steps = self.metrics['timesteps']
+        if not steps:
+            print("[AVISO] SAC: sin métricas capturadas.")
+            return
+
+        fig = plt.figure(figsize=(16, 10))
+        fig.suptitle('Diagnóstico Académico del Entrenamiento SAC',
+                     fontsize=14, fontweight='bold')
+        gs = gridspec.GridSpec(2, 3, figure=fig, hspace=0.4, wspace=0.35)
+
+        panels = [
+            (0, 0, 'actor_loss', 'Actor Loss',
+             'Negativo del Q esperado\n(decrece según mejora la política)', 'orchid'),
+            (0, 1, 'critic_loss', 'Critic Loss (Q-MSE)',
+             'MSE redes Q vs target\n(estabilización = aprendizaje OK)', 'tomato'),
+            (0, 2, 'ent_coef', 'Coeficiente de Entropía (log α)',
+             'Auto-tunado por SAC\n(decrece según converge)', 'steelblue'),
+            (1, 0, 'ent_coef_loss', 'Loss del log α',
+             'Optimiza el coef. entropía\n(oscilaciones = ajuste activo)', 'darkorange'),
+            (1, 1, 'learning_rate', 'Learning Rate',
+             'Constante o schedule\n(verifica si se usa decay)', 'mediumpurple'),
+        ]
+
+        for row, col, key, title, note, color in panels:
+            ax = fig.add_subplot(gs[row, col])
+            values = self.metrics[key]
+            ax.plot(steps, values, color=color, linewidth=1.5, alpha=0.85)
+            if len(values) >= 10:
+                window = max(5, len(values) // 10)
+                ma = pd.Series(values).rolling(window, min_periods=1).mean()
+                ax.plot(steps, ma, color=color, linewidth=2.5, alpha=0.5,
+                        linestyle='--')
+            ax.set_title(title, fontsize=10, fontweight='bold')
+            ax.set_xlabel('Pasos de entrenamiento', fontsize=8)
+            ax.text(0.98, 0.02, note, transform=ax.transAxes,
+                    fontsize=7, ha='right', va='bottom', color='gray',
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='lightyellow', alpha=0.7))
+            ax.grid(True, alpha=0.3)
+
+        # Panel 6: resumen
+        ax_text = fig.add_subplot(gs[1, 2])
+        ax_text.axis('off')
+        summary = self._diagnostic_summary()
+        ax_text.text(0.05, 0.95, summary, transform=ax_text.transAxes,
+                     fontsize=9, va='top', fontfamily='monospace',
+                     bbox=dict(boxstyle='round', facecolor='#f0f0f0', alpha=0.8))
+
+        plt.savefig(path, dpi=120, bbox_inches='tight')
+        plt.close(fig)
+        print(f"  Diagnóstico SAC guardado en {path}")
+
+    def _diagnostic_summary(self) -> str:
+        lines = ["DIAGNÓSTICO SAC\n" + "-" * 28]
+
+        def last_valid(k):
+            vals = [v for v in self.metrics[k] if not np.isnan(v)]
+            return vals[-1] if vals else None
+
+        al = last_valid('actor_loss')
+        if al is not None:
+            lines.append(f"Actor Loss final: {al:+.4f}")
+        cl = last_valid('critic_loss')
+        if cl is not None:
+            lines.append(f"Critic Loss final: {cl:.4f}")
+        ec = last_valid('ent_coef')
+        if ec is not None:
+            lines.append(f"Ent. coef final: {ec:.4f}")
+
+        if len(self.metrics['critic_loss']) >= 10:
+            valid = [v for v in self.metrics['critic_loss'] if not np.isnan(v)]
+            if len(valid) >= 10:
+                early = np.mean(valid[:len(valid)//5])
+                late  = np.mean(valid[-len(valid)//5:])
+                if late < early * 0.5:
+                    lines.append("Critic loss decreció >50%\n   (Q-fn aprendió bien)")
+                elif late > early:
+                    lines.append("Critic loss creció (inestable)")
+
+        lines.append("\nSAC es off-policy con replay buffer:")
+        lines.append("evaluar también la curva eval/")
+        lines.append("(overfitting tab) para validar.")
+        return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Walk-Forward Validation
 # ---------------------------------------------------------------------------
@@ -394,7 +737,10 @@ def walk_forward_validation(features_path: str,
                             train_days: int = 504,
                             test_days: int  = 252,
                             total_timesteps: int = 100000,
-                            raw_features_path: str = None) -> pd.DataFrame:
+                            raw_features_path: str = None,
+                            reward_type: str = 'sharpe',
+                            alpha: float = 0.5,
+                            beta: float = 0.5) -> pd.DataFrame:
     """
     Validación Walk-Forward con ventanas deslizantes de tamaño fijo.
 
@@ -566,8 +912,10 @@ def walk_forward_validation(features_path: str,
             # del análisis de sensibilidad (n_steps=2048, batch_size=128,
             # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
             # validación y modelo final entregado.
+            env_kwargs = dict(reward_type=reward_type, alpha=alpha, beta=beta)
             train_env = PortfolioEnv(env_features_path, prices_path,
-                                     start_idx=start, end_idx=split)
+                                     start_idx=start, end_idx=split,
+                                     **env_kwargs)
             model = PPO(
                 "MlpPolicy", train_env,
                 learning_rate=LEARNING_RATE,
@@ -584,7 +932,8 @@ def walk_forward_validation(features_path: str,
 
             # Evaluación out-of-sample en la ventana de test
             test_env = PortfolioEnv(env_features_path, prices_path,
-                                    start_idx=split, end_idx=end)
+                                    start_idx=split, end_idx=end,
+                                    **env_kwargs)
             obs, _ = test_env.reset()
             done   = False
             values = [test_env.initial_balance]
@@ -760,7 +1109,10 @@ def expanding_window_validation(features_path: str,
                                  min_train_days: int = 504,
                                  test_days: int = 63,
                                  total_timesteps: int = 100000,
-                                 raw_features_path: str = None) -> pd.DataFrame:
+                                 raw_features_path: str = None,
+                                 reward_type: str = 'sharpe',
+                                 alpha: float = 0.5,
+                                 beta: float = 0.5) -> pd.DataFrame:
     """
     Validación Expanding Window: el conjunto de entrenamiento crece en cada ventana.
 
@@ -893,8 +1245,10 @@ def expanding_window_validation(features_path: str,
             # del análisis de sensibilidad (n_steps=2048, batch_size=128,
             # vf_coef=0.5, max_grad_norm=0.5) para garantizar coherencia entre
             # validación y modelo final entregado.
+            env_kwargs = dict(reward_type=reward_type, alpha=alpha, beta=beta)
             train_env = PortfolioEnv(env_features_path, prices_path,
-                                     start_idx=start, end_idx=split_idx)
+                                     start_idx=start, end_idx=split_idx,
+                                     **env_kwargs)
             model = PPO(
                 "MlpPolicy", train_env,
                 learning_rate=LEARNING_RATE,
@@ -911,7 +1265,8 @@ def expanding_window_validation(features_path: str,
 
             # Evaluación out-of-sample
             test_env = PortfolioEnv(env_features_path, prices_path,
-                                    start_idx=split_idx, end_idx=end)
+                                    start_idx=split_idx, end_idx=end,
+                                    **env_kwargs)
             obs, _ = test_env.reset()
             done   = False
             values = [test_env.initial_balance]
@@ -1243,7 +1598,12 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
                    total_timesteps: int = 500000,
                    split_pct: float = 0.8,
                    patience: int = 8,
-                   risk_profile: str = 'low_turnover') -> PPO:
+                   risk_profile: str = 'low_turnover',
+                   reward_type: str = 'sharpe',
+                   alpha: float = 0.5,
+                   beta: float = 0.5,
+                   algorithm: str = 'PPO',
+                   n_envs: int = 1):
     """
     Entrenamiento académico completo del agente PPO con todos los controles
     de calidad activos. Es la función "entrar a producir el modelo del TFM".
@@ -1306,25 +1666,80 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     profile = get_profile(risk_profile)
     phi, gamma = get_phi_gamma(risk_profile)
 
-    # Borrar reportes anteriores para evitar mostrar datos incoherentes
-    for old_file in ['src/reports/training_diagnostics.png',
-                     'src/reports/overfitting_analysis.png']:
+    algo = (algorithm or 'PPO').upper()
+    if algo not in SUPPORTED_ALGORITHMS:
+        raise ValueError(
+            f"Algoritmo no soportado: {algorithm!r}. "
+            f"Use uno de {SUPPORTED_ALGORITHMS}."
+        )
+
+    # Borrar SOLO los reportes del algoritmo que vamos a entrenar.
+    # Cada algoritmo tiene sus propios diagnostics_{algo} y overfitting_{algo}
+    # — así un retrain de A2C nunca borra los PNGs de PPO/SAC y viceversa.
+    algo_lower = algo.lower()
+    if algo == 'PPO':
+        # Compat: PPO mantiene los nombres clásicos sin sufijo
+        old_files = [
+            'src/reports/training_diagnostics.png',
+            'src/reports/overfitting_analysis.png',
+        ]
+    else:
+        old_files = [
+            f'src/reports/training_diagnostics_{algo_lower}.png',
+            f'src/reports/overfitting_analysis_{algo_lower}.png',
+        ]
+    for old_file in old_files:
         if os.path.exists(old_file):
             os.remove(old_file)
 
+    if algo == 'PPO':
+        best_model_dir = './models/best_model_academic/'
+        final_model_path = 'models/ppo_academic_final'
+    else:
+        best_model_dir = f'./models/best_model_academic_{algo.lower()}/'
+        final_model_path = f'models/{algo.lower()}_academic_final'
+
+    # SAC es off-policy: VecEnv no aplica (el replay buffer ya descorrelaciona).
+    # Forzamos n_envs=1 si el algoritmo es SAC para evitar configuración inválida.
+    n_envs_eff = max(1, int(n_envs))
+    if algo == 'SAC' and n_envs_eff > 1:
+        print(f"  [INFO] SAC ignora n_envs>1 (off-policy); usando n_envs=1.")
+        n_envs_eff = 1
+
     print("=" * 60)
-    print("ENTRENAMIENTO ACADÉMICO CON VALIDACIÓN TEMPORAL")
+    print("ENTRENAMIENTO ACADEMICO CON VALIDACION TEMPORAL")
+    print(f"  Algoritmo: {algo}")
     print(f"  Perfil de riesgo: {profile['name']} ({risk_profile})")
     print(f"  phi={phi}, gamma={gamma}")
+    print(f"  reward_type={reward_type}"
+          + (f"  (alpha={alpha}, beta={beta})" if reward_type == 'dual' else ""))
+    print(f"  n_envs paralelos: {n_envs_eff}")
     print("=" * 60)
 
     df_f = pd.read_csv(features_path, index_col=0)
     split_idx = int(len(df_f) * split_pct)
 
-    train_env = PortfolioEnv(features_path, prices_path,
-                             end_idx=split_idx, phi=phi, gamma=gamma)
+    env_kwargs = dict(phi=phi, gamma=gamma,
+                      reward_type=reward_type, alpha=alpha, beta=beta)
+
+    # Construcción del train_env:
+    #   - n_envs=1 → entorno simple (compat hacia atrás, SAC siempre por aquí).
+    #   - n_envs>1 → DummyVecEnv (paraleliza vectorización en mismo proceso).
+    #     Evitamos SubprocVecEnv para sortear el problema de pickling de
+    #     PortfolioEnv en Windows; DummyVecEnv ya da el beneficio de menor
+    #     varianza del gradiente (PPO promedia sobre n_envs trayectorias).
+    if n_envs_eff == 1:
+        train_env = PortfolioEnv(features_path, prices_path,
+                                 end_idx=split_idx, **env_kwargs)
+    else:
+        def _make_train_env():
+            return PortfolioEnv(features_path, prices_path,
+                                end_idx=split_idx, **env_kwargs)
+        train_env = DummyVecEnv([_make_train_env for _ in range(n_envs_eff)])
+
+    # eval_env: siempre single-env (EvalCallback acepta single env)
     eval_env  = PortfolioEnv(features_path, prices_path,
-                             start_idx=split_idx, phi=phi, gamma=gamma)
+                             start_idx=split_idx, **env_kwargs)
 
     # ── eval_freq adaptativo ──────────────────────────────────────────────
     # ¿Cada cuántos pasos del modelo evaluamos en out-of-sample? Si
@@ -1356,8 +1771,13 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     print(f"  Evaluaciones previstas:  {n_total_evals}")
     print(f"  Patience efectiva:       {effective_patience} evaluaciones sin mejora")
 
-    # Callbacks
-    monitor_cb  = AcademicMonitorCallback(verbose=0)
+    # Callbacks: monitor algo-específico que captura métricas nativas
+    if algo == 'PPO':
+        monitor_cb = AcademicMonitorCallback(verbose=0)
+    elif algo == 'A2C':
+        monitor_cb = A2CMonitorCallback(verbose=0)
+    else:  # SAC
+        monitor_cb = SACMonitorCallback(verbose=0)
     overfit_cb  = OverfitDetectorCallback(
         eval_env=eval_env,
         eval_freq=eval_freq,
@@ -1368,7 +1788,7 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
     # EvalCallback guarda el mejor modelo según reward medio
     eval_cb = EvalCallback(
         eval_env,
-        best_model_save_path='./models/best_model_academic/',
+        best_model_save_path=best_model_dir,
         log_path='./logs/academic/',
         eval_freq=eval_freq,
         n_eval_episodes=3,
@@ -1438,36 +1858,33 @@ def train_academic(features_path: str = 'data/normalized_features.csv',
 
 
 
-    model = PPO(
-        "MlpPolicy",
-        train_env,
-        learning_rate=LEARNING_RATE,  # 1e-4 — actualizaciones más graduales (defecto: 3e-4)
-        n_steps=2048,# más experiencia entre updates (defecto: 1024)
-        batch_size=128,# gradientes más estables (defecto: 64)
-        clip_range=CLIP_RANGE, # 0.1 — frena cambios bruscos de política (defecto: 0.2)
-        ent_coef=0.01,  # exploración: peso de la entropía en la pérdida
-        vf_coef=0.5,# peso de la value loss en la pérdida total
-        max_grad_norm=0.5,  # clipping de gradientes para evitar explosiones
-        policy_kwargs=dict(net_arch=[256, 256]),  # MLP, perceptron multicapa, de 2 capas ocultas
-        verbose=1,
-        tensorboard_log="./logs/"
-    )
+    model = _build_drl_model(algo, train_env, learning_rate=LEARNING_RATE, n_envs=n_envs_eff)
 
     print(f"\nIniciando entrenamiento (máx. {total_timesteps:,} pasos, "
           f"early stopping con paciencia={patience})...")
+
+    callbacks = [monitor_cb, overfit_cb, eval_cb]
+
     model.learn(
         total_timesteps=total_timesteps,
-        callback=[monitor_cb, overfit_cb, eval_cb]
+        callback=callbacks,
     )
 
-    # Guardar reportes
+    # Guardar reportes (paths algo-específicos para los 3 algoritmos)
     print("\nGenerando reportes de diagnóstico...")
-    monitor_cb.save_report('src/reports/training_diagnostics.png')
-    overfit_cb.save_curves('src/reports/overfitting_analysis.png')
+    if algo == 'PPO':
+        # Compatibilidad: PPO mantiene los nombres clásicos sin sufijo
+        diag_path = 'src/reports/training_diagnostics.png'
+        overfit_path = 'src/reports/overfitting_analysis.png'
+    else:
+        diag_path = f'src/reports/training_diagnostics_{algo_lower}.png'
+        overfit_path = f'src/reports/overfitting_analysis_{algo_lower}.png'
+    monitor_cb.save_report(diag_path)
+    overfit_cb.save_curves(overfit_path)
 
-    model.save("models/ppo_academic_final")
-    print("\nModelo final guardado en models/ppo_academic_final.zip")
-    print("Mejor modelo (por eval reward) en models/best_model_academic/")
+    model.save(final_model_path)
+    print(f"\nModelo final guardado en {final_model_path}.zip")
+    print(f"Mejor modelo (por eval reward) en {best_model_dir}")
 
     return model
 

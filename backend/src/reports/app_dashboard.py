@@ -54,7 +54,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, A2C, SAC
+
+ALGO_CLASSES = {"PPO": PPO, "A2C": A2C, "SAC": SAC}
 from src.training_drl.environment_trading import PortfolioEnv
 from src.pipeline_getdata.asset_registry import get_asset_info, get_display_name, get_tickers
 
@@ -67,9 +69,10 @@ from src.training_drl.risk_profiles import RISK_PROFILES
 
 
 @st.cache_data(ttl=60)
-def get_trained_model_info():
+def get_trained_model_info(algo: str = 'ppo'):
     """
-    Consulta la BD para recuperar el perfil de riesgo del último PPO entrenado.
+    Consulta la BD para recuperar el perfil de riesgo del último modelo entrenado
+    del algoritmo solicitado (PPO, A2C o SAC).
 
     Sobre el cache: `@st.cache_data(ttl=60)` significa que Streamlit
     cachea el resultado durante 60 segundos. Sin esto, cada interacción
@@ -91,7 +94,7 @@ def get_trained_model_info():
 
     db = SessionLocal()
     try:
-        model = universe_repo.get_latest_model(db, model_type="ppo")
+        model = universe_repo.get_latest_model(db, model_type=algo.lower())
         if model is None:
             return None
         metrics = model.train_metrics or {}
@@ -129,14 +132,72 @@ st.markdown(
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 st.sidebar.header("Configuración")
 
-model_path = st.sidebar.selectbox(
+MODEL_OPTIONS = {
+    "PPO — low_turnover sharpe (modelo del TFM)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_low_turnover_sharpe/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "PPO — aggressive sharpe": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_aggressive/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "PPO — low_turnover dual": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_dual/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "dual",
+    },
+    "PPO — best_model_academic (último entrenado)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "PPO — final (último step)": {
+        "algo": "PPO",
+        "path": "models/ppo_academic_final.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "A2C — best (calibrado, low_turnover)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "A2C — final (último step, calibrado)": {
+        "algo": "A2C",
+        "path": "models/a2c_academic_final.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — best (low_turnover)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — final (último step)": {
+        "algo": "SAC",
+        "path": "models/sac_academic_final.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+}
+model_label = st.sidebar.selectbox(
     "Modelo a evaluar",
-    options=[
-        "models/best_model_academic/best_model.zip",
-        "models/ppo_academic_final.zip",
-    ],
-    index=0
+    options=list(MODEL_OPTIONS.keys()),
+    index=0,
 )
+_sel = MODEL_OPTIONS[model_label]
+model_algo    = _sel["algo"]
+model_path    = _sel["path"]
+model_profile = _sel["profile"]
+model_reward  = _sel["reward"]
 commission  = st.sidebar.slider("Comisión por operación (%)", 0.0, 0.5, 0.1) / 100
 initial_bal = st.sidebar.number_input("Capital inicial ($)", value=10000, step=1000)
 split_pct   = st.sidebar.slider("Split train/test (%)", 60, 90, 80) / 100
@@ -174,23 +235,31 @@ prices_ok   = os.path.exists('data/original_prices.csv')
 model_ok    = os.path.exists(model_path)
 st.sidebar.markdown(f"{'✅' if features_ok else '❌'} Features CSV")
 st.sidebar.markdown(f"{'✅' if prices_ok   else '❌'} Precios CSV")
-st.sidebar.markdown(f"{'✅' if model_ok    else '❌'} Modelo PPO")
+st.sidebar.markdown(f"{'✅' if model_ok    else '❌'} Modelo {model_algo}")
 
-# ─── Perfil de riesgo del PPO entrenado ──────────────────────────────────────
-model_info = get_trained_model_info()
+# ─── Perfil de riesgo del modelo seleccionado ────────────────────────────────
+# Metadata viene del propio MODEL_OPTIONS (atada al fichero), no de la BD,
+# porque la BD solo guarda el último registro por algoritmo y los backups
+# anteriores de PPO/A2C apuntarían a metadata equivocada.
+_profile_def = RISK_PROFILES.get(model_profile, RISK_PROFILES['low_turnover'])
+model_info = {
+    'risk_profile': model_profile,
+    'name': _profile_def['name'],
+    'phi': _profile_def['phi'],
+    'gamma': _profile_def['gamma'],
+    'description': _profile_def['description'],
+    'reward_type': model_reward,
+    'algorithm': model_algo,
+}
 st.sidebar.markdown("---")
-st.sidebar.markdown("**Perfil de riesgo PPO**")
-if model_info:
-    st.sidebar.markdown(
-        f"🎯 **{model_info['name']}** (`{model_info['risk_profile']}`)"
-    )
-    st.sidebar.caption(
-        f"φ = {model_info['phi']} · γ = {model_info['gamma']}  \n"
-        f"Pasos: {model_info['steps']:,}  \n"
-        f"Entrenado: {model_info['trained_at']}"
-    )
-else:
-    st.sidebar.caption("Sin info en BD (modelo legacy o sin registrar).")
+st.sidebar.markdown("**Modelo cargado**")
+st.sidebar.markdown(
+    f"🎯 **{model_info['algorithm']}** · **{model_info['name']}** (`{model_info['risk_profile']}`)"
+)
+st.sidebar.caption(
+    f"φ = {model_info['phi']} · γ = {model_info['gamma']}  \n"
+    f"Recompensa: `{model_info['reward_type']}`"
+)
 
 
 # ─── Carga de datos ───────────────────────────────────────────────────────────
@@ -223,14 +292,13 @@ st.info(
 )
 
 # Banner con el perfil de riesgo del modelo cargado
-if model_info:
-    col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 2])
-    col_a.metric("Perfil de riesgo", model_info['name'])
-    col_b.metric("φ (drawdown)", model_info['phi'])
-    col_c.metric("γ (turnover)", model_info['gamma'])
-    col_d.metric("Pasos entrenamiento", f"{model_info['steps']:,}" if model_info['steps'] else "?")
-    with st.expander("¿Qué significa este perfil?"):
-        st.markdown(model_info['description'])
+col_a, col_b, col_c, col_d = st.columns([2, 1, 1, 2])
+col_a.metric("Algoritmo · Perfil", f"{model_info['algorithm']} · {model_info['name']}")
+col_b.metric("φ (drawdown)", model_info['phi'])
+col_c.metric("γ (turnover)", model_info['gamma'])
+col_d.metric("Recompensa", model_info['reward_type'])
+with st.expander("¿Qué significa este perfil?"):
+    st.markdown(model_info['description'])
 
 
 # ─── Constantes visuales ──────────────────────────────────────────────────────
@@ -380,7 +448,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             commission=commission,
             initial_balance=initial_bal
         )
-        model = PPO.load(model_path)
+        model = ALGO_CLASSES[model_algo].load(model_path)
         obs, _ = env_test.reset()
         done   = False
         ppo_equity      = [initial_bal]
@@ -679,13 +747,31 @@ de cada ventana, para que puedas cruzarlos con eventos de mercado conocidos
 (COVID 2020, bear market 2022, rally 2023, corrección cripto 2025...).
         """)
 
+    # PNG paths algo-aware: cada algoritmo tiene su panel de diagnóstico
+    # nativo con métricas específicas. PPO conserva los nombres clásicos
+    # sin sufijo por compatibilidad; A2C/SAC usan sufijo _{algo}.
+    if model_algo == 'PPO':
+        diag_path = 'src/reports/training_diagnostics.png'
+        overfit_path = 'src/reports/overfitting_analysis.png'
+    else:
+        diag_path = f'src/reports/training_diagnostics_{model_algo.lower()}.png'
+        overfit_path = f'src/reports/overfitting_analysis_{model_algo.lower()}.png'
+
     col_r1, col_r2 = st.columns(2)
+    diag_desc_map = {
+        'PPO': "Entropía, value loss, explained variance, KL y clip fraction. "
+               "Confirman que el algoritmo PPO convergió de forma estable.",
+        'A2C': "Entropía, policy loss, value loss, explained variance y learning rate. "
+               "Métricas nativas de A2C (sin clipping, sin KL contra política antigua).",
+        'SAC': "Actor loss, critic loss (Q-MSE), coeficiente de entropía adaptativo "
+               "y learning rate. Métricas nativas off-policy de SAC.",
+    }
+    diag_desc = diag_desc_map.get(model_algo, "Diagnóstico interno del algoritmo.")
     for col, file_path, title, desc in [
-        (col_r1, 'src/reports/training_diagnostics.png',
+        (col_r1, diag_path,
          "1. Salud del entrenamiento",
-         "Entropía, value loss, explained variance, KL y clip fraction. "
-         "Confirman que el algoritmo PPO convergió de forma estable."),
-        (col_r2, 'src/reports/overfitting_analysis.png',
+         diag_desc),
+        (col_r2, overfit_path,
          "2. ¿Memorizó o aprendió?",
          "Reward en datos de train vs datos de evaluación nunca vistos. "
          "Si las dos curvas van juntas, el agente generalizó correctamente."),

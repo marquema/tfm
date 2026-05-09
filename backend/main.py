@@ -613,6 +613,11 @@ async def validate_data():
 async def start_training(background_tasks: BackgroundTasks,
                                  steps: int = 500000, patience: int = 8,
                                  risk_profile: str = 'low_turnover',
+                                 reward_type: str = 'sharpe',
+                                 alpha: float = 0.5,
+                                 beta: float = 0.5,
+                                 algorithm: str = 'PPO',
+                                 n_envs: int = 1,
                                  admin: User = Depends(require_admin),
                                  db: Session = Depends(get_db)):
     """
@@ -717,6 +722,7 @@ async def start_training(background_tasks: BackgroundTasks,
           comparativas posteriores (sensitivity analysis cruza con esta información para validar la robustez de la calibración).
     """
     from src.training_drl.risk_profiles import get_profile
+    from src.training_drl.training_analysis import SUPPORTED_ALGORITHMS
 
     # Validar perfil
     try:
@@ -724,14 +730,23 @@ async def start_training(background_tasks: BackgroundTasks,
     except ValueError as e:
         return {"error": str(e)}
 
+    algo = (algorithm or 'PPO').upper()
+    if algo not in SUPPORTED_ALGORITHMS:
+        return {"error": f"algorithm debe ser uno de {SUPPORTED_ALGORITHMS}"}
+
     universe = universe_repo.get_active_universe(db)
     if universe is None:
         return {"error": "Ejecuta primero /admin/fase1/preparar-datos"}
 
-    # Registrar modelo en BD con el perfil usado
+    if algo == 'PPO':
+        best_model_rel_path = "models/best_model_academic/best_model.zip"
+    else:
+        best_model_rel_path = f"models/best_model_academic_{algo.lower()}/best_model.zip"
+
+    # Registrar modelo en BD con el perfil y algoritmo usados
     model_record = universe_repo.register_model(
-        db, universe_id=universe.id, model_type="ppo",
-        model_path="models/best_model_academic/best_model.zip", steps=steps,
+        db, universe_id=universe.id, model_type=algo.lower(),
+        model_path=best_model_rel_path, steps=steps,
     )
 
     _create_lock('models/.training.lock')
@@ -741,9 +756,13 @@ async def start_training(background_tasks: BackgroundTasks,
             entrenar_academico(**kwargs)
             db_session = SessionLocal()
             try:
-                universe_repo.update_model_status(db_session, model_id, "ready",
-                                                  metrics={"risk_profile": risk_profile})
-                print(f"  [BD] Modelo PPO id={model_id} marcado como 'ready' "
+                universe_repo.update_model_status(
+                    db_session, model_id, "ready",
+                    metrics={"risk_profile": risk_profile,
+                             "algorithm": algo,
+                             "reward_type": reward_type},
+                )
+                print(f"  [BD] Modelo {algo} id={model_id} marcado como 'ready' "
                       f"(perfil: {risk_profile}).")
             finally:
                 db_session.close()
@@ -751,7 +770,7 @@ async def start_training(background_tasks: BackgroundTasks,
             db_session = SessionLocal()
             try:
                 universe_repo.update_model_status(db_session, model_id, "failed")
-                print(f"  [BD] Modelo PPO id={model_id} marcado como 'failed': {e}")
+                print(f"  [BD] Modelo {algo} id={model_id} marcado como 'failed': {e}")
             finally:
                 db_session.close()
         finally:
@@ -763,15 +782,28 @@ async def start_training(background_tasks: BackgroundTasks,
         total_timesteps=steps,
         patience=patience,
         risk_profile=risk_profile,
+        reward_type=reward_type,
+        alpha=alpha,
+        beta=beta,
+        algorithm=algo,
+        n_envs=n_envs,
     )
+    msg_reward = (f"reward={reward_type}"
+                  + (f" (alpha={alpha}, beta={beta})" if reward_type == 'dual' else ""))
     return {
-        "message": f"Entrenamiento iniciado (máx. {steps:,} pasos, patience={patience}, "
-                   f"perfil: {profile['name']}).",
+        "message": f"Entrenamiento {algo} iniciado (max. {steps:,} pasos, patience={patience}, "
+                   f"perfil: {profile['name']}, {msg_reward}).",
+        "algorithm": algo,
         "risk_profile": risk_profile,
         "phi": profile['phi'],
         "gamma": profile['gamma'],
+        "reward_type": reward_type,
+        "alpha": alpha,
+        "beta": beta,
+        "n_envs": n_envs,
         "universe_id": universe.id,
         "model_id": model_record.id,
+        "best_model_path": best_model_rel_path,
     }
 
 

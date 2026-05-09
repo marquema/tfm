@@ -104,6 +104,35 @@ def main():
     weights_arr = np.array(weights_log)
     print(f"\nBacktest reproducido: {weights_arr.shape[0]} pasos")
 
+    # ── Metricas financieras del modelo PPO actual ────────────────────────
+    equity_arr = np.array(equity_log)
+    initial = equity_arr[0]
+    final = equity_arr[-1]
+    daily_returns = np.diff(equity_arr) / equity_arr[:-1]
+    n_days = len(daily_returns)
+
+    total_return_pct = (final / initial - 1) * 100
+    cagr_pct = ((final / initial) ** (252 / n_days) - 1) * 100
+    vol_annual_pct = daily_returns.std() * np.sqrt(252) * 100
+    risk_free_daily = 0.04 / 252
+    excess_returns = daily_returns - risk_free_daily
+    sharpe = (excess_returns.mean() / (daily_returns.std() + 1e-8)) * np.sqrt(252)
+    downside = daily_returns[daily_returns < 0]
+    downside_vol = downside.std() * np.sqrt(252) if len(downside) > 0 else 1e-8
+    sortino = (excess_returns.mean() * 252) / (downside_vol + 1e-8)
+    running_max = np.maximum.accumulate(equity_arr)
+    drawdowns = (equity_arr - running_max) / running_max
+    mdd_pct = drawdowns.min() * 100
+
+    print(f"\nMETRICAS FINANCIERAS DEL MODELO ACTUAL")
+    print(f"  Retorno Total      : {total_return_pct:+.2f} %")
+    print(f"  CAGR               : {cagr_pct:+.2f} %")
+    print(f"  Volatilidad anual  : {vol_annual_pct:.2f} %")
+    print(f"  Sharpe Ratio       : {sharpe:.3f}")
+    print(f"  Sortino Ratio      : {sortino:.3f}")
+    print(f"  Max Drawdown       : {mdd_pct:.2f} %")
+    print(f"  Valor Final        : ${final:,.2f}")
+
     # ── 5. Analizar comportamiento del PPO ──────────────────────────────
     avg_weights = weights_arr.mean(axis=0)
     std_weights = weights_arr.std(axis=0)

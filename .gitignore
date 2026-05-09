@@ -21,6 +21,5 @@ dist/
 *.png
 *.csv
 backup/
-.claude/
 notas-tutor.md
 *.pdf

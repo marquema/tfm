@@ -115,7 +115,31 @@ class PortfolioEnv(gym.Env):
 
     def __init__(self, features_path, prices_path, initial_balance=10000,
                  commission=0.001, start_idx=0, end_idx=None, phi=0.02,
-                 gamma=0.01):
+                 gamma=0.01, reward_type='sharpe', alpha=0.5, beta=0.5):
+        """
+        Constructor del entorno PortfolioEnv.
+
+        El parametro `reward_type` selecciona la senal de recompensa positiva
+        que se combina con las penalizaciones por MDD y turnover:
+
+          - 'sharpe' (por defecto, configuracion base del TFM):
+                r_t = clip(Sharpe_rolling_20 - phi*MDD - gamma*Turnover, -1, 1)
+            Premia retorno ajustado por riesgo. Penaliza la volatilidad de
+            forma simetrica (incluso cuando es positiva), lo que tiende a
+            infraponderar activos volatiles aunque sean ganadores.
+
+          - 'dual' (iteracion 2 del TFM):
+                signal = alpha * Sharpe_rolling_20 + beta * log_return_norm
+                r_t    = clip(signal - phi*MDD - gamma*Turnover, -1, 1)
+            Combina retorno ajustado por riesgo (Sharpe) con retorno absoluto
+            (log_return). Permite al agente premiar la captura de outliers
+            ganadores volatiles que la version 'sharpe' tiende a infraponderar.
+            Por defecto alpha = beta = 0.5 (mezcla equilibrada).
+
+        Para compatibilidad hacia atras, `reward_type='sharpe'` reproduce
+        exactamente el comportamiento previo y los modelos entrenados con la
+        configuracion base siguen siendo validos sin cambios.
+        """
         super().__init__()
 
         # ── 1. Cargar features 
@@ -194,7 +218,18 @@ class PortfolioEnv(gym.Env):
         self.phi= phi
         self.gamma = gamma
 
-        # ── 7. Buffer para el Sharpe rolling 
+        # ── 6.bis Configuracion de la senal de recompensa positiva
+        # `reward_type`: 'sharpe' (configuracion base) o 'dual' (Sharpe + log_return).
+        # Validacion defensiva: cualquier valor distinto cae al default 'sharpe'.
+        if reward_type not in ('sharpe', 'dual'):
+            print(f"[WARN] reward_type='{reward_type}' no reconocido. "
+                  f"Usando 'sharpe' (configuracion base).")
+            reward_type = 'sharpe'
+        self.reward_type = reward_type
+        self.alpha = float(alpha)  # peso de Sharpe en reward 'dual'
+        self.beta  = float(beta)   # peso de log_return en reward 'dual'
+
+        # ── 7. Buffer para el Sharpe rolling
         # Guardamos los últimos 20 retornos para calcular la media/desviación
         # de la fórmula del Sharpe. 20 días ≈ 1 mes de trading: suficiente para
         # captar el régimen actual sin arrastrar mucho ruido del pasado.
@@ -527,19 +562,37 @@ class PortfolioEnv(gym.Env):
 
         # 6.D — Composición final del reward:
         #
+        # Configuracion 'sharpe' (base):
         #   R_t = Sharpe_rolling − φ · MDD(t) − γ · Turnover(t)
+        #   Premia retorno ajustado por riesgo. Penaliza la volatilidad de
+        #   forma simetrica.
         #
-        # Cada término aporta un objetivo distinto:
-        #   - Sharpe_rolling : "gana dinero, pero ajustado por riesgo".
-        #   - φ · MDD        : "no caigas mucho desde tu mejor momento".
-        #   - γ · Turnover   : "no operes por operar; cada movimiento cuesta".
-        # Los tres juntos producen carteras estables y rentables.
+        # Configuracion 'dual' (iteracion 2):
+        #   signal = α · Sharpe_rolling + β · log_return_norm
+        #   R_t    = signal − φ · MDD(t) − γ · Turnover(t)
+        #   Combina retorno ajustado por riesgo con retorno absoluto. El
+        #   componente de log_return premia la captura de outliers ganadores
+        #   (que en 'sharpe' quedan infraponderados al penalizarse su
+        #   volatilidad incluso cuando es positiva).
+        #
+        # En ambos casos, las penalizaciones por MDD y turnover son identicas:
+        #   - φ · MDD       : "no caigas mucho desde tu mejor momento".
+        #   - γ · Turnover  : "no operes por operar; cada movimiento cuesta".
         turnover         = float(np.sum(diff_weights))
         risk_penalty     = self.phi   * current_drawdown
         turnover_penalty = self.gamma * turnover
 
+        if self.reward_type == 'dual':
+            # log_return_norm: misma escala que sharpe_norm (acotado en [-1, 1])
+            # para que el alpha/beta sean ponderaciones interpretables sobre
+            # senales del mismo orden de magnitud.
+            log_return_norm = float(np.clip(log_return * 100.0, -1.0, 1.0))
+            reward_signal = self.alpha * sharpe_norm + self.beta * log_return_norm
+        else:  # 'sharpe' (default, configuracion base del TFM)
+            reward_signal = sharpe_norm
+
         reward = float(np.clip(
-            sharpe_norm - risk_penalty - turnover_penalty, -1.0, 1.0
+            reward_signal - risk_penalty - turnover_penalty, -1.0, 1.0
         ))
 
         # ── 7. Condición de quiebra 
