@@ -314,7 +314,7 @@ COLORES = {
 }
 
 NOMBRES = {
-    'IA_PPO':               'IA PPO (DRL)',
+    'IA_PPO':               f'IA {model_algo} (DRL)',  # algo dinámico según selección
     'Especulativo_HMM':     'Especulativo (GMM+KMeans)',
     'Equal_Weight_Mensual': 'Equal Weight',
     'Buy_and_Hold':         'Buy & Hold',
@@ -545,16 +545,21 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
             st.markdown(f"> {desc}")
             st.markdown("")
 
+    # Renombrar fila del agente al algoritmo seleccionado para que la tabla
+    # refleje qué se está evaluando (no siempre PPO).
+    agent_label = f'IA_{model_algo}'
+    df_metrics_display = df_metrics.rename(index={'IA_PPO': agent_label})
+
     def highlight_ppo(row):
         """
-        Resalta la fila del agente PPO en la tabla de métricas con un estilo
+        Resalta la fila del agente DRL en la tabla de métricas con un estilo
         de fondo azul oscuro para distinguirla visualmente de los baselines.
         """
         return ['background-color: #1e3a5f; color: white; font-weight: bold'
-                if row.name == 'IA_PPO' else '' for _ in row]
+                if row.name == agent_label else '' for _ in row]
 
     st.dataframe(
-        df_metrics.style.apply(highlight_ppo, axis=1).format("{:.2f}"),
+        df_metrics_display.style.apply(highlight_ppo, axis=1).format("{:.2f}"),
         use_container_width=True
     )
 
