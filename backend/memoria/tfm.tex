@@ -56,7 +56,7 @@
 
 \nomPDC{Ruben Perez Ibañez}
 \nomPRA{Nombre Profesorado Responsable}
-\titulac{Máster en Cienca de Datos}
+\titulac{Máster en Ciencia de Datos}
 \area{Área 4}
 \idioma{Castellano}
 \credits{15}
@@ -307,14 +307,16 @@ Dentro de los algoritmos de gradiente de política, \textit{Proximal Policy Opti
 
 Formalmente, sea $\pi_{\theta}$ la política parametrizada y $\hat{A}_t$ una estimación de la ventaja en el instante $t$. El objetivo recortado se define como:
 \begin{equation}
-L^{\mathrm{CLIP}}(\theta) = \hat{\mathbb{E}}_t \!\left[ \min\!\Big( r_t(\theta)\,\hat{A}_t,\; \mathrm{clip}\!\big(r_t(\theta),\, 1-\epsilon,\, 1+\epsilon\big)\,\hat{A}_t \Big) \right],
+L^{\mathrm{CLIP}}(\theta) = \hat{\mathbb{E}}_t \!\left[ \min\!\Big( \rho_t(\theta)\,\hat{A}_t,\; \mathrm{clip}\!\big(\rho_t(\theta),\, 1-\epsilon,\, 1+\epsilon\big)\,\hat{A}_t \Big) \right],
 \label{eq:ppo-clip}
 \end{equation}
 donde
 \begin{equation}
-r_t(\theta) = \frac{\pi_{\theta}(\mathbf{a}_t \mid \mathbf{s}_t)}{\pi_{\theta_{\mathrm{old}}}(\mathbf{a}_t \mid \mathbf{s}_t)}
+\rho_t(\theta) = \frac{\pi_{\theta}(\mathbf{a}_t \mid \mathbf{s}_t)}{\pi_{\theta_{\mathrm{old}}}(\mathbf{a}_t \mid \mathbf{s}_t)}
 \end{equation}
 es el cociente de probabilidades entre la política nueva y la antigua, y $\epsilon$ es un hiperparámetro que acota cuánto puede cambiar ese cociente en una actualización. La idea intuitiva es: si la nueva política se aleja demasiado de la anterior (más allá de $[1-\epsilon, 1+\epsilon]$), el operador $\min$ con la versión recortada actúa como freno y el gradiente deja de empujar en esa dirección. PPO logra así estabilidad sin necesidad de imponer la restricción explícita sobre la divergencia de Kullback-Leibler que sí emplea TRPO, que es notablemente más complejo de implementar.
+
+\noindent\textit{Aclaración notacional:} se utiliza $\rho_t(\theta)$ para el cociente de probabilidades de PPO; el símbolo $r_t$ se reserva para la recompensa del entorno definida en la sección \ref{sec:recompensa}.
 
 Esa estabilidad ha hecho de PPO el algoritmo de referencia en muchos estudios de \textit{trading} algorítmico. En entornos donde la señal es ruidosa y el horizonte de inversión es largo, el método de optimización marca la diferencia entre un agente que aprende y otro que oscila sin converger.
 
@@ -548,7 +550,7 @@ El entorno de simulación se ha implementado siguiendo la interfaz \textit{Gymna
     \begin{equation*}
         \mathbf{w}_t = \frac{\mathbf{a}_t}{\sum_i a_{t,i}},
     \end{equation*}
-    de modo que $\mathbf{w}_t^{\top}\mathbf{1}=1$ y $\mathbf{w}_t \geq \mathbf{0}$. Esta restricción define una cartera \textit{long-only}: solo se puede comprar, no vender en corto.
+    de modo que $\mathbf{w}_t^{\top}\mathbf{1}=1$ y $\mathbf{w}_t \geq \mathbf{0}$. Esta restricción define una cartera \textit{long-only}: solo se puede comprar, no vender en corto. Si $\sum_i a_{i,t} < \varepsilon$ (umbral $\varepsilon = 10^{-3}$ en la implementación), se aplica una cartera equiponderada $\mathbf{w}_t = \mathbf{1}/n$ como \textit{fallback}, lo que garantiza que la asignación esté siempre bien definida y evita la división por cero.
     \item \textbf{Dinámica del entorno}. Una vez calculados los pesos $\mathbf{w}_t$, el entorno hace tres cosas: aplica el rebalanceo, descuenta las comisiones (proporcionales al \textit{turnover}) y un \textit{slippage} parametrizable, y actualiza el valor de la cartera según los retornos del día. Después avanza un paso en la serie temporal de \textit{features} y devuelve el nuevo estado.
     \item \textbf{Recompensa}. Función multiobjetivo que mezcla retorno ajustado por riesgo con penalizaciones por riesgo realizado y rotación. Se formaliza en la sección \ref{sec:recompensa}.
 \end{itemize}
@@ -567,7 +569,15 @@ r_t = \mathrm{clip}\!\left(\,\mathrm{Sharpe}^{(20)}_t \;-\; \varphi \cdot \mathr
 \end{equation}
 donde:
 \begin{itemize}
-    \item $\mathrm{Sharpe}^{(20)}_t$ es el ratio de Sharpe calculado sobre los retornos diarios de la cartera en una ventana móvil de 20 días, normalizado para acotarse en un rango similar a $[-1, 1]$.
+    \item $\mathrm{Sharpe}^{(20)}_t$ es el ratio de Sharpe anualizado calculado sobre los retornos diarios de la cartera en una ventana móvil de 20 días, normalizado y acotado:
+    \begin{equation}
+    \mathrm{Sharpe}^{(20)}_t = \mathrm{clip}\!\left(
+    \frac{\bar{r}_{20}}{\sigma_{20} + \varepsilon} \cdot \frac{\sqrt{252}}{3},\,
+    -1,\, 1
+    \right),
+    \label{eq:sharpe_rolling}
+    \end{equation}
+    donde $\bar{r}_{20}$ y $\sigma_{20}$ son la media y la desviación típica poblacional (\texttt{ddof=0}) de los retornos diarios de la cartera en la ventana, $\varepsilon = 10^{-8}$ estabiliza el denominador, y se asume tasa libre de riesgo $r_f = 0$. El factor $\sqrt{252}/3$ anualiza el ratio (252 días hábiles por año) y lo escala al rango $[-1,1]$, evitando que valores extremos del Sharpe dominen el gradiente. Durante los primeros cuatro pasos del episodio, antes de acumular suficientes observaciones para la ventana (\textit{warm-up}), la señal se sustituye por el log-retorno escalado $\mathrm{clip}\!\left(100 \cdot \log(V_t/V_{t-1}),\, -1,\, 1\right)$.
     \item $\mathrm{MDD}_t \in [0, 1]$ es el \textit{Maximum Drawdown} actual respecto al máximo histórico del valor de cartera observado hasta el instante $t$.
     \item $T_t = \sum_i |w_{i,t} - w_{i,t-1}|$ es el \textit{turnover} del paso $t$, suma de los cambios absolutos en pesos.
     \item $\varphi$ y $\gamma$ son hiperparámetros que ponderan, respectivamente, la aversión al \textit{drawdown} y la aversión a la rotación. Su elección define el \textit{perfil de riesgo} del agente.
@@ -832,6 +842,8 @@ Momentum Top-3 (60d) & 603.9 & 134.2 & 39.5 & 2.25 & 3.29 & $-32.9$ \\ \hline
 \label{tab:resultados_baselines}
 \end{table}
 
+\noindent\textit{Nota sobre la convención del MDD:} en las tablas se reporta el \textit{Maximum Drawdown} como pérdida porcentual con signo negativo ($-26.99\,\%$ equivale a una caída del $26.99\,\%$ desde el máximo histórico). En la función de recompensa (sección \ref{sec:recompensa}), $\mathrm{MDD}_t \in [0,1]$ es positivo por construcción y entra restando.
+
 \noindent\textit{Nota sobre reproducibilidad}: PPO no es determinista. Cada vez que se entrena el mismo modelo con la misma configuración, el resultado puede diferir. Tres fuentes lo explican: la inicialización aleatoria de los pesos de la red, el muestreo estocástico de acciones durante cada paso de entrenamiento y el orden de los \textit{mini-batches} en cada actualización. Las métricas de la tabla corresponden al modelo final entrenado con la configuración \texttt{low\_turnover}, en una única ejecución. La práctica recomendada en DRL es repetir cada experimento con $N \geq 5$ \textit{seeds} y reportar la media junto con la desviación estándar \citep{henderson2018deeprl}; esta evaluación robusta se plantea como línea futura en el capítulo \ref{cap:conclusiones}.
 
 \subsection{Posicionamiento del agente PPO}
@@ -945,7 +957,7 @@ r_t^{\mathrm{dual}} = \mathrm{clip}\!\left(\,\alpha \cdot \mathrm{Sharpe}^{(20)}
 
 donde $\widetilde{\mathrm{LR}}_t = \mathrm{clip}(100 \cdot \log(V_t / V_{t-1}),\, -1,\, 1)$ es el log-retorno reescalado al mismo rango que el Sharpe normalizado, y $\alpha = \beta = 0.5$ reparte el peso al 50/50 entre ambos componentes.
 
-\textbf{Segunda variante}: deja la recompensa Sharpe del modelo base intacta, pero cambia el perfil de riesgo. Sustituye \texttt{low\_turnover} ($\varphi = 2.0$, $\gamma = 0.020$) por \texttt{aggressive} ($\varphi = 0.01$, $\gamma = 0.005$). En la práctica, esto reduce drásticamente la presión por evitar \textit{drawdowns} y rotación, dejándole al agente más libertad para concentrarse en activos volátiles si cree que merecen la pena.
+\textbf{Segunda variante}: deja la recompensa Sharpe del modelo base intacta, pero cambia el perfil de riesgo. Sustituye \texttt{low\_turnover} ($\varphi = 0.02$, $\gamma = 0.020$) por \texttt{aggressive} ($\varphi = 0.01$, $\gamma = 0.005$). En la práctica, esto reduce drásticamente la presión por evitar \textit{drawdowns} y rotación, dejándole al agente más libertad para concentrarse en activos volátiles si cree que merecen la pena.
 
 \subsection{Resultados Globales}
 
@@ -967,6 +979,8 @@ Max Drawdown (\%)         & $\mathbf{-26.99}$ & $-32.71$ & $-37.49$ \\ \hline
 \caption{Comparación controlada entre la configuración base (recompensa Sharpe + perfil \texttt{low\_turnover}) y dos variantes: recompensa dual + perfil \texttt{low\_turnover}, y recompensa Sharpe + perfil \texttt{aggressive}. Todas entrenan con el mismo presupuesto de 1\,500\,000 pasos.}
 \label{tab:resultados_iter2}
 \end{table}
+
+\noindent\textit{Nota:} MDD reportado con signo negativo como pérdida porcentual; ver convención completa en sección \ref{sec:resultados_baselines}.
 
 El resultado es claro y, a primera vista, contraintuitivo: la configuración base \textbf{domina en todas las métricas} a las dos variantes. Mejor Sharpe (1.88 vs 1.62 / 1.65), mejor Sortino (2.83 vs 2.20 / 2.24), mejor retorno (238.6\,\% vs 188.5\,\% / 230.9\,\%) y menor MDD ($-27.0$\,\% vs $-32.7$\,\% / $-37.5$\,\%). En este régimen, ninguna de las dos hipótesis de mejora se valida empíricamente. La explicación de por qué exige mirar dentro de cada política: qué activos compra y cuándo.
 
