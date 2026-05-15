@@ -1,0 +1,66 @@
+{
+  "best_params": {
+    "learning_rate": 8.468008575248325e-05,
+    "n_steps": 512,
+    "batch_size": 256,
+    "clip_range": 0.20027875293580222,
+    "ent_coef": 0.013311216080736894,
+    "gae_lambda": 0.9018526044866222,
+    "vf_coef": 0.978936896513396,
+    "max_grad_norm": 0.8827098485602951,
+    "varphi": 0.009445600138094694,
+    "gamma": 0.0020366442026830914
+  },
+  "runs": [
+    {
+      "seed": 0,
+      "sharpe": 0.458,
+      "sortino": 0.644,
+      "retorno_pct": NaN,
+      "cagr_pct": NaN,
+      "vol_anual_pct": NaN,
+      "mdd_pct": NaN,
+      "train_time_min": 45.75690851608912
+    },
+    {
+      "seed": 1,
+      "sharpe": 0.607,
+      "sortino": 0.796,
+      "retorno_pct": NaN,
+      "cagr_pct": NaN,
+      "vol_anual_pct": NaN,
+      "mdd_pct": NaN,
+      "train_time_min": 42.68200736840566
+    },
+    {
+      "seed": 2,
+      "sharpe": 0.307,
+      "sortino": 0.404,
+      "retorno_pct": NaN,
+      "cagr_pct": NaN,
+      "vol_anual_pct": NaN,
+      "mdd_pct": NaN,
+      "train_time_min": 45.21676154534022
+    },
+    {
+      "seed": 3,
+      "sharpe": 0.553,
+      "sortino": 0.696,
+      "retorno_pct": NaN,
+      "cagr_pct": NaN,
+      "vol_anual_pct": NaN,
+      "mdd_pct": NaN,
+      "train_time_min": 46.580690801143646
+    },
+    {
+      "seed": 4,
+      "sharpe": 0.443,
+      "sortino": 0.58,
+      "retorno_pct": NaN,
+      "cagr_pct": NaN,
+      "vol_anual_pct": NaN,
+      "mdd_pct": NaN,
+      "train_time_min": 28.50204259554545
+    }
+  ]
+}

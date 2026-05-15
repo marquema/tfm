@@ -250,8 +250,12 @@ def objective_ppo(
         fold_mean = float(np.mean(seed_sharpes))
         fold_sharpes.append(fold_mean)
 
-        # Pruner intermedio (cada fold completado)
-        trial.report(fold_mean, step=fold_idx)
+        # Pruner intermedio (cada fold completado).
+        # step = pasos cómputo acumulados (no fold_idx) para que MedianPruner
+        # con n_warmup_steps=100000 active correctamente tras fold 0.
+        # Cada fold ejecuta N_SEEDS entrenamientos de N_HPO_STEPS pasos.
+        steps_completed = (fold_idx + 1) * N_HPO_STEPS * N_SEEDS
+        trial.report(fold_mean, step=steps_completed)
         if trial.should_prune():
             raise optuna.TrialPruned()
 
