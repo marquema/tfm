@@ -1,11 +1,11 @@
 """
-Eval baselines honest sobre TEST n=17 (universo data leakage fixed).
+Eval baselines sobre TEST n=17 (universo corregido tras data leakage fix).
 
 6 estrategias: Equal-Weight, Buy & Hold, 60/40, Markowitz MV, Random Uniform, Momentum Top-K.
 
 Coste: ~2-3 min (Markowitz dominante por scipy.optimize cada mes).
 
-Resultado se documenta en memoria §4.4 tabla baselines honest.
+Resultado se documenta en memoria §4.4 tabla baselines del universo corregido.
 
 Uso:
     cd backend
@@ -32,7 +32,7 @@ TRAIN_SPLIT_PCT = 0.80
 
 def main():
     print('=' * 70)
-    print('EVAL BASELINES HONEST sobre TEST (n=17 universo data-leakage fixed)')
+    print('EVAL BASELINES CORREGIDO sobre TEST (n=17 universo post data-leakage fix)')
     print('=' * 70)
 
     df_p = pd.read_csv(PRICES_PATH, index_col=0)

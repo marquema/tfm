@@ -68,53 +68,6 @@ except ImportError:
 from src.training_drl.risk_profiles import RISK_PROFILES
 
 
-@st.cache_data(ttl=60)
-def get_trained_model_info(algo: str = 'ppo'):
-    """
-    Consulta la BD para recuperar el perfil de riesgo del último modelo entrenado
-    del algoritmo solicitado (PPO, A2C o SAC).
-
-    Sobre el cache: `@st.cache_data(ttl=60)` significa que Streamlit
-    cachea el resultado durante 60 segundos. Sin esto, cada interacción
-    del usuario (mover un slider) dispararía una consulta nueva a la BD
-    — innecesario porque la metadata del modelo no cambia segundo a
-    segundo. TTL bajo (60s) garantiza que tras reentrenar un modelo, el
-    dashboard refleje los nuevos valores casi inmediatamente sin
-    requerir restart manual.
-
-    Devuelve dict con: risk_profile, phi, gamma, steps, trained_at.
-    Si no hay modelo en BD (o falla la conexión), devuelve None — el
-    dashboard sigue funcionando, solo pierde el banner de perfil.
-    """
-    try:
-        from src.auth.models import SessionLocal
-        from src.auth import universe_repository as universe_repo
-    except Exception:
-        return None
-
-    db = SessionLocal()
-    try:
-        model = universe_repo.get_latest_model(db, model_type=algo.lower())
-        if model is None:
-            return None
-        metrics = model.train_metrics or {}
-        profile_id = metrics.get('risk_profile', 'low_turnover')
-        profile = RISK_PROFILES.get(profile_id, RISK_PROFILES['low_turnover'])
-        return {
-            'risk_profile': profile_id,
-            'name': profile['name'],
-            'phi': profile['phi'],
-            'gamma': profile['gamma'],
-            'description': profile['description'],
-            'steps': model.steps,
-            'trained_at': str(model.created_at)[:19] if model.created_at else None,
-        }
-    except Exception:
-        return None
-    finally:
-        db.close()
-
-
 # ─── Configuración de página ─────────────────────────────────────────────────
 st.set_page_config(
     page_title="TFM — AI Portfolio Manager",
@@ -133,14 +86,14 @@ st.markdown(
 st.sidebar.header("Configuración")
 
 MODEL_OPTIONS = {
-    # ════ PPO honest (universo n=17 post data leakage fix) ═════════════════
-    "PPO — LT manual honest (Sharpe 0.469)": {
+    # ════ PPO corregido (universo n=17 post data leakage fix) ═════════════
+    "PPO — LT manual corregido (Sharpe 0.469)": {
         "algo": "PPO",
         "path": "models/best_model_academic_low_turnover_sharpe_HONEST_20260511_2230/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "PPO — dual manual honest (Sharpe 0.936)": {
+    "PPO — dual manual corregido (Sharpe 0.936)": {
         "algo": "PPO",
         "path": "models/best_model_academic_dual_HONEST_20260511_2331/best_model.zip",
         "profile": "low_turnover",
@@ -182,68 +135,68 @@ MODEL_OPTIONS = {
         "profile": "low_turnover",
         "reward": "dual",
     },
-    # ════ A2C honest multi-seed (universo n=17) ════════════════════════════
-    "A2C — LT seed 0 (honest)": {
+    # ════ A2C corregido multi-seed (universo n=17) ═════════════════════════
+    "A2C — LT seed 0 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_low_turnover_seed0/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — LT seed 1 (honest)": {
+    "A2C — LT seed 1 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_low_turnover_seed1/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — LT seed 2 (honest)": {
+    "A2C — LT seed 2 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_low_turnover_seed2/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — LT seed 3 (honest)": {
+    "A2C — LT seed 3 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_low_turnover_seed3/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — LT seed 4 (honest)": {
+    "A2C — LT seed 4 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_low_turnover_seed4/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — aggressive seed 0 (honest)": {
+    "A2C — aggressive seed 0 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_aggressive_seed0/best_model.zip",
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    "A2C — aggressive seed 1 (honest)": {
+    "A2C — aggressive seed 1 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_aggressive_seed1/best_model.zip",
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    "A2C — aggressive seed 2 (honest)": {
+    "A2C — aggressive seed 2 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_aggressive_seed2/best_model.zip",
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    "A2C — aggressive seed 3 (honest)": {
+    "A2C — aggressive seed 3 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_aggressive_seed3/best_model.zip",
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    "A2C — aggressive seed 4 (honest)": {
+    "A2C — aggressive seed 4 (corregido)": {
         "algo": "A2C",
         "path": "models/best_model_academic_a2c_aggressive_seed4/best_model.zip",
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    # ════ SAC honest multi-seed (universo n=17) ════════════════════════════
+    # ════ SAC corregido multi-seed (universo n=17) ═════════════════════════
     "SAC — LT seed 0 (Sharpe 0.532)": {
         "algo": "SAC",
         "path": "models/best_model_academic_sac_low_turnover_seed0/best_model.zip",
@@ -613,7 +566,7 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
                 baseline_results['Especulativo_HMM'] = spec_series
             except (KeyError, ValueError) as e:
                 # HMM detector entrenado con universo n=15 (data leakage).
-                # No compatible con universo honest n=17. Skip silente para
+                # No compatible con universo corregido n=17. Skip silente para
                 # no romper dashboard. Re-entrenar HMM con universo nuevo
                 # queda como mantenimiento opcional.
                 st.warning(f'Baseline GMM+HMM omitida (detector incompatible con universo actual): {type(e).__name__}')

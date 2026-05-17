@@ -1,9 +1,9 @@
 """
-Re-entrena agente especulativo GMM+KMeans sobre universo honest (n=17).
+Re-entrena agente especulativo GMM+KMeans sobre universo corregido (n=17).
 
 Motivo:
 - Detector HMM previo entrenado con universo data leakage (n=15) — incompatible
-  con columnas universo honest. Dashboard daba KeyError al usarlo.
+  con columnas universo corregido. Dashboard daba KeyError al usarlo.
 - Re-entrenamiento sobre features actuales restaura baseline GMM+KMeans
   en tabla §4.4 comparativa.
 
@@ -35,8 +35,10 @@ SPLIT_PCT = 0.80
 
 
 def main():
+    """Re-entrena SpeculativeAgent GMM+KMeans sobre universo corregido n=17.
+    Backup viejo .pkl, fit sobre TRAIN, smoke backtest sobre TEST, persiste modelo."""
     print('=' * 60)
-    print('Retrain agente especulativo GMM+KMeans (universo honest n=17)')
+    print('Retrain agente especulativo GMM+KMeans (universo corregido n=17)')
     print('=' * 60)
 
     df_f = pd.read_csv(FEATURES_PATH, index_col=0)

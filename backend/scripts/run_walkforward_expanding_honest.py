@@ -1,5 +1,5 @@
 """
-Walk-forward (rolling) + expanding window sobre universo honest n=17.
+Walk-forward (rolling) + expanding window sobre universo corregido n=17.
 
 Llama funciones directas sin server FastAPI. PPO hyperparams default
 (coherente con flujo memoria §4.3 original — NO usa Optuna best).
@@ -42,7 +42,7 @@ STEPS_PER_WINDOW = 100_000
 
 def run_walkforward():
     print('=' * 70)
-    print('WALK-FORWARD (rolling) honest universe n=17')
+    print('WALK-FORWARD (rolling) universo corregido n=17')
     print('=' * 70)
     t0 = time.time()
     df = walk_forward_validation(
@@ -61,7 +61,7 @@ def run_walkforward():
 
 def run_expanding():
     print('\n' + '=' * 70)
-    print('EXPANDING WINDOW honest universe n=17')
+    print('EXPANDING WINDOW universo corregido n=17')
     print('=' * 70)
     t0 = time.time()
     df = expanding_window_validation(

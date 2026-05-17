@@ -6,7 +6,7 @@ Combina:
 - Recompensa dual (Sharpe + log-retorno) en lugar de sharpe puro
 
 Hipótesis: dual reward + Optuna hyperparams puede superar dual + manual
-(que dio Sharpe ~0.94 honest single-seed) y/o PPO Optuna sharpe puro
+(que dio Sharpe ~0.94 single-seed sobre universo corregido) y/o PPO Optuna sharpe puro
 (que dio 0.47 ± 0.11).
 
 Coste: 1 run × 1.5M pasos ≈ 45 min.
@@ -57,6 +57,8 @@ NET_ARCH = [256, 256]
 
 
 def main():
+    """Entrena PPO con best params Optuna + reward dual (alpha=beta=0.5).
+    1 seed × 1.5M pasos. Eval out-of-sample sobre TEST y persiste resultado JSON."""
     print('=' * 70)
     print('PPO Optuna best + recompensa DUAL (alpha=beta=0.5)')
     print('=' * 70)
@@ -175,8 +177,8 @@ def main():
     print(f'MDD:           {result["mdd_pct"]:+.2f}%')
     print('=' * 70)
     print('Comparativa:')
-    print(f'  PPO LT manual honest  : Sharpe 0.469 (single seed)')
-    print(f'  PPO dual manual honest: Sharpe 0.936 (single seed)')
+    print(f'  PPO LT manual corregido  : Sharpe 0.469 (single seed)')
+    print(f'  PPO dual manual corregido: Sharpe 0.936 (single seed)')
     print(f'  PPO Optuna sharpe N=5 : Sharpe 0.474 ± 0.107')
     print(f'  PPO Optuna + dual     : Sharpe {result["sharpe"]:.4f}  ← este experimento')
     print(f'Resultado: {RESULTS_PATH}')

@@ -1,5 +1,5 @@
 """
-Diagnose pesos PPO Optuna top seed (seed 1, Sharpe 0.607) sobre TEST honest n=17.
+Diagnose pesos PPO Optuna top seed (seed 1, Sharpe 0.607) sobre TEST corregido n=17.
 
 Genera CSV con pesos diarios para tabla §4.5 memoria.
 
