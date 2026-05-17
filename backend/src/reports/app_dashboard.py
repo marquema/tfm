@@ -225,7 +225,85 @@ MODEL_OPTIONS = {
         "profile": "aggressive",
         "reward": "sharpe",
     },
-    # ════ SAC honest multi-seed (pendiente, se añadirán tras retrain_sac) ══
+    "A2C — aggressive seed 2 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_aggressive_seed2/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "A2C — aggressive seed 3 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_aggressive_seed3/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "A2C — aggressive seed 4 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_aggressive_seed4/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    # ════ SAC honest multi-seed (universo n=17) ════════════════════════════
+    "SAC — LT seed 0 (Sharpe 0.532)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_low_turnover_seed0/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — LT seed 1 (Sharpe 1.191)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_low_turnover_seed1/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — LT seed 2 (Sharpe 0.712)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_low_turnover_seed2/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — LT seed 3 (Sharpe 0.701)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_low_turnover_seed3/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — LT seed 4 (Sharpe 1.280) ★ top": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_low_turnover_seed4/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "SAC — aggressive seed 0 (Sharpe 1.097)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_aggressive_seed0/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "SAC — aggressive seed 1 (Sharpe 0.643)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_aggressive_seed1/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "SAC — aggressive seed 2 (Sharpe 1.000)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_aggressive_seed2/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "SAC — aggressive seed 3 (Sharpe 0.798)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_aggressive_seed3/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "SAC — aggressive seed 4 (Sharpe 0.805)": {
+        "algo": "SAC",
+        "path": "models/best_model_academic_sac_aggressive_seed4/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
     # ════ Modelos viejos n=15 data leakage (NO compatibles env actual) ══════
     # Mantengo apuntadores comentados como referencia histórica:
     # - models/best_model_academic_low_turnover_sharpe/  (Sharpe 1.875 leakage)
