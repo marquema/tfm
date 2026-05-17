@@ -1,0 +1,81 @@
+{
+  "universe_size": 17,
+  "tickers": [
+    "APP_Close",
+    "BND_Close",
+    "CEG_Close",
+    "COR_Close",
+    "COST_Close",
+    "GE_Close",
+    "IVV_Close",
+    "LLY_Close",
+    "META_Close",
+    "NVDA_Close",
+    "PHM_Close",
+    "RSG_Close",
+    "SMCI_Close",
+    "VRT_Close",
+    "VST_Close",
+    "IBIT_Close",
+    "ETHA_Close"
+  ],
+  "test_days": 579,
+  "train_end_idx": 2313,
+  "n_total": 2892,
+  "results": {
+    "Equal_Weight_Mensual": {
+      "sharpe": 0.926,
+      "sortino": 1.234,
+      "retorno_pct": 73.74,
+      "cagr_pct": 27.23,
+      "vol_anual_pct": 25.09,
+      "mdd_pct": -26.91,
+      "valor_final": 17373.97
+    },
+    "Buy_and_Hold": {
+      "sharpe": 0.994,
+      "sortino": 1.345,
+      "retorno_pct": 80.51,
+      "cagr_pct": 29.37,
+      "vol_anual_pct": 25.05,
+      "mdd_pct": -25.27,
+      "valor_final": 18051.33
+    },
+    "Cartera_60_40": {
+      "sharpe": 0.785,
+      "sortino": 1.037,
+      "retorno_pct": 28.82,
+      "cagr_pct": 11.67,
+      "vol_anual_pct": 9.55,
+      "mdd_pct": -11.25,
+      "valor_final": 12881.61
+    },
+    "Markowitz_MV": {
+      "sharpe": 0.723,
+      "sortino": 0.966,
+      "retorno_pct": 41.6,
+      "cagr_pct": 16.38,
+      "vol_anual_pct": 17.58,
+      "mdd_pct": -20.62,
+      "valor_final": 14160.23
+    },
+    "Random_Uniform": {
+      "sharpe": 1.157,
+      "sortino": 1.578,
+      "retorno_pct": 120.05,
+      "cagr_pct": 41.04,
+      "vol_anual_pct": 30.19,
+      "mdd_pct": -30.13,
+      "valor_final": 22004.57
+    },
+    "Momentum_TopK": {
+      "sharpe": 0.942,
+      "sortino": 1.428,
+      "retorno_pct": 105.89,
+      "cagr_pct": 37.01,
+      "vol_anual_pct": 36.0,
+      "mdd_pct": -33.3,
+      "valor_final": 20589.29
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "algo": "Speculative GMM+KMeans",
+  "universe_honest": true,
+  "sharpe": 0.868,
+  "sortino": 1.163,
+  "retorno_pct": 81.97,
+  "cagr_pct": 29.77,
+  "vol_anual_pct": 30.93,
+  "mdd_pct": -31.74,
+  "valor_final": 18197.21
+}

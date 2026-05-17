@@ -133,60 +133,107 @@ st.markdown(
 st.sidebar.header("Configuración")
 
 MODEL_OPTIONS = {
-    "PPO — low_turnover sharpe (modelo del TFM)": {
+    # ════ PPO honest (universo n=17 post data leakage fix) ═════════════════
+    "PPO — LT manual honest (Sharpe 0.469)": {
         "algo": "PPO",
-        "path": "models/best_model_academic_low_turnover_sharpe/best_model.zip",
+        "path": "models/best_model_academic_low_turnover_sharpe_HONEST_20260511_2230/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "PPO — aggressive sharpe": {
+    "PPO — dual manual honest (Sharpe 0.936)": {
         "algo": "PPO",
-        "path": "models/best_model_academic_aggressive/best_model.zip",
-        "profile": "aggressive",
-        "reward": "sharpe",
-    },
-    "PPO — low_turnover dual": {
-        "algo": "PPO",
-        "path": "models/best_model_academic_dual/best_model.zip",
+        "path": "models/best_model_academic_dual_HONEST_20260511_2331/best_model.zip",
         "profile": "low_turnover",
         "reward": "dual",
     },
-    "PPO — best_model_academic (último entrenado)": {
+    "PPO — Optuna best seed 0 (Sharpe 0.458)": {
         "algo": "PPO",
-        "path": "models/best_model_academic/best_model.zip",
-        "profile": "low_turnover",
+        "path": "models/best_model_academic_OPTUNA_seed0/best_model.zip",
+        "profile": "low_turnover",  # phi=0.0094 from Optuna best
         "reward": "sharpe",
     },
-    "PPO — final (último step)": {
+    "PPO — Optuna best seed 1 (Sharpe 0.607)": {
         "algo": "PPO",
-        "path": "models/ppo_academic_final.zip",
+        "path": "models/best_model_academic_OPTUNA_seed1/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — best (calibrado, low_turnover)": {
+    "PPO — Optuna best seed 2 (Sharpe 0.307)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_OPTUNA_seed2/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "PPO — Optuna best seed 3 (Sharpe 0.553)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_OPTUNA_seed3/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "PPO — Optuna best seed 4 (Sharpe 0.443)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_OPTUNA_seed4/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "PPO — Optuna best + dual reward (Sharpe 0.475)": {
+        "algo": "PPO",
+        "path": "models/best_model_academic_OPTUNA_dual/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "dual",
+    },
+    # ════ A2C honest multi-seed (universo n=17) ════════════════════════════
+    "A2C — LT seed 0 (honest)": {
         "algo": "A2C",
-        "path": "models/best_model_academic_a2c/best_model.zip",
+        "path": "models/best_model_academic_a2c_low_turnover_seed0/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "A2C — final (último step, calibrado)": {
+    "A2C — LT seed 1 (honest)": {
         "algo": "A2C",
-        "path": "models/a2c_academic_final.zip",
+        "path": "models/best_model_academic_a2c_low_turnover_seed1/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "SAC — best (low_turnover)": {
-        "algo": "SAC",
-        "path": "models/best_model_academic_sac/best_model.zip",
+    "A2C — LT seed 2 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_low_turnover_seed2/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
-    "SAC — final (último step)": {
-        "algo": "SAC",
-        "path": "models/sac_academic_final.zip",
+    "A2C — LT seed 3 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_low_turnover_seed3/best_model.zip",
         "profile": "low_turnover",
         "reward": "sharpe",
     },
+    "A2C — LT seed 4 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_low_turnover_seed4/best_model.zip",
+        "profile": "low_turnover",
+        "reward": "sharpe",
+    },
+    "A2C — aggressive seed 0 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_aggressive_seed0/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    "A2C — aggressive seed 1 (honest)": {
+        "algo": "A2C",
+        "path": "models/best_model_academic_a2c_aggressive_seed1/best_model.zip",
+        "profile": "aggressive",
+        "reward": "sharpe",
+    },
+    # ════ SAC honest multi-seed (pendiente, se añadirán tras retrain_sac) ══
+    # ════ Modelos viejos n=15 data leakage (NO compatibles env actual) ══════
+    # Mantengo apuntadores comentados como referencia histórica:
+    # - models/best_model_academic_low_turnover_sharpe/  (Sharpe 1.875 leakage)
+    # - models/best_model_academic_aggressive/           (Sharpe 1.650 leakage)
+    # - models/best_model_academic_dual/                 (Sharpe 1.624 leakage)
+    # - models/best_model_academic_a2c_calibrated/       (n=15)
+    # - models/best_model_academic_sac_BACKUP_TFM/       (n=15)
+    # Para usarlos: revertir backend/data/*.csv a backups _PRE_RETRAIN_*.csv
 }
 model_label = st.sidebar.selectbox(
     "Modelo a evaluar",
@@ -477,14 +524,21 @@ if st.button("▶  Ejecutar Backtest Completo", type="primary", use_container_wi
         speculative_path = 'models/speculative_gmm.pkl'
         if os.path.exists(speculative_path):
             import pickle
-            with open(speculative_path, 'rb') as f:
-                spec_agent = pickle.load(f)
-            df_f_test = df_f.iloc[split_idx:]
-            spec_series = spec_agent.backtest(
-                df_f_test, df_p_test,
-                initial_balance=initial_bal, commission=commission
-            )
-            baseline_results['Especulativo_HMM'] = spec_series
+            try:
+                with open(speculative_path, 'rb') as f:
+                    spec_agent = pickle.load(f)
+                df_f_test = df_f.iloc[split_idx:]
+                spec_series = spec_agent.backtest(
+                    df_f_test, df_p_test,
+                    initial_balance=initial_bal, commission=commission
+                )
+                baseline_results['Especulativo_HMM'] = spec_series
+            except (KeyError, ValueError) as e:
+                # HMM detector entrenado con universo n=15 (data leakage).
+                # No compatible con universo honest n=17. Skip silente para
+                # no romper dashboard. Re-entrenar HMM con universo nuevo
+                # queda como mantenimiento opcional.
+                st.warning(f'Baseline GMM+HMM omitida (detector incompatible con universo actual): {type(e).__name__}')
 
         all_series  = {'IA_PPO': ppo_series, **baseline_results}
         df_metrics  = tabla_comparativa(all_series)

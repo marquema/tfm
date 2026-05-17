@@ -143,10 +143,10 @@ def train_one_seed(best_params: dict, seed: int, save_path: Path) -> dict:
         'seed': seed,
         'sharpe': float(metrics.get('Sharpe Ratio', np.nan)),
         'sortino': float(metrics.get('Sortino Ratio', np.nan)),
-        'retorno_pct': float(metrics.get('Retorno Total', np.nan)),
-        'cagr_pct': float(metrics.get('CAGR', np.nan)),
-        'vol_anual_pct': float(metrics.get('Volatilidad Anual', np.nan)),
-        'mdd_pct': float(metrics.get('Max Drawdown', np.nan)),
+        'retorno_pct': float(metrics.get('Retorno Total (%)', np.nan)),
+        'cagr_pct': float(metrics.get('CAGR (%)', np.nan)),
+        'vol_anual_pct': float(metrics.get('Volatilidad Anualizada (%)', np.nan)),
+        'mdd_pct': float(metrics.get('Max Drawdown (%)', np.nan)),
         'train_time_min': train_time_min,
     }
 

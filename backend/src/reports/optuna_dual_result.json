@@ -1,0 +1,26 @@
+{
+  "config": "PPO Optuna best + dual reward",
+  "best_params_optuna": {
+    "learning_rate": 8.468008575248325e-05,
+    "n_steps": 512,
+    "batch_size": 256,
+    "clip_range": 0.20027875293580222,
+    "ent_coef": 0.013311216080736894,
+    "gae_lambda": 0.9018526044866222,
+    "vf_coef": 0.978936896513396,
+    "max_grad_norm": 0.8827098485602951,
+    "varphi": 0.009445600138094694,
+    "gamma": 0.0020366442026830914
+  },
+  "alpha": 0.5,
+  "beta": 0.5,
+  "seed": 0,
+  "train_steps": 1500000,
+  "sharpe": 0.475,
+  "sortino": 0.619,
+  "retorno_pct": 39.16,
+  "cagr_pct": 15.5,
+  "vol_anual_pct": 34.5,
+  "mdd_pct": -25.06,
+  "train_time_min": 26.15424072345098
+}
