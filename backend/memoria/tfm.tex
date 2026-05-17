@@ -43,6 +43,7 @@
 \usepackage{geometry}
 \usepackage{pgfgantt}
 \usepackage{graphicx}
+\graphicspath{{./}{../src/reports/}{src/reports/}{backend/memoria/}{backend/src/reports/}}
 
 \setlength{\headheight}{43pt}
 \addtolength{\topmargin}{-8pt}
@@ -79,7 +80,11 @@
 % Resumen en el idioma
 
 \abstractidioma{
-Este Trabajo Final de Máster aborda el diseño e implementación de un sistema de gestión dinámica de carteras híbridas basado en \textit{Deep Reinforcement Learning} (DRL). El sistema combina activos tradicionales (renta variable y renta fija) con ETFs regulados sobre criptoactivos (IBIT y ETHA), permitiendo evaluar la integración de la nueva clase de activos digitales en la inversión institucional. La política de asignación se modela mediante un agente \textit{Proximal Policy Optimization} (PPO) entrenado sobre un entorno Gymnasium personalizado, en el que el espacio de estados integra indicadores técnicos y métricas de riesgo, y la recompensa penaliza explícitamente el \textit{Maximum Drawdown} y el \textit{turnover}. La validación se realiza mediante un protocolo \textit{out-of-sample} estricto con esquemas \textit{walk-forward} y \textit{expanding window}, y se compara el desempeño del agente frente a un catálogo amplio de seis \textit{baselines} (Cartera 60/40, \textit{Equal-Weight}, \textit{Buy \& Hold}, Markowitz Media-Varianza, \textit{Random Uniform} y \textit{Momentum Top-3}), ampliado con un agente especulativo basado en GMM+K-Means. Los resultados permiten cuantificar en qué medida un agente de aprendizaje por refuerzo profundo aporta una mejora reproducible en términos de rentabilidad ajustada al riesgo respecto a estrategias estáticas de referencia.
+Este TFM diseña e implementa un sistema de gestión dinámica de carteras híbridas con \textit{Deep Reinforcement Learning} (DRL). El sistema combina activos tradicionales (renta variable y renta fija) con ETFs regulados sobre criptoactivos (IBIT y ETHA), lo que permite evaluar cómo se integra esta nueva clase de activos digitales en la inversión institucional.
+
+La política de asignación se aprende con un agente \textit{Proximal Policy Optimization} (PPO) sobre un entorno Gymnasium personalizado. El espacio de estados combina indicadores técnicos y métricas de riesgo; la recompensa penaliza explícitamente el \textit{Maximum Drawdown} y el \textit{turnover}. Para validar la política se aplica un protocolo \textit{out-of-sample} estricto con esquemas \textit{walk-forward} y \textit{expanding window}, y se compara el desempeño del agente con un catálogo amplio de seis \textit{baselines} —Cartera 60/40, \textit{Equal-Weight}, \textit{Buy \& Hold}, Markowitz Media-Varianza, \textit{Random Uniform} y \textit{Momentum Top-3}— al que se añade un agente especulativo basado en GMM+K-Means.
+
+Los resultados cuantifican en qué medida un agente DRL aporta una mejora reproducible en rentabilidad ajustada al riesgo frente a las estrategias estáticas de referencia.
 }
 
 % Resumen en inglés.
@@ -342,7 +347,7 @@ Los criptoactivos han dejado de ser una clase puramente especulativa y se están
 
 \subsection{El IBIT como Catalizador de Eficiencia y Liquidez}
 
-El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) marca un punto de inflexión en la microestructura del mercado de criptoactivos. Al tratarse de un ETF \textit{spot} regulado, IBIT permite obtener exposición a Bitcoin a través de los canales habituales de negociación bursátil. Eso elimina buena parte de las fricciones de custodia y liquidez que caracterizaban a los mercados \textit{offshore}: ya no hace falta abrir cuentas en exchanges no regulados, custodiar claves privadas ni operar sobre infraestructura ajena al circuito institucional.
+El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) marca un punto de inflexión en la microestructura del mercado de criptoactivos. Al tratarse de un ETF \textit{spot} regulado, IBIT permite obtener exposición a Bitcoin mediante los canales habituales de negociación bursátil. Eso elimina buena parte de las fricciones de custodia y liquidez que caracterizaban a los mercados \textit{offshore}: ya no hace falta abrir cuentas en exchanges no regulados, custodiar claves privadas ni operar sobre infraestructura ajena al circuito institucional.
 
 Desde la teoría de carteras, incorporar un activo con un perfil retorno-riesgo distinto debería desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. La realidad, sin embargo, es más matizada. La literatura previa documenta episodios en los que Bitcoin se comportó muy correlacionado con índices bursátiles como el S\&P 500, especialmente en momentos de tensión financiera. \cite{conlon2020safehaven} muestran, sobre el periodo del mercado bajista de la COVID-19, que Bitcoin no actuó como activo refugio: su correlación con la renta variable subió justo cuando habría tenido que bajar. Esta dependencia condicional implica que la diversificación que ofrece cripto no es estable en el tiempo, lo que justifica usar marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
 
@@ -426,7 +431,7 @@ Cuatro activos forman parte del universo de forma incondicional. La razón no es
 \textbf{Ticker} & \textbf{Clase} & \textbf{Justificación de su inclusión obligatoria} \\ \hline
 IVV & Renta variable USA & Réplica del S\&P 500. Es el pilar de la cartera tradicional y, además, es necesario como segundo componente de la \textit{baseline} 60/40 (60\% IVV + 40\% BND). Sin IVV, la comparativa con la cartera institucional canónica del sector quedaría imposibilitada. \\ \hline
 BND & Renta fija agregada & ETF de Vanguard sobre el mercado total de bonos USA. Aporta exposición a renta fija diversificada y es el segundo componente de la \textit{baseline} 60/40. Sin BND, no hay comparación con carteras tradicionales mixtas. \\ \hline
-IBIT & Cripto regulada (BTC) & ETF \textit{spot} de Bitcoin (iShares, BlackRock). Es el activo central del trabajo: la institucionalización del Bitcoin a través de ETFs regulados motiva el problema de investigación. \\ \hline
+IBIT & Cripto regulada (BTC) & ETF \textit{spot} de Bitcoin (iShares, BlackRock). Es el activo central del trabajo: la institucionalización del Bitcoin mediante ETFs regulados motiva el problema de investigación. \\ \hline
 ETHA & Cripto regulada (ETH) & ETF \textit{spot} de Ethereum (iShares). Su inclusión, junto con IBIT, permite estudiar la diferenciación entre dos clases de criptoactivos y la dinámica intra-cripto, en línea con el alcance declarado del TFM. \\ \hline
 \end{tabular}
 \caption{Núcleo obligatorio del universo de activos.}
@@ -760,16 +765,15 @@ La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos
 
 \begin{table}[h]
 \centering
-\small
-\setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.25}
+\resizebox{\textwidth}{!}{%
 \begin{tabular}{|l|c|c|c|c|c|c|}
 \hline
 \textbf{Esquema} & \textbf{N total} & \textbf{N significativas} & \textbf{Sharpe robusto} & \textbf{Sharpe mediana} & \textbf{Retorno medio (\%)} & \textbf{MDD medio (\%)} \\ \hline
 Walk-forward (rolling) & 9  & 7 (vol $>$ 1\,\%) & $+0.349 \pm 1.904$ & $1.178$ & $+22.18$ & $-14.99$ \\ \hline
 Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$ & $+3.11$  & $-7.30$  \\ \hline
-\end{tabular}
-\caption{Resumen de la validación temporal. \textit{Sharpe robusto}: media $\pm$ desviación estándar calculadas únicamente sobre ventanas con volatilidad anualizada $>1\,\%$; las ventanas con volatilidad inferior se excluyen por producir Sharpe artefacto (véase texto).}
+\end{tabular}}
+\caption{Resumen de la validación temporal. \textit{Sharpe robusto}: media $\pm$ desviación estándar calculadas únicamente sobre ventanas con volatilidad anualizada superior al $1$\,\%; las ventanas con volatilidad inferior se excluyen por producir Sharpe artefacto (véase texto).}
 \label{tab:resultados_validacion}
 \end{table}
 
@@ -789,20 +793,20 @@ Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$
 8 & 2024-01-25 → 2024-10-31 & $+1.655$ & $+62.06$ & $-20.13$ & 29.52 \\ \hline
 9 & 2024-11-01 → 2025-11-04 & $+1.178$ & $+44.92$ & $-22.29$ & 32.79 \\ \hline
 \end{tabular}
-\caption{Walk-forward rolling: detalle de las 7 ventanas con volatilidad $>1\,\%$. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen por artifact de Sharpe. La ventana 7 es la de mejor rendimiento. La ventana 5 (crash cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
+\caption{Walk-forward rolling: detalle de las 7 ventanas con volatilidad superior al $1$\,\%. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen por artifact de Sharpe. La ventana 7 es la de mejor rendimiento. La ventana 5 (crash cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
 \label{tab:wf_por_ventana}
 \end{table}
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=\textwidth]{../src/reports/walk_forward_analysis.png}
+\includegraphics[width=\textwidth]{walk_forward_analysis.png}
 \caption[Walk-forward rolling: curvas de equidad y tabla resumen por ventana.]{Walk-forward rolling. Curvas de equidad por ventana y tabla resumen con fechas, Sharpe y retorno. Las ventanas etiquetadas con Sharpe de magnitud extrema (ventanas 1 y 2) corresponden a periodos en los que la política asigna posiciones cercanas a liquidez y la métrica se distorsiona por volatilidad casi nula.}
 \label{fig:wf_analysis}
 \end{figure}
 
 \begin{figure}[h]
 \centering
-\includegraphics[width=\textwidth]{../src/reports/expanding_window_analysis.png}
+\includegraphics[width=\textwidth]{expanding_window_analysis.png}
 \caption[Expanding window: curvas de equidad y tabla resumen por ventana.]{Expanding window. Curvas de equidad por ventana y tabla resumen. El Sharpe se vuelve mayoritariamente positivo a partir de las ventanas con entrenamiento acumulativo superior a 1300 días (aproximadamente desde mediados de 2021), lo que ilustra la dependencia del modelo respecto al volumen de histórico disponible.}
 \label{fig:ew_analysis}
 \end{figure}
@@ -812,7 +816,7 @@ Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$
 \begin{itemize}
     \item \textbf{El filtro de volatilidad es necesario para una lectura correcta.} Las ventanas con volatilidad anualizada inferior al 1\,\% producen un Sharpe artefacto: el agente está esencialmente inactivo y la métrica amplifica ruido numérico. Excluir estas ventanas (2 en walk-forward, 11 en expanding) es un requisito metodológico, no una elección oportunista.
     \item \textbf{Sharpe positivo en la mayoría de ventanas significativas.} De las 7 ventanas walk-forward con volatilidad real, 5 presentan Sharpe positivo (tabla \ref{tab:wf_por_ventana}). En el esquema expanding, 16 de las 26 ventanas significativas (62\,\%) tienen Sharpe positivo. El Sharpe robusto medio es $+0.35$ en walk-forward y $+0.65$ en expanding.
-    \item \textbf{La ventana 7 del walk-forward (Sharpe 2.258) es el mejor régimen observado.} El test cubre mayo 2023 a enero 2024, una fase de recuperación tras el crash cripto y revalorización tecnológica. El retorno de la ventana es del 78\,\%. La única ventana significativa con Sharpe claramente negativo es la 5 (diciembre 2021 a septiembre 2022, Sharpe $-1.273$, retorno $-31.26\,\%$), que coincide con el colapso de Terra-Luna y el inicio de la crisis cripto de 2022.
+    \item \textbf{La ventana 7 del walk-forward (Sharpe 2.258) es el mejor régimen observado.} El test cubre mayo 2023 a enero 2024, una fase de recuperación tras el crash cripto y revalorización tecnológica. El retorno de la ventana es del 78\,\%. La única ventana significativa con Sharpe claramente negativo es la 5 (diciembre 2021 a septiembre 2022, Sharpe $-1.273$, retorno $-31.26$\,\%), que coincide con el colapso de Terra-Luna y el inicio de la crisis cripto de 2022.
     \item \textbf{El expanding window muestra mejora sostenida con más histórico.} La curva de Sharpe por ventana es negativa o artefacto en las primeras 13 ventanas (hasta mediados de 2021) y se vuelve mayoritariamente positiva a partir de la ventana 14, cuando el entrenamiento acumula más de 1300 días. Esto confirma que la política requiere un mínimo de historia diversa para generalizar; con histórico corto y homogéneo, la política aprende un comportamiento de \textit{cash} que no genera rendimiento.
 \end{itemize}
 
@@ -1035,7 +1039,7 @@ Tres patrones se distinguen claramente:
 
 \begin{itemize}
     \item \textbf{El perfil agresivo se concentra en cripto.} La exposición media conjunta a IBIT y ETHA es del 10.10\,\% en la base, sube ligeramente al 12.01\,\% en la dual y se dispara hasta el \textbf{21.86\,\%} en la agresiva. La explicación es directa: al bajar $\varphi$ y $\gamma$, el perfil agresivo deja de penalizar tanto los \textit{drawdowns} como la rotación, así que la política aprende a apostar fuerte por cripto cuando detecta señal favorable. El problema es el coste: ese 21.86\,\% medio coincide con un MDD un 39\,\% peor ($-37.5$\,\% vs $-27.0$\,\%). El Sharpe sí captura ese coste como penalización, lo que explica por qué cae a 1.65 a pesar del retorno cripto.
-    \item \textbf{La recompensa dual incrementa la concentración en \textit{outliers}, pero sin sincronía temporal.} La recompensa dual produce el efecto esperado en términos de composición media: eleva el peso de LITE del 4.33\,\% al 9.27\,\% y de FIX del 12.45\,\% al 15.13\,\%, lo que confirma que premiar el log-retorno lleva al agente a concentrarse en los activos con retornos más extremos. Sin embargo, la reasignación no se produce de forma consistente con el rendimiento relativo de cada activo a lo largo del periodo: WDC, con un retorno acumulado de $+830$\,\% en el periodo, ve reducido su peso del 3.95\,\% al 2.24\,\%, mientras que IVV, con un retorno mucho más modesto ($+45$\,\%), recibe un peso de 10.85\,\%. La política dual cambia \textit{a qué activos} apuesta (eleva pesos de los más volátiles), pero falla en el \textit{cuándo}: les sube exposición en días en que esos activos están bajando, y se la baja en días en que están subiendo. La media del peso mejora; el \textit{timing} de entrada y salida empeora. El resultado es un Sharpe y retorno inferiores.
+    \item \textbf{La recompensa dual incrementa la concentración en \textit{outliers}, pero sin sincronía temporal.} La recompensa dual produce el efecto esperado en composición media: eleva el peso de LITE del 4.33\,\% al 9.27\,\% y de FIX del 12.45\,\% al 15.13\,\%, lo que confirma que premiar el log-retorno lleva al agente a concentrarse en los activos con retornos más extremos. Sin embargo, la reasignación no se produce de forma consistente con el rendimiento relativo de cada activo a lo largo del periodo: WDC, con un retorno acumulado de $+830$\,\% en el periodo, ve reducido su peso del 3.95\,\% al 2.24\,\%, mientras que IVV, con un retorno mucho más modesto ($+45$\,\%), recibe un peso de 10.85\,\%. La política dual cambia \textit{a qué activos} apuesta (eleva pesos de los más volátiles), pero falla en el \textit{cuándo}: les sube exposición en días en que esos activos están bajando, y se la baja en días en que están subiendo. La media del peso mejora; el \textit{timing} de entrada y salida empeora. El resultado es un Sharpe y retorno inferiores.
     \item \textbf{El top-3 de cada política revela su filosofía implícita.} La base apuesta por FIX/STX/VLO (33.4\,\% conjunto): tres ganadores cíclicos con volatilidad moderada. La agresiva apuesta por WDC/IBIT/ETHA (33.7\,\%): dominada por cripto. La dual apuesta por FIX/IVV/LITE (35.3\,\%): mezcla \textit{outliers} y un activo diversificado. El top-3 de la base es el más equilibrado entre los tres y eso explica su mejor MDD: ningún activo domina lo suficiente como para arrastrar la cartera en una caída individual.
 \end{itemize}
 
@@ -1283,7 +1287,7 @@ La integración de criptoactivos institucionales en carteras tradicionales no es
 
     \item[\textit{Actor-Crítico}] Arquitectura de aprendizaje por refuerzo con dos redes neuronales acopladas. El \textit{actor} selecciona la acción según la política aprendida; el \textit{crítico} estima el valor del estado actual para guiar la actualización del actor. PPO, A2C y SAC siguen esta arquitectura.
 
-    \item[\textit{Asset Allocation}] Proceso de distribución del capital disponible entre distintas clases de activos (renta variable, renta fija, criptoactivos, etc.) con el objetivo de optimizar la relación retorno-riesgo de una cartera. En este trabajo, el agente DRL aprende una política de \textit{asset allocation} dinámico.
+    \item[\textit{Asset Allocation}] Proceso de distribución del capital disponible entre distintas clases de activos (renta variable, renta fija, criptoactivos, etc.) para optimizar la relación retorno-riesgo de una cartera. En este trabajo, el agente DRL aprende una política de \textit{asset allocation} dinámico.
 
     \item[\textit{Deep Reinforcement Learning} (DRL)] Familia de algoritmos que combinan aprendizaje por refuerzo con redes neuronales profundas para resolver problemas de decisión secuencial bajo incertidumbre con espacios de estado o acción de alta dimensionalidad. Permite al agente aprender políticas directamente a partir de experiencia sin un modelo explícito del entorno.
 
