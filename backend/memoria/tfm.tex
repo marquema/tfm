@@ -34,20 +34,23 @@
 %\addtolength{\topmargin}{-8pt}
 %\setlength{\parskip}{0.6em}
 
-\documentclass[IB]{TFUOC}
+\documentclass[IB,a4paper]{TFUOC}
 
 \usepackage{amsmath, amssymb}
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage[colorlinks=true,linkcolor=black,citecolor=black,urlcolor=blue]{hyperref}
 \usepackage{comment}
-\usepackage{geometry}
 \usepackage{pgfgantt}
 \usepackage{graphicx}
+\usepackage{mathptmx}
+\usepackage{setspace}
 \graphicspath{{./}{../src/reports/}{src/reports/}{backend/memoria/}{backend/src/reports/}}
 
+\geometry{a4paper}
+\setstretch{1.15}
 \setlength{\headheight}{43pt}
 \addtolength{\topmargin}{-8pt}
-\setlength{\parskip}{0.6em}
+\setlength{\parskip}{0pt}
 
 %Introducción de datos del trabajo
 \title{Optimización Dinámica de Carteras Híbridas de ETFs mediante Deep Reinforcement Learning: Integrando Criptoactivos en la Inversión Tradicional.}
@@ -137,7 +140,7 @@ El problema es que los marcos clásicos de optimización —la teoría moderna d
 El marco metodológico general del trabajo es la \textit{Design Science Research} (DSR). En esencia, DSR es una metodología pensada para investigaciones cuyo resultado no es solo un análisis teórico, sino la construcción y evaluación de un artefacto que resuelve un problema concreto. El artefacto de este trabajo es un sistema completo de gestión dinámica de carteras híbridas que cubre ingesta de datos, modelado del entorno (Gymnasium), entrenamiento del agente DRL (PPO, A2C, SAC), validación temporal \textit{out-of-sample} y una arquitectura modular basada en \textit{FastAPI}. La contenedorización (\textit{Docker}) y el despliegue productivo quedan como línea futura. El detalle técnico de cada fase se desarrolla en el capítulo \ref{cap:materiales_y_metodos}.
 
 \subsection{Herramientas y Tecnologías}
-El desarrollo del proyecto se apoya en el siguiente \textit{stack} tecnológico:
+El desarrollo del proyecto se apoya en el \textit{stack} tecnológico recogido en la tabla \ref{tab:herramientas}.
 
 \begin{table}[h]
 \centering
@@ -172,7 +175,7 @@ El proyecto se organiza en cuatro fases mensuales, con hitos de validación inte
     Ejecución del \textit{backtesting out-of-sample}, comparativa contra las \textit{baselines} (60/40, Markowitz, etc.), análisis del comportamiento ante distintos regímenes de mercado y redacción de las conclusiones de la memoria.
 \end{itemize}
 
-A continuación se presenta la planificación temporal del proyecto, desglosada por las fases metodológicas descritas y sus hitos críticos asociados.
+La figura \ref{fig:gantt_tfm} presenta la planificación temporal del proyecto, desglosada por las fases metodológicas descritas y sus hitos críticos asociados.
 
 \begin{figure}[h]
 \centering
@@ -245,7 +248,7 @@ Este capítulo revisa la literatura que sustenta el trabajo. El objetivo es traz
 La gestión cuantitativa de carteras ha pasado por dos grandes etapas. Primero, una etapa clásica dominada por la optimización estática, que busca la mejor cartera dado un conjunto de parámetros estimados. Después, una etapa moderna que reconoce que esos parámetros cambian con el tiempo y que la decisión óptima de hoy afecta a la de mañana, lo que abre la puerta a modelos de aprendizaje adaptativos.
 
 \subsection{La Teoría Moderna de Carteras (MPT) y su Legado}
-El punto de partida es el trabajo de Markowitz \cite{markowitz1952}. Su contribución fundamental fue mostrar que el riesgo de un activo no se mide de forma aislada, sino por su contribución a la varianza total de la cartera. Dos activos volátiles pero poco correlacionados pueden combinarse en una cartera mucho menos volátil que cualquiera de los dos por separado. La MPT formaliza esta idea como una optimización cuadrática: dado un retorno esperado objetivo, se busca la combinación de pesos que minimiza la varianza de la cartera.
+El punto de partida es el trabajo de Markowitz \citep{markowitz1952}. Su contribución fundamental fue mostrar que el riesgo de un activo no se mide de forma aislada, sino por su contribución a la varianza total de la cartera. Dos activos volátiles pero poco correlacionados pueden combinarse en una cartera mucho menos volátil que cualquiera de los dos por separado. La MPT formaliza esta idea como una optimización cuadrática: dado un retorno esperado objetivo, se busca la combinación de pesos que minimiza la varianza de la cartera.
 
 Formalmente, la cartera óptima en sentido de Markowitz es la solución del problema:
 \begin{equation}
@@ -256,9 +259,9 @@ Formalmente, la cartera óptima en sentido de Markowitz es la solución del prob
 \quad \mathbf{w} \geq \mathbf{0},
 \label{eq:markowitz}
 \end{equation}
-donde $\mathbf{w} \in \mathbb{R}^{n}$ es el vector de pesos sobre $n$ activos, $\boldsymbol{\Sigma}$ es la matriz de covarianzas de los retornos, $\boldsymbol{\mu}$ el vector de retornos esperados, $R^{*}$ el retorno objetivo y $\mathbf{1}$ el vector unitario. La restricción $\mathbf{w}^{\top}\mathbf{1}=1$ garantiza que la cartera está plenamente invertida, mientras que $\mathbf{w}\geq\mathbf{0}$ corresponde a un escenario \textit{long-only}, habitual en la gestión institucional regulada.
+En la ecuación \eqref{eq:markowitz}, $\mathbf{w} \in \mathbb{R}^{n}$ es el vector de pesos sobre $n$ activos, $\boldsymbol{\Sigma}$ es la matriz de covarianzas de los retornos, $\boldsymbol{\mu}$ el vector de retornos esperados, $R^{*}$ el retorno objetivo y $\mathbf{1}$ el vector unitario. La restricción $\mathbf{w}^{\top}\mathbf{1}=1$ garantiza que la cartera está plenamente invertida, mientras que $\mathbf{w}\geq\mathbf{0}$ corresponde a un escenario \textit{long-only}, habitual en la gestión institucional regulada.
 
-Pese a su valor fundacional, la aplicación práctica de la MPT tropieza con limitaciones bien documentadas \cite{michaud1989}:
+Pese a su valor fundacional, la aplicación práctica de la MPT tropieza con limitaciones bien documentadas \citep{michaud1989}:
 
 \begin{itemize}
     \item \textbf{La solución es muy sensible a los parámetros estimados.} El resultado de la optimización depende de los retornos esperados ($\boldsymbol{\mu}$) y de la matriz de covarianzas ($\boldsymbol{\Sigma}$), que se estiman con datos históricos. Pequeños cambios en esas estimaciones producen reasignaciones drásticas de los pesos. En la práctica, esto significa que la cartera ``óptima'' del mes pasado puede ser muy distinta de la de este mes, sin que haya cambiado nada estructural en el mercado.
@@ -300,9 +303,9 @@ El \textit{Deep Reinforcement Learning} aplicado a la gestión de carteras cambi
 
 \subsection{El Algoritmo PPO como Estándar de Estabilidad}
 
-Dentro de los algoritmos de gradiente de política, \textit{Proximal Policy Optimization} (PPO) \cite{schulman2017ppo} se ha consolidado como referencia por su estabilidad y eficiencia muestral. Los métodos de gradiente de política tienen una dificultad clásica: si la actualización es demasiado grande, la política empeora bruscamente y puede no recuperarse. Esto es especialmente problemático en entornos ruidosos como los financieros, donde la señal es débil y una sola actualización inestable puede degradar la política aprendida durante muchos pasos. PPO resuelve el problema con un mecanismo simple pero efectivo: el \textit{Clipped Surrogate Objective}, que limita cuánto puede cambiar la política en una sola actualización.
+Dentro de los algoritmos de gradiente de política, \textit{Proximal Policy Optimization} (PPO) \citep{schulman2017ppo} se ha consolidado como referencia por su estabilidad y eficiencia muestral. Los métodos de gradiente de política tienen una dificultad clásica: si la actualización es demasiado grande, la política empeora bruscamente y puede no recuperarse. Esto es especialmente problemático en entornos ruidosos como los financieros, donde la señal es débil y una sola actualización inestable puede degradar la política aprendida durante muchos pasos. PPO resuelve el problema con un mecanismo simple pero efectivo: el \textit{Clipped Surrogate Objective}, que limita cuánto puede cambiar la política en una sola actualización.
 
-Formalmente, sea $\pi_{\theta}$ la política parametrizada y $\hat{A}_t$ una estimación de la ventaja en el instante $t$. El objetivo recortado se define como:
+Formalmente, sea $\pi_{\theta}$ la política parametrizada y $\hat{A}_t$ una estimación de la ventaja en el instante $t$. El objetivo recortado de PPO se define en la ecuación \eqref{eq:ppo-clip}:
 \begin{equation}
 L^{\mathrm{CLIP}}(\theta) = \hat{\mathbb{E}}_t \!\left[ \min\!\Big( \rho_t(\theta)\,\hat{A}_t,\; \mathrm{clip}\!\big(\rho_t(\theta),\, 1-\epsilon,\, 1+\epsilon\big)\,\hat{A}_t \Big) \right],
 \label{eq:ppo-clip}
@@ -329,11 +332,11 @@ PPO no es la única opción dentro del DRL. Justificar su elección frente a las
 \hline
 \textbf{Algoritmo} & \textbf{Características relevantes} & \textbf{Limitaciones para gestión de carteras} \\ \hline
 DQN \citep{mnih2015dqn} & Aprendizaje basado en función de valor; espacio de acción discreto. & Inadecuado para asignación continua de pesos en $[0,1]^{n}$; requeriría discretizar el simplex de pesos en un conjunto finito de combinaciones, lo que provoca pérdida de granularidad en la asignación. \\ \hline
-A2C \cite{mnih2016a3c} & Actor-Crítico síncrono; un único paso de actualización por lote. & Reutiliza cada experiencia una sola vez antes de descartarla, frente a la reutilización multi-época de PPO. Esto exige más interacciones con el entorno para alcanzar el mismo rendimiento, lo que ralentiza el aprendizaje en datos financieros donde cada paso es caro. \\ \hline
-DDPG \cite{lillicrap2015ddpg} & Política determinista para acciones continuas; aprendizaje \textit{off-policy}. & Sensibilidad extrema a la inicialización: dos entrenamientos con datos idénticos pueden producir agentes muy diferentes. \\ \hline
-SAC \cite{haarnoja2018sac} & Aprende reutilizando experiencias pasadas almacenadas en memoria (\textit{off-policy}). Penalización añadida sobre la entropía de la política para forzar exploración. & Requiere mantener un \textit{replay buffer} en RAM y dos redes crítico simultáneas (\textit{doble crítico}), lo que incrementa el coste computacional. Sintonización de hiperparámetros más exigente que PPO. \\ \hline
-TRPO \cite{schulman2015trpo} & Restricción explícita de divergencia KL para garantizar pasos seguros. & Implementación notablemente más compleja (segunda derivada, conjugado-gradiente) sin mejora consistente respecto a PPO. \\ \hline
-PPO \cite{schulman2017ppo} & Objetivo recortado, \textit{on-policy}, actor-crítico estocástico, eficiencia muestral mediante \textit{minibatch SGD} multi-época. & Requiere recolección de trayectorias frescas en cada actualización; el coste se compensa por la estabilidad y la simplicidad de la implementación. \\ \hline
+A2C \citep{mnih2016a3c} & Actor-Crítico síncrono; un único paso de actualización por lote. & Reutiliza cada experiencia una sola vez antes de descartarla, frente a la reutilización multi-época de PPO. Esto exige más interacciones con el entorno para alcanzar el mismo rendimiento, lo que ralentiza el aprendizaje en datos financieros donde cada paso es caro. \\ \hline
+DDPG \citep{lillicrap2015ddpg} & Política determinista para acciones continuas; aprendizaje \textit{off-policy}. & Sensibilidad extrema a la inicialización: dos entrenamientos con datos idénticos pueden producir agentes muy diferentes. \\ \hline
+SAC \citep{haarnoja2018sac} & Aprende reutilizando experiencias pasadas almacenadas en memoria (\textit{off-policy}). Penalización añadida sobre la entropía de la política para forzar exploración. & Requiere mantener un \textit{replay buffer} en RAM y dos redes crítico simultáneas (\textit{doble crítico}), lo que incrementa el coste computacional. Sintonización de hiperparámetros más exigente que PPO. \\ \hline
+TRPO \citep{schulman2015trpo} & Restricción explícita de divergencia KL para garantizar pasos seguros. & Implementación notablemente más compleja (segunda derivada, conjugado-gradiente) sin mejora consistente respecto a PPO. \\ \hline
+PPO \citep{schulman2017ppo} & Objetivo recortado, \textit{on-policy}, actor-crítico estocástico, eficiencia muestral mediante \textit{minibatch SGD} multi-época. & Requiere recolección de trayectorias frescas en cada actualización; el coste se compensa por la estabilidad y la simplicidad de la implementación. \\ \hline
 \end{tabular}
 \caption{Comparativa de PPO frente a alternativas de DRL desde la perspectiva de la gestión secuencial de carteras.}
 \label{tab:ppo_vs_alternativas}
@@ -345,17 +348,17 @@ La implementación moderna de PPO sigue una arquitectura \textit{Actor-Critic}: 
 
 \subsection{Industrialización del DRL Financiero: el Ecosistema FinRL}
 
-Un problema recurrente en la literatura de DRL financiero es la reproducibilidad. Para mitigarlo, los trabajos en torno a \textbf{FinRL} \cite{liu2018finrl,liu2021finrl} estandarizan la ingesta de datos, el preprocesamiento y el \textit{backtesting} sobre el estándar Gymnasium. Sin embargo, FinRL deja abierto lo que importa para la gestión institucional de carteras híbridas: modelado realista de fricciones, inclusión de ETFs regulados sobre criptoactivos, funciones de recompensa multiobjetivo con penalización por \textit{drawdown} y \textit{turnover}, y validación \textit{out-of-sample} estricta. Este TFM extiende esa infraestructura en todos esos frentes. El detalle comparativo figura en el Anexo \ref{anx:finrl_comparison}. Trabajos como \cite{jiang2017drl} ilustran el potencial del enfoque secuencial pero se centran en universos de criptomonedas \textit{spot} sin instrumentos regulados ni controles explícitos de riesgo. La siguiente sección examina las propiedades estadísticas de los criptoactivos y el papel del IBIT como instrumento regulado.
+Un problema recurrente en la literatura de DRL financiero es la reproducibilidad. Para mitigarlo, los trabajos en torno a \textbf{FinRL} \citep{liu2018finrl,liu2021finrl} estandarizan la ingesta de datos, el preprocesamiento y el \textit{backtesting} sobre el estándar Gymnasium. Sin embargo, FinRL deja abierto lo que importa para la gestión institucional de carteras híbridas: modelado realista de fricciones, inclusión de ETFs regulados sobre criptoactivos, funciones de recompensa multiobjetivo con penalización por \textit{drawdown} y \textit{turnover}, y validación \textit{out-of-sample} estricta. Este TFM extiende esa infraestructura en todos esos frentes. El detalle comparativo figura en el Anexo \ref{anx:finrl_comparison}. Trabajos como \citet{jiang2017drl} ilustran el potencial del enfoque secuencial pero se centran en universos de criptomonedas \textit{spot} sin instrumentos regulados ni controles explícitos de riesgo. La siguiente sección examina las propiedades estadísticas de los criptoactivos y el papel del IBIT como instrumento regulado.
 
 \section{Criptoactivos e Institucionalización: el Impacto del IBIT}
 
-Los criptoactivos han dejado de ser una clase puramente especulativa y se están consolidando como un componente con potencial real de diversificación estructural en carteras institucionales. \cite{hougan2021crypto} argumenta que Bitcoin presenta propiedades estadísticas distintas tanto de la renta variable tradicional como de los activos refugio clásicos (oro, bonos). Pero, importante: ese potencial diversificador depende fuertemente del régimen de mercado.
+Los criptoactivos han dejado de ser una clase puramente especulativa y se están consolidando como un componente con potencial real de diversificación estructural en carteras institucionales. \citet{hougan2021crypto} argumenta que Bitcoin presenta propiedades estadísticas distintas tanto de la renta variable tradicional como de los activos refugio clásicos (oro, bonos). Pero, importante: ese potencial diversificador depende fuertemente del régimen de mercado.
 
 \subsection{El IBIT como Catalizador de Eficiencia y Liquidez}
 
 El lanzamiento del \textit{iShares Bitcoin Trust} (IBIT) marca un punto de inflexión en la microestructura del mercado de criptoactivos. Al tratarse de un ETF \textit{spot} regulado, IBIT permite obtener exposición a Bitcoin mediante los canales habituales de negociación bursátil. Eso elimina buena parte de las fricciones de custodia y liquidez que caracterizaban a los mercados \textit{offshore}: ya no hace falta abrir cuentas en exchanges no regulados, custodiar claves privadas ni operar sobre infraestructura ajena al circuito institucional.
 
-Desde la teoría de carteras, incorporar un activo con un perfil retorno-riesgo distinto debería desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. La realidad, sin embargo, es más matizada. La literatura previa documenta episodios en los que Bitcoin se comportó muy correlacionado con índices bursátiles como el S\&P 500, especialmente en momentos de tensión financiera. \cite{conlon2020safehaven} muestran, sobre el periodo del mercado bajista de la COVID-19, que Bitcoin no actuó como activo refugio: su correlación con la renta variable subió justo cuando habría tenido que bajar. Esta dependencia condicional implica que la diversificación que ofrece cripto no es estable en el tiempo, lo que justifica usar marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
+Desde la teoría de carteras, incorporar un activo con un perfil retorno-riesgo distinto debería desplazar la frontera eficiente, mejorando el retorno por unidad de riesgo. La realidad, sin embargo, es más matizada. La literatura previa documenta episodios en los que Bitcoin se comportó muy correlacionado con índices bursátiles como el S\&P 500, especialmente en momentos de tensión financiera. \citet{conlon2020safehaven} muestran, sobre el periodo del mercado bajista de la COVID-19, que Bitcoin no actuó como activo refugio: su correlación con la renta variable subió justo cuando habría tenido que bajar. Esta dependencia condicional implica que la diversificación que ofrece cripto no es estable en el tiempo, lo que justifica usar marcos de gestión dinámica capaces de adaptar la exposición al régimen vigente.
 
 \subsection{Propiedades Estadísticas Relevantes para la Gestión Algorítmica}
 
@@ -404,14 +407,14 @@ Este capítulo describe los elementos metodológicos del trabajo: el marco gener
 \section{Marco metodológico: Design Science Research}
 \label{sec:dsr}
 
-El trabajo se encuadra en el marco de la \textit{Design Science Research} (DSR) \cite{oates2006}, una metodología pensada para investigaciones cuyo objetivo es crear y evaluar un artefacto que resuelva un problema concreto. En este caso, el artefacto es un sistema completo de optimización de carteras híbridas basado en aprendizaje por refuerzo profundo: incluye \textit{pipeline} de datos, entorno de simulación, agente PPO entrenado y una capa de servicios para evaluar y simular escenarios personalizados.
+El trabajo se encuadra en el marco de la \textit{Design Science Research} (DSR) \citep{oates2006}, una metodología pensada para investigaciones cuyo objetivo es crear y evaluar un artefacto que resuelva un problema concreto. En este caso, el artefacto es un sistema completo de optimización de carteras híbridas basado en aprendizaje por refuerzo profundo: incluye \textit{pipeline} de datos, entorno de simulación, agente PPO entrenado y una capa de servicios para evaluar y simular escenarios personalizados.
 
 La elección de DSR encaja con la naturaleza del trabajo. No se trata solo de verificar una hipótesis científica aislada, sino de construir un sistema completo y evaluarlo en dos planos: el cuantitativo (métricas financieras de riesgo y rendimiento) y el cualitativo (reproducibilidad, mantenibilidad y trazabilidad operativa). El ciclo de diseño avanza por iteraciones sucesivas en las que cada fase aporta un componente del artefacto y un protocolo de evaluación específico, siguiendo el esquema clásico de DSR.
 
 \section{Arquitectura del Sistema: Enfoque MLOps}
 \label{sec:arquitectura}
 
-La eficacia de un agente DRL no depende solo del algoritmo: depende, en la práctica, de la infraestructura que lo rodea. Reproducibilidad, trazabilidad y aislamiento entre fases experimentales son condiciones necesarias para que un sistema sostenga resultados consistentes en el tiempo. \cite{sculley2015hidden} lo formularon con claridad: la deuda técnica acumulada en el preprocesamiento, el versionado de modelos y la gestión de datos suele superar en magnitud a la complejidad propiamente algorítmica. Por eso este trabajo adopta una arquitectura modular con vocación \textit{MLOps}: el \textit{pipeline} se descompone en servicios coordinados (selección de universo, preparación de datos, entrenamiento, validación, simulación), con persistencia explícita de datos, modelos y experimentos. La contenedorización completa (\textit{Docker}) y el despliegue productivo quedan como mejora futura.
+La eficacia de un agente DRL no depende solo del algoritmo: depende, en la práctica, de la infraestructura que lo rodea. Reproducibilidad, trazabilidad y aislamiento entre fases experimentales son condiciones necesarias para que un sistema sostenga resultados consistentes en el tiempo. \citet{sculley2015hidden} lo formularon con claridad: la deuda técnica acumulada en el preprocesamiento, el versionado de modelos y la gestión de datos suele superar en magnitud a la complejidad propiamente algorítmica. Por eso este trabajo adopta una arquitectura modular con vocación \textit{MLOps}: el \textit{pipeline} se descompone en servicios coordinados (selección de universo, preparación de datos, entrenamiento, validación, simulación), con persistencia explícita de datos, modelos y experimentos. La contenedorización completa (\textit{Docker}) y el despliegue productivo quedan como mejora futura.
 
 \subsection{Resiliencia mediante Microservicios y Contenedores}
 
@@ -419,7 +422,7 @@ La arquitectura se organiza alrededor de una capa de servicio basada en \textbf{
 
 La capa de persistencia se apoya en una base de datos relacional SQLite, accedida desde Python mediante un \textit{Object-Relational Mapper} (ORM, SQLAlchemy). \textbf{Estado actual de implementación}: (i) \textit{implementado y operativo}: tablas de autenticación de usuarios (\texttt{users}) y de modelos entrenados con metadatos (\texttt{modelos}), accedidas por los endpoints FastAPI; (ii) \textit{persistido en disco vía CSV/pickle, no en BD}: universos seleccionados por el \textit{screener}, \textit{features} normalizadas, modelos serializados (\texttt{.zip}) y JSONs de métricas por experimento; (iii) \textit{prototipado}: la tabla de historial de simulaciones, con uso operativo limitado. La combinación de SQLite + CSV/pickle constituye la base de la trazabilidad experimental dentro del alcance del TFM; una migración a base de datos relacional completa para auditoría productiva queda como línea de evolución.
 
-Como herramienta complementaria de visualización y consulta, el sistema incorpora un \textit{front-end} web desarrollado en Angular. Expone los \textit{endpoints} de la API en distintas pantallas: \textit{dashboard} de administración, comparativa de \textit{baselines}, simulador para el rol inversor. Este \textit{front-end} no es una contribución metodológica del trabajo, sino una capa de presentación que facilita inspeccionar los experimentos sin necesidad de manejar peticiones HTTP a mano. Su descripción detallada está en el anexo correspondiente y en el repositorio del código fuente.
+Como herramienta complementaria de visualización y consulta, el sistema incorpora un \textit{front-end} web desarrollado en Angular. Expone los \textit{endpoints} de la API en distintas pantallas: \textit{dashboard} de administración, comparativa de \textit{baselines}, simulador para el rol inversor. Este \textit{front-end} no es una contribución metodológica del trabajo, sino una capa de presentación que facilita inspeccionar los experimentos sin necesidad de manejar peticiones HTTP a mano. Su descripción detallada está en el anexo \ref{anx:angular} y en el repositorio del código fuente.
 
 \subsection{Ingesta de Datos en Entornos Restrictivos}
 
@@ -517,9 +520,7 @@ El entorno de simulación se ha implementado siguiendo la interfaz \textit{Gymna
 
 \subsection{Formulación de la Recompensa}
 
-Pensemos un momento qué necesita aprender el agente. No basta con que gane: tiene que ganar SIN asumir riesgos absurdos, SIN abrir y cerrar posiciones cada día (cada operación cuesta dinero), y SIN sufrir caídas que asusten al inversor. Tres dimensiones, una sola señal de aprendizaje. Eso es lo que codifica la fórmula de recompensa.
-
-La recompensa es el único mecanismo por el que el agente sabe si está acertando o equivocándose. Si la diseñamos solo con retorno, el agente aprende a buscar rendimiento sin importar el riesgo asumido. Si la basamos solo en penalizar caídas, aprende a no perder pero tampoco gana. La idea es entregarle, en una sola señal por paso, las tres dimensiones que de verdad importan al gestor: \textbf{cuánto gana ajustado al riesgo}, \textbf{cuánto está cayendo} la cartera respecto a su máximo, y \textbf{cuánto rota} la cartera (porque cada rotación cuesta comisiones). Eso se formaliza así:
+El agente necesita una señal que codifique tres dimensiones simultáneamente: rendimiento ajustado al riesgo, control de las caídas y minimización de la rotación. No basta con premiar el retorno bruto: una recompensa basada solo en retorno induciría al agente a maximizar rendimiento sin importar el riesgo asumido; una recompensa basada únicamente en penalizar caídas le llevaría a no perder pero tampoco ganar. La función de recompensa de este trabajo entrega, en una sola señal por paso, las tres dimensiones que importan al gestor: \textbf{cuánto gana ajustado al riesgo}, \textbf{cuánto está cayendo} la cartera respecto a su máximo, y \textbf{cuánto rota} la cartera (porque cada rotación cuesta comisiones). Eso se formaliza en la ecuación \eqref{eq:reward}:
 
 \begin{equation}
 r_t = \mathrm{clip}\!\left(\,\mathrm{Sharpe}^{(20)}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right).
@@ -528,7 +529,7 @@ r_t = \mathrm{clip}\!\left(\,\mathrm{Sharpe}^{(20)}_t \;-\; \varphi \cdot \mathr
 
 Cada uno de los tres componentes responde a una pregunta concreta.
 
-\paragraph{Sharpe rolling ($\mathrm{Sharpe}^{(20)}_t$) — \textit{¿gano de forma estable?}} En lugar de mirar solo el retorno del día, calculamos el \textit{Sharpe Ratio} (retorno medio dividido por su volatilidad) sobre los últimos 20 días. Si los retornos son altos pero erráticos, el ratio baja; si son moderados pero consistentes, sube. El cálculo, anualizado y acotado para que no descontrole el entrenamiento, es:
+\paragraph{Sharpe rolling ($\mathrm{Sharpe}^{(20)}_t$) — \textit{¿gano de forma estable?}} En lugar de considerar únicamente el retorno del día, se calcula el \textit{Sharpe Ratio} (retorno medio dividido por su volatilidad) sobre los últimos 20 días. Si los retornos son altos pero erráticos, el ratio baja; si son moderados pero consistentes, sube. El cálculo, anualizado y acotado para que no descontrole el entrenamiento, se recoge en la ecuación \eqref{eq:sharpe_rolling}:
 
 \begin{equation}
 \mathrm{Sharpe}^{(20)}_t = \mathrm{clip}\!\left(
@@ -647,7 +648,7 @@ $\gamma$ (penalización \textit{turnover}) & log-uniforme & $[0.001,\, 0.05]$ \\
 
 \subsubsection*{Configuración del experimento}
 
-El \textit{sampler} utilizado es TPE (\textit{Tree-structured Parzen Estimator}, \citealt{bergstra2011tpe}), que ajusta progresivamente un modelo probabilístico de qué regiones del espacio han producido resultados buenos. En cada iteración, TPE usa ese modelo para proponer el siguiente punto a evaluar, priorizando zonas prometedoras sobre la exploración aleatoria.
+El \textit{sampler} utilizado es TPE (\textit{Tree-structured Parzen Estimator}), introducido por \citet{bergstra2011tpe}, que ajusta progresivamente un modelo probabilístico de qué regiones del espacio han producido resultados buenos. En cada iteración, TPE usa ese modelo para proponer el siguiente punto a evaluar, priorizando zonas prometedoras sobre la exploración aleatoria.
 
 El \textit{pruner} es \texttt{MedianPruner}, que interrumpe un ensayo si el valor objetivo está por debajo de la mediana de los ensayos completados hasta el mismo paso. Esto reduce el tiempo cómputo al descartar configuraciones claramente inferiores antes de que agoten su presupuesto completo.
 
@@ -688,9 +689,9 @@ Para evaluar al agente PPO se han implementado seis estrategias de referencia (\
 Equal-Weight & 1/N a cada activo del universo. \textit{Baseline} pasiva clásica. & Mensual \\ \hline
 60/40 & 60\% IVV (renta variable) + 40\% BND (renta fija). Cartera institucional canónica. & Mensual \\ \hline
 Buy \& Hold & 1/N inicial sin rebalanceo posterior. \textit{Baseline} de mínima fricción. & Ninguno \\ \hline
-Markowitz MV & Optimización media-varianza con ventana de estimación de 252 días, maximizando Sharpe vía SLSQP. \textit{Baseline} teórica clásica \cite{markowitz1952}. & Mensual \\ \hline
+Markowitz MV & Optimización media-varianza con ventana de estimación de 252 días, maximizando Sharpe vía SLSQP. \textit{Baseline} teórica clásica \citep{markowitz1952}. & Mensual \\ \hline
 Random Uniform & Pesos muestreados de una distribución de Dirichlet con vector de concentración unitario, $\mathrm{Dir}(\mathbf{1})$, que produce muestras uniformes sobre el simplex de pesos. Constituye la \textit{baseline} mínima de cordura: si el agente DRL no supera a una asignación aleatoria, no está aprendiendo señal alguna del estado. & Mensual \\ \hline
-Momentum Top-K & Cada mes, asigna pesos equiponderados al \textit{top}-3 de activos con mejor retorno acumulado en los últimos 60 días. Implementa el factor \textit{momentum} \textit{cross-sectional} documentado por \cite{jegadeesh1993}. \textit{Baseline} competitiva del sector cuantitativo. & Mensual \\ \hline
+Momentum Top-K & Cada mes, asigna pesos equiponderados al \textit{top}-3 de activos con mejor retorno acumulado en los últimos 60 días. Implementa el factor \textit{momentum} \textit{cross-sectional} documentado por \citet{jegadeesh1993}. \textit{Baseline} competitiva del sector cuantitativo. & Mensual \\ \hline
 \end{tabular}
 \caption{Estrategias de referencia (baselines) implementadas.}
 \label{tab:baselines}
@@ -701,7 +702,7 @@ Random Uniform y Momentum Top-K cubren dos preguntas distintas. Random Uniform r
 \section{Protocolo de Validación Temporal}
 \label{sec:validacion}
 
-La validación del agente sigue dos esquemas complementarios habituales en la literatura de \textit{Machine Learning} financiero \cite{lopezdeprado2018}:
+La validación del agente sigue dos esquemas complementarios habituales en la literatura de \textit{Machine Learning} financiero \citep{lopezdeprado2018}:
 
 \begin{itemize}
     \item \textbf{\textit{Walk-forward} (rolling).} Una ventana temporal de tamaño fijo se desliza a lo largo del histórico. El modelo se entrena en un bloque \textit{train} y se evalúa inmediatamente después en un bloque \textit{test} contiguo. Después la ventana avanza y se repite el ciclo. Cada paso ofrece una estimación de desempeño \textit{out-of-sample} en condiciones realistas: el agente se evalúa sobre datos posteriores que no ha visto durante el entrenamiento.
@@ -840,7 +841,7 @@ Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$
 \section{Comparativa con \textit{Baselines}}
 \label{sec:resultados_baselines}
 
-Llegamos al núcleo del capítulo. Hasta ahora hemos descrito el agente y validado que aprende; ahora toca compararlo con las estrategias que cualquier inversor podría aplicar sin necesidad de \textit{Deep Reinforcement Learning}. La tabla \ref{tab:resultados_baselines} pone cara a cara los agentes DRL con las seis \textit{baselines} clásicas y el agente especulativo basado en GMM+K-Means. Todas las estrategias compiten en igualdad de condiciones: el mismo periodo de test (2024-03-09 a 2026-04-30), las mismas comisiones, el mismo capital inicial, el mismo universo de 17 activos seleccionados con el \textit{screener} temporal estricto (cutoff 2024-03-08): APP, BND, CEG, COR, COST, GE, IVV, LLY, META, NVDA, PHM, RSG, SMCI, VRT, VST, IBIT y ETHA. La sección \ref{sec:conclusiones_limitaciones} explica con detalle por qué este universo, y no el original, es el correcto.
+Esta sección constituye el núcleo del capítulo. Los apartados anteriores han descrito el agente y validado su capacidad de aprendizaje; a continuación se compara con las estrategias que cualquier inversor podría aplicar sin necesidad de \textit{Deep Reinforcement Learning}. La tabla \ref{tab:resultados_baselines} pone cara a cara los agentes DRL con las seis \textit{baselines} clásicas y el agente especulativo basado en GMM+K-Means. Todas las estrategias compiten en igualdad de condiciones: el mismo periodo de test (2024-03-09 a 2026-04-30), las mismas comisiones, el mismo capital inicial, el mismo universo de 17 activos seleccionados con el \textit{screener} temporal estricto (cutoff 2024-03-08): APP, BND, CEG, COR, COST, GE, IVV, LLY, META, NVDA, PHM, RSG, SMCI, VRT, VST, IBIT y ETHA. La sección \ref{sec:conclusiones_limitaciones} explica con detalle por qué este universo, y no el original, es el correcto.
 
 Para los agentes DRL se reporta tanto el resultado de la mejor semilla (mejor semilla) como la media sobre $N=5$ semillas, lo que permite apreciar tanto el potencial máximo alcanzable como la robustez real de cada algoritmo.
 
@@ -994,7 +995,7 @@ Las dos primeras limitaciones identificadas en la sección \ref{sec:resultados_s
 
 La iteración 2 realiza una comparación de tres configuraciones mediante ablación (variación controlada de un único factor a la vez). Se compara el modelo base del universo original (recompensa \texttt{sharpe} con perfil \texttt{low\_turnover}, Sharpe 1.875) con dos variantes. En cada experimento se modifica un único factor, manteniendo el resto invariante: arquitectura de red, hiperparámetros del optimizador y los mismos 1\,500\,000 pasos de entrenamiento. Esto aísla el efecto del cambio.
 
-\textbf{Primera variante}: modifica la función de recompensa. En lugar de basarse solo en el Sharpe \textit{rolling}, incorpora un componente de retorno absoluto (el log-retorno diario). La idea es que el agente reciba una señal directa de \textit{cuánto ha ganado hoy}, no solo una versión suavizada y ajustada por riesgo. La nueva recompensa queda:
+\textbf{Primera variante}: modifica la función de recompensa. En lugar de basarse solo en el Sharpe \textit{rolling}, incorpora un componente de retorno absoluto (el log-retorno diario). La idea es que el agente reciba una señal directa de \textit{cuánto ha ganado hoy}, no solo una versión suavizada y ajustada por riesgo. La nueva recompensa queda definida en la ecuación \eqref{eq:reward_dual}:
 
 \begin{equation}
 r_t^{\mathrm{dual}} = \mathrm{clip}\!\left(\,\alpha \cdot \mathrm{Sharpe}^{(20)}_t \;+\; \beta \cdot \widetilde{\mathrm{LR}}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right),
@@ -1231,7 +1232,7 @@ El trabajo presenta siete limitaciones que conviene reconocer abiertamente para 
 
     \item \textbf{Resultados negativos honestos de Optuna: la optimización automática no supera la calibración manual en este universo.}
 
-    La sección \ref{sec:optuna_ppo} documenta una búsqueda de hiperparámetros con 51 ensayos sobre PPO usando TPE (\citealt{bergstra2011tpe}) y \texttt{MedianPruner}. El hallazgo es negativo: el mejor ensayo es el primero, generado por muestreo aleatorio antes de que TPE construyera su modelo previo. El Sharpe de validación máximo alcanzado (1.32) corresponde a ese ensayo inicial. Ninguno de los 50 ensayos siguientes lo superó. El entrenamiento posterior con los mejores hiperparámetros encontrados, repetido $N=5$ veces sobre el conjunto de test, produce Sharpe $0.474 \pm 0.103$: prácticamente idéntico al de la calibración manual.
+    La sección \ref{sec:optuna_ppo} documenta una búsqueda de hiperparámetros con 51 ensayos sobre PPO usando TPE \citep{bergstra2011tpe} y \texttt{MedianPruner}. El hallazgo es negativo: el mejor ensayo es el primero, generado por muestreo aleatorio antes de que TPE construyera su modelo previo. El Sharpe de validación máximo alcanzado (1.32) corresponde a ese ensayo inicial. Ninguno de los 50 ensayos siguientes lo superó. El entrenamiento posterior con los mejores hiperparámetros encontrados, repetido $N=5$ veces sobre el conjunto de test, produce Sharpe $0.474 \pm 0.103$: prácticamente idéntico al de la calibración manual.
 
     Este es un resultado negativo bien documentado. Sirve como referencia práctica: deja claro hasta dónde llega la optimización bayesiana de hiperparámetros en este tipo de problema con el presupuesto computacional disponible. Las razones probables son varias: el espacio de búsqueda es amplio (10 dimensiones) para solo 51 ensayos, el \texttt{MedianPruner} es severo con ensayos ruidosos y los corta antes de tiempo, y el propio problema financiero tiene poca señal y mucho ruido, lo que dificulta que cualquier método de optimización mejore de forma estable con pocas evaluaciones.
 
@@ -1365,7 +1366,7 @@ La integración de criptoactivos institucionales en carteras tradicionales no es
 \chapter{Comparativa Detallada FinRL vs Este Trabajo}
 \label{anx:finrl_comparison}
 
-\noindent FinRL constituye una infraestructura de estandarización para DRL aplicado a finanzas \cite{liu2018finrl,liu2021finrl}. La tabla \ref{tab:finrl_vs_tfm} delimita qué aporta FinRL y qué desarrolla específicamente este TFM.
+\noindent FinRL constituye una infraestructura de estandarización para DRL aplicado a finanzas \citep{liu2018finrl,liu2021finrl}. La tabla \ref{tab:finrl_vs_tfm} delimita qué aporta FinRL y qué desarrolla específicamente este TFM.
 
 \begin{table}[h]
 \centering
@@ -1391,9 +1392,9 @@ Despliegue & No abordado de forma específica & Capa de servicios FastAPI, auten
 \noindent Los retornos de IBIT/ETHA heredan tres propiedades estadísticas de Bitcoin y Ethereum que importan para la modelación:
 
 \begin{itemize}
-    \item \textbf{\textit{Volatility clustering}}: la volatilidad no se distribuye uniformemente en el tiempo, sino en \textit{clusters}. Periodos de gran agitación alternan con fases más tranquilas. \cite{katsiampa2017} documenta que Bitcoin se ajusta bien a modelos de la familia GARCH (\textit{Generalized Autoregressive Conditional Heteroskedasticity}, \citet{bollerslev1986garch}), que modelan la varianza condicional de los retornos como función autorregresiva de las varianzas pasadas y están diseñados precisamente para capturar este patrón.
+    \item \textbf{\textit{Volatility clustering}}: la volatilidad no se distribuye uniformemente en el tiempo, sino en \textit{clusters}. Periodos de gran agitación alternan con fases más tranquilas. \citet{katsiampa2017} documenta que Bitcoin se ajusta bien a modelos de la familia GARCH (\textit{Generalized Autoregressive Conditional Heteroskedasticity}, \citet{bollerslev1986garch}), que modelan la varianza condicional de los retornos como función autorregresiva de las varianzas pasadas y están diseñados precisamente para capturar este patrón.
     \item \textbf{Asimetría y colas pesadas}: la serie histórica de IBIT es aún corta (cotiza desde enero de 2024) y no permite caracterizaciones distribucionales robustas por sí sola, pero los retornos de Bitcoin —el subyacente del ETF— presentan asimetría no nula y curtosis significativamente superior a 3 (valor de la distribución normal), lo que se traduce en colas más pesadas que las gaussianas. Los eventos extremos ocurren con frecuencia mayor a la predicha por modelos basados en normalidad.
-    \item \textbf{Dependencia condicional con el mercado tradicional}: las correlaciones de Bitcoin con renta variable y renta fija varían con el régimen. \cite{conlon2020safehaven} muestran que durante el mercado bajista de la COVID-19, Bitcoin no actuó como activo refugio: su correlación con la renta variable subió cuando debería haber bajado. Eso penaliza directamente a cualquier modelo estático que asuma una matriz de covarianzas constante.
+    \item \textbf{Dependencia condicional con el mercado tradicional}: las correlaciones de Bitcoin con renta variable y renta fija varían con el régimen. \citet{conlon2020safehaven} muestran que durante el mercado bajista de la COVID-19, Bitcoin no actuó como activo refugio: su correlación con la renta variable subió cuando debería haber bajado. Eso penaliza directamente a cualquier modelo estático que asuma una matriz de covarianzas constante.
 \end{itemize}
 
 \chapter{Frontend Angular: Capa de Presentación}
