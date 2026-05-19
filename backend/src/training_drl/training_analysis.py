@@ -1377,25 +1377,17 @@ class OverfitDetectorCallback(BaseCallback):
 
     patience : int
         Evaluaciones consecutivas sin mejora antes de aplicar early stopping.
-    min_improvement_pct : float
-        OBSOLETO — se mantiene por compatibilidad con la firma antigua, pero
-        actualmente el callback usa un umbral absoluto fijo (0.001) en lugar
-        de uno relativo. Ver justificación en _on_step().
     verbose : int
         Nivel de verbosidad (0 = silencioso, 1 = log por evaluación).
     """
 
     def __init__(self, eval_env, eval_freq=10000, n_eval_ep=3,
-                 patience=5, min_improvement_pct=0.02, verbose=1):
+                 patience=5, verbose=1):
         super().__init__(verbose)
         self.eval_env  = eval_env
         self.eval_freq = eval_freq
         self.n_eval_ep = n_eval_ep
         self.patience = patience
-        # Conservado por compatibilidad de firma; el código no lo usa porque
-        # el umbral relativo daba problemas con rewards cercanos a cero.
-        # El umbral efectivo (absoluto, 0.001) está en _on_step().
-        self.min_improvement_pct = min_improvement_pct
 
         self.train_history       = []
         self.eval_history        = []

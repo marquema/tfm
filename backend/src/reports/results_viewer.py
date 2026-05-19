@@ -61,7 +61,7 @@ os.makedirs("src/reports", exist_ok=True)
 # ─────────────────────────────────────────────
 FEATURES_PATH   = 'data/normalized_features.csv'
 PRICES_PATH     = 'data/original_prices.csv'
-MODEL_PATH      = 'models/best_model_academic/best_model.zip'
+MODEL_PATH      = 'models/best_model_academic_OPTUNA_seed1/best_model.zip'
 SPLIT_PCT       = 0.8
 INITIAL_BALANCE = 10_000
 
