@@ -500,7 +500,12 @@ Antes de alimentar al agente, las \textit{features} se normalizan por activo (Z-
 El entorno de simulación se ha implementado siguiendo la interfaz \textit{Gymnasium} estándar, lo que permite reutilizar cualquier algoritmo de la familia \textit{Stable-Baselines3} sin reescribir el código de entrenamiento. El entorno formaliza el problema como un Proceso de Decisión de Markov (MDP) finito, con los siguientes componentes:
 
 \begin{itemize}
-    \item \textbf{Espacio de estados} $\mathcal{S}$. El vector de observación del día $t$ concatena tres bloques: las \textit{features} normalizadas de los activos del universo en ese instante, los pesos actuales de la cartera $\mathbf{w}_{t-1}$ y la última recompensa $r_{t-1}$. Es una observación aumentada: el agente ve no solo el mercado, sino también su propia posición previa, lo que le permite tomar decisiones que tengan en cuenta su exposición actual.
+    \item \textbf{Espacio de estados} $\mathcal{S}$. El vector de observación del día $t$ se construye como una concatenación de tres bloques:
+    \begin{equation}
+        \mathbf{s}_t \;=\; \big[\, \mathbf{f}_t \;\Vert\; \mathbf{w}_{t-1} \;\Vert\; r_{t-1} \,\big] \;\in\; \mathbb{R}^{n \cdot k + n + 1},
+        \label{eq:state}
+    \end{equation}
+    donde $\mathbf{f}_t \in \mathbb{R}^{n \cdot k}$ son las \textit{features} normalizadas de los $n = 17$ activos del universo ($k$ \textit{features} por activo, definidas en la tabla \ref{tab:features}), $\mathbf{w}_{t-1} \in [0,1]^{n}$ es el vector de pesos de la cartera al cierre del día anterior y $r_{t-1} \in [-1, 1]$ es la última recompensa recibida. El operador $\Vert$ denota concatenación. Es una observación aumentada: el agente ve no solo el mercado, sino también su propia posición previa, lo que le permite tomar decisiones que tengan en cuenta su exposición actual.
     \item \textbf{Espacio de acciones} $\mathcal{A}$. Cada día, el agente decide los pesos de la cartera: cuánto invertir en cada uno de los 17 activos. La acción es un vector continuo $\mathbf{a}_t \in [0,1]^{n}$ con $n=17$ que el entorno normaliza para que sume 1 (cartera plenamente invertida, sin posiciones cortas):
     \begin{equation*}
         \mathbf{w}_t = \frac{\mathbf{a}_t}{\sum_i a_{t,i}},
@@ -548,6 +553,17 @@ donde $\bar{r}_{20}$ y $\sigma_{20}$ son la media y la desviación típica de lo
 
 Esta formulación es \textit{multiobjetivo} en el sentido clásico de la literatura DRL: en una sola señal por paso integra rentabilidad ajustada al riesgo, riesgo realizado y fricción operativa. El algoritmo de optimización tiene que equilibrar las tres simultáneamente, sin que ninguna de ellas pueda crecer indefinidamente a costa de las otras.
 
+\subsubsection*{Variante dual: Sharpe + log-retorno}
+
+Como variante metodológica explorada en la iteración 2 (sección \ref{sec:resultados_iter2}), se define una recompensa alternativa que añade un componente de retorno absoluto al término Sharpe. La motivación es ofrecer al agente una señal directa de \emph{cuánto ha ganado hoy}, no solo una versión suavizada y ajustada por riesgo. La recompensa dual se formula en la ecuación \eqref{eq:reward_dual}:
+
+\begin{equation}
+r_t^{\mathrm{dual}} = \mathrm{clip}\!\left(\,\alpha \cdot \mathrm{Sharpe}^{(20)}_t \;+\; \beta \cdot \widetilde{\mathrm{LR}}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right),
+\label{eq:reward_dual}
+\end{equation}
+
+donde $\widetilde{\mathrm{LR}}_t = \mathrm{clip}(100 \cdot \log(V_t / V_{t-1}),\, -1,\, 1)$ es el log-retorno reescalado al mismo rango que el Sharpe normalizado, y $\alpha = \beta = 0.5$ reparte el peso al 50/50 entre ambos componentes. Los términos $\varphi \cdot \mathrm{MDD}_t$ y $\gamma \cdot T_t$ son idénticos a la recompensa base. Esta variante se evalúa empíricamente en la sección \ref{sec:resultados_iter2}.
+
 \subsection{Perfiles de Riesgo}
 \label{sec:perfiles}
 
@@ -568,21 +584,18 @@ Los hiperparámetros $\varphi$ y $\gamma$ se agrupan en cuatro perfiles preconfi
 \label{tab:perfiles}
 \end{table}
 
-La elección de \texttt{low\_turnover} como perfil principal se justifica empíricamente en el análisis de sensibilidad (sección \ref{sec:resultados_sensitivity}).
+La elección de \texttt{low\_turnover} como perfil principal se justifica empíricamente en el análisis de sensibilidad recogido en el anexo \ref{sec:resultados_sensitivity}.
 
 \paragraph{Magnitud relativa de los términos de la recompensa.} El Sharpe \textit{rolling} escalado vive en $[-1, 1]$, por lo que su magnitud típica es del orden de $0.1$--$0.5$. Con $\varphi = 0.02$ y un MDD típico de $0.20$ (20\,\%), la penalización por \textit{drawdown} aporta del orden de $-0.004$; con $\gamma = 0.02$ y un \textit{turnover} diario típico de $0.50$, la penalización por rotación aporta del orden de $-0.01$. Ambas penalizaciones son pequeñas frente al término Sharpe, lo que explica por qué el perfil \texttt{low\_turnover} sigue mostrando \textit{turnover} sustancial en los resultados: las penalizaciones modulan la señal sin dominarla. Aumentar $\varphi$ y $\gamma$ un orden de magnitud penalizaría más agresivamente caídas y rotación, a costa de comprimir el rango efectivo de la señal Sharpe y dificultar el aprendizaje. La calibración actual prioriza estabilidad del entrenamiento; un análisis de sensibilidad más amplio sobre la escala de estas penalizaciones queda como línea de mejora.
 
 \section{Agente PPO: Arquitectura, Hiperparámetros e Inferencia}
 \label{sec:agente_ppo}
 
-\subsection{Arquitectura Actor-Crítico}
+\subsection{Configuración concreta del agente Actor-Crítico}
 
-El agente se implementa con la API \texttt{PPO} de \textit{Stable-Baselines3}, usando la política \texttt{MlpPolicy} (la \texttt{ActorCriticPolicy} estándar de la librería). Esta política define dos salidas (\textit{heads}) sobre una red MLP (\textit{multilayer perceptron}) compartida:
+Los fundamentos teóricos de la arquitectura \textit{Actor-Critic} ya se han presentado en el estado del arte (sección \ref{sec:ppo_vs_alternativas}). Esta subsección documenta únicamente las decisiones de implementación específicas del agente del TFM.
 
-\begin{itemize}
-    \item Un \textit{actor} encargado de proponer la cartera del día siguiente. Su espacio de acciones es $[0,1]^{n}$ con $n=17$, un vector que representa el peso asignado a cada activo (la suma se normaliza a 1 dentro del entorno). En lugar de devolver directamente esos 17 números, el actor devuelve los parámetros de una distribución de probabilidad ---una Gaussiana diagonal--- de la que se muestrea durante el entrenamiento. Esa aleatoriedad controlada permite al agente explorar combinaciones nuevas en lugar de quedar atrapado en la primera cartera razonable que encuentre.
-    \item Un \textit{crítico} que estima cuán prometedor es el estado actual, es decir, la función de valor $V_{\phi}(\mathbf{s})$. Su salida se utiliza para calcular las ventajas $\hat{A}_t$ ---en qué medida una acción concreta supera lo esperado en ese estado--- con baja varianza mediante \textit{Generalized Advantage Estimation} (GAE), una técnica que pondera estimaciones a varios horizontes temporales para estabilizar el gradiente.
-\end{itemize}
+El agente se implementa con la API \texttt{PPO} de \textit{Stable-Baselines3}, usando la política \texttt{MlpPolicy} (la \texttt{ActorCriticPolicy} estándar de la librería). Las dos salidas se concretan así: el \textit{actor} opera sobre el espacio de acciones $[0,1]^{n}$ con $n=17$ activos del universo, parametrizando una distribución Gaussiana diagonal de la que se muestrea durante el entrenamiento; el \textit{crítico} estima la función de valor $V_{\phi}(\mathbf{s})$, cuyas salidas alimentan el cálculo de las ventajas $\hat{A}_t$ mediante \textit{Generalized Advantage Estimation} (GAE).
 
 La arquitectura concreta es un MLP de dos capas ocultas de 256 unidades cada una (\texttt{net\_arch=[256, 256]}). Es el valor recomendado por SB3 para problemas continuos de dimensionalidad media y se mantiene aquí como referencia razonable: una red más pequeña podría no capturar la dinámica del estado, una mucho más grande corre el riesgo de sobreajustar.
 
@@ -713,7 +726,7 @@ En ambos esquemas, los hiperparámetros del entrenamiento son idénticos a los d
 \chapter{Resultados Experimentales}
 \label{cap:resultados}
 
-Este capítulo presenta los resultados de los experimentos diseñados en el capítulo \ref{cap:materiales_y_metodos}. La estructura sigue el proceso real de la investigación. Primero se evalúa la configuración base del agente PPO con la recompensa Sharpe \textit{rolling}, sometida a un análisis de sensibilidad y a un protocolo de validación temporal. Después se la compara con un catálogo de seis estrategias de referencia. Las observaciones que salen de esta primera iteración son las que motivan las dos iteraciones siguientes —una recompensa doble y una comparativa entre algoritmos DRL—, que se desarrollan al final del capítulo.
+Este capítulo presenta los resultados de los experimentos diseñados en el capítulo \ref{cap:materiales_y_metodos}. La estructura sigue el proceso real de la investigación. Primero se evalúa la configuración base del agente PPO con la recompensa Sharpe \textit{rolling}, sometida a un protocolo de validación temporal. Después se la compara con un catálogo de seis estrategias de referencia. El análisis preliminar de sensibilidad de los hiperparámetros $\varphi$ y $\gamma$ se documenta en el anexo \ref{sec:resultados_sensitivity} por corresponder al universo \textit{legacy}, previo a la corrección del sesgo de selección. Las observaciones que salen de esta primera iteración son las que motivan las dos iteraciones siguientes —una recompensa doble y una comparativa entre algoritmos DRL—, que se desarrollan al final del capítulo.
 
 \section{Configuración Experimental}
 \label{sec:resultados_config}
@@ -744,32 +757,6 @@ Inferencia & determinista (\texttt{deterministic=True}) \\ \hline
 \end{table}
 
 El periodo de test ($\approx 2.3$ años, marzo 2024 a abril 2026) cubre un régimen de mercado dominado por un fuerte ciclo alcista del sector tecnológico y semiconductores, junto con una fase lateral en el Bitcoin (IBIT casi plano) y un mercado bajista en Ethereum (ETHA con caídas próximas al 45 \%). Esta heterogeneidad permite evaluar la capacidad de un agente DRL para discriminar entre activos en regímenes opuestos simultáneamente.
-
-\section{Análisis de Sensibilidad de la Función de Recompensa}
-\label{sec:resultados_sensitivity}
-
-\noindent\textbf{IMPORTANTE --- Universo de esta sección:} las métricas de este análisis de sensibilidad corresponden al universo ORIGINAL ($n=15$ con sesgo de selección detectado posteriormente). Se mantienen aquí únicamente para documentar el proceso de calibración previo a la corrección del sesgo. Los números absolutos NO son comparables con los del capítulo \ref{cap:resultados} sobre universo sin sesgo de selección ($n=17$). La conclusión cualitativa ---que la política tolera variaciones de $\varphi$ y $\gamma$ dentro del rango explorado--- se considera válida como propiedad estructural del agente, independiente del universo.
-
-Para evaluar la robustez de la calibración del agente y justificar empíricamente la elección del perfil principal, se ha entrenado un agente PPO bajo cada uno de los cuatro perfiles del catálogo (sección \ref{sec:perfiles}), manteniendo idénticos el resto de hiperparámetros (200\,000 pasos por configuración). La tabla \ref{tab:resultados_sensitivity} resume las métricas \textit{out-of-sample}.
-
-\begin{table}[h]
-\centering
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.25}
-\begin{tabular}{|l|c|c|c|c|c|c|}
-\hline
-\textbf{Configuración} & $\boldsymbol{\varphi}$ & $\boldsymbol{\gamma}$ & \textbf{Sharpe} & \textbf{Retorno (\%)} & \textbf{Vol.~Anual.~(\%)} & \textbf{MDD (\%)} \\ \hline
-A: \texttt{balanced} & 0.02 & 0.010 & 1.263 & 130.0 & 28.88 & $-25.04$ \\ \hline
-B: \texttt{conservative} & 0.05 & 0.010 & 1.353 & 125.7 & 25.74 & $-33.76$ \\ \hline
-\textbf{C: \texttt{low\_turnover} (base)} & \textbf{0.02} & \textbf{0.020} & \textbf{1.358} & \textbf{120.4} & \textbf{24.69} & $-32.85$ \\ \hline
-D: \texttt{aggressive} & 0.01 & 0.005 & 1.949 & 279.9 & 30.15 & $-33.80$ \\ \hline
-\end{tabular}
-\caption{Resultados del análisis de sensibilidad sobre el periodo \textit{out-of-sample}.}
-\label{tab:resultados_sensitivity}
-\end{table}
-
-\noindent Estas métricas se recogen aquí únicamente para documentar el proceso experimental previo a la corrección del sesgo de selección. Las conclusiones operativas sobre la elección del perfil de riesgo, la calibración de $\varphi$ y $\gamma$, y la elección del algoritmo se establecen en el capítulo principal sobre el universo final (sección \ref{sec:resultados_baselines} y siguientes). El presente análisis preliminar no aporta conclusiones cuantitativas al trabajo; solo motiva las iteraciones experimentales posteriores.
 
 \section{Validación Temporal: Walk-Forward y Expanding Window}
 \label{sec:resultados_validacion}
@@ -876,6 +863,15 @@ SAC LT (mejor semilla)        & $+119.93$ & $41.00$ & $26.46$ & $\mathbf{1.280}$
 
 \noindent\textit{Salvedad sobre la frecuencia de rebalanceo:} las \textit{baselines} \textit{Equal-Weight} y 60/40 rebalancean mensualmente, Markowitz reestima con ventana de 252 días, \textit{Momentum Top-3} actualiza con ventana de 60 días y \textit{Buy \& Hold} no rebalancea. Los agentes DRL, en cambio, pueden ajustar la cartera diariamente. Esta asimetría favorece al agente en términos de capacidad de adaptación, pero le penaliza en costes acumulados de transacción: la función de recompensa internaliza explícitamente el coste por \textit{turnover}. La comparación es legítima dentro de este marco, pero conviene tenerla presente al interpretar las diferencias entre estrategias.
 
+La figura \ref{fig:baselines_comparison} presenta la misma información de la tabla \ref{tab:resultados_baselines} en formato visual, ordenada por Sharpe descendente, con un código de color que distingue \textit{baselines} clásicas, agente especulativo y DRL (media frente a mejor semilla). La línea punteada marca el umbral de Random Uniform (Sharpe 1.157).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{baselines_comparison.png}
+\caption[Comparativa Sharpe: agentes DRL frente a estrategias de referencia.]{Comparativa visual del Sharpe \textit{out-of-sample} de cada estrategia evaluada sobre el universo sin sesgo de selección ($n=17$, periodo de test 2024-03-09 a 2026-04-30). La línea discontinua marca el umbral de Random Uniform. Solo la mejor semilla de SAC LT supera ese umbral.}
+\label{fig:baselines_comparison}
+\end{figure}
+
 \subsection{Posicionamiento de los agentes DRL}
 
 La lectura de la tabla \ref{tab:resultados_baselines} arroja cuatro hechos que difieren sustancialmente de lo que cabría esperar si el DRL superara sistemáticamente a las estrategias clásicas:
@@ -892,7 +888,7 @@ La lectura de la tabla \ref{tab:resultados_baselines} arroja cuatro hechos que d
 
 \subsection{Lectura conjunta con el análisis de sensibilidad}
 
-El análisis de sensibilidad (sección \ref{sec:resultados_sensitivity}) se realizó sobre el universo original (con \textit{data leakage}), por lo que sus conclusiones cuantitativas no son directamente comparables con las de esta tabla. Lo que sí sigue siendo válido es la observación cualitativa: los perfiles de recompensa con penalizaciones más laxas tienden a mayor concentración en activos volátiles, lo que en mercados alcistas produce retornos altos pero en mercados adversos amplifica las caídas. Las iteraciones siguientes (secciones \ref{sec:resultados_iter2} y \ref{sec:resultados_iter3}) documentan este patrón de forma sistemática sobre el universo sin sesgo de selección.
+El análisis de sensibilidad recogido en el anexo \ref{sec:resultados_sensitivity} se realizó sobre el universo original (con \textit{data leakage}), por lo que sus conclusiones cuantitativas no son directamente comparables con las de esta tabla. Lo que sí sigue siendo válido es la observación cualitativa: los perfiles de recompensa con penalizaciones más laxas tienden a mayor concentración en activos volátiles, lo que en mercados alcistas produce retornos altos pero en mercados adversos amplifica las caídas. Las iteraciones siguientes (secciones \ref{sec:resultados_iter2} y \ref{sec:resultados_iter3}) documentan este patrón de forma sistemática sobre el universo sin sesgo de selección.
 
 \section{Comportamiento del Agente: Pesos y Rotación}
 \label{sec:resultados_pesos}
@@ -927,6 +923,15 @@ IBIT  & $3.61$ & $5.55$ & $0.00$  & $18.96$ \\ \hline
 \label{tab:pesos_ppo}
 \end{table}
 
+La figura \ref{fig:ppo_weights_stacked} traduce la tabla \ref{tab:pesos_ppo} a un gráfico de área apilada que muestra cómo varía la composición de la cartera día a día. La estabilidad de los bloques inferiores ---activos defensivos como VST, COR, RSG, LLY y COST--- contrasta con la mayor variabilidad de los activos volátiles (NVDA, SMCI, APP, META) y de los criptoactivos (IBIT, ETHA) en la parte superior, que reflejan la naturaleza reactiva de la asignación de la política a estas clases de riesgo más elevado.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{ppo_weights_stacked.png}
+\caption[Evolución diaria de los pesos de cartera de PPO Optuna seed 1.]{Evolución diaria de los pesos de cartera del agente PPO Optuna mejor semilla (seed 1) sobre el periodo de test (579 días, universo sin sesgo de selección $n=17$). Los activos se ordenan de mayor a menor peso medio para facilitar la lectura del núcleo defensivo en la parte inferior y la rotación de los activos volátiles arriba.}
+\label{fig:ppo_weights_stacked}
+\end{figure}
+
 \subsection{Lectura del comportamiento}
 
 Los datos de la tabla \ref{tab:pesos_ppo} revelan cuatro patrones del agente PPO Optuna mejor semilla:
@@ -938,13 +943,20 @@ Los datos de la tabla \ref{tab:pesos_ppo} revelan cuatro patrones del agente PPO
 
     \item \textbf{Infraponderación deliberada de los \textit{outliers} más volátiles.} NVDA ($6.25$\,\%), SMCI ($5.26$\,\%), APP ($5.02$\,\%), VRT ($4.83$\,\%), META ($4.50$\,\%) y CEG ($4.41$\,\%) están entre los activos de mayor retorno y volatilidad del periodo. Sin embargo, el agente les asigna pesos por debajo de la media. La mediana de SMCI, APP, META y CEG es exactamente $0.00$\,\%, lo que indica que el agente prefiere excluirlos en la mayoría de los días salvo en señales específicas (pico máximo $27.82$\,\%). Este comportamiento explica la diferencia entre el retorno final ($+45.58$\,\%) y el de Random Uniform ($+120.05$\,\%): infraponderar los ganadores extremos limita la captura del régimen alcista del universo.
 
-    \item \textbf{Exposición conservadora a criptoactivos.} IBIT recibe el peso medio más bajo del universo ($3.61$\,\%) y ETHA solo $4.27$\,\%. Ambos tienen mediana $0.00$\,\%. La combinación de su corta historia disponible, su alta volatilidad y la penalización del Sharpe \textit{rolling} produce una asignación cripto reactiva, no sistemática.
+    \item \textbf{Exposición conservadora a criptoactivos.} IBIT recibe el peso medio más bajo del universo ($3.61$\,\%) y ETHA solo $4.27$\,\%. Ambos tienen mediana $0.00$\,\%. La combinación de su corta historia disponible, su alta volatilidad y la penalización del Sharpe \textit{rolling} produce una asignación cripto reactiva, no sistemática. La figura \ref{fig:ppo_cripto_exposure} ilustra ese comportamiento: la exposición total a cripto (IBIT + ETHA) se mantiene por debajo del $15$\,\% durante la mayor parte del periodo, con picos puntuales que coinciden con tramos alcistas concretos y vuelta rápida a la neutralidad.
 \end{itemize}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{ppo_cripto_exposure.png}
+\caption[Exposición diaria a criptoactivos del agente PPO Optuna seed 1.]{Exposición diaria a criptoactivos (IBIT, ETHA y total IBIT+ETHA) del agente PPO Optuna mejor semilla sobre el periodo de test. La línea discontinua marca la exposición media total a cripto. La política mantiene una posición cripto generalmente moderada con picos reactivos de corta duración.}
+\label{fig:ppo_cripto_exposure}
+\end{figure}
 
 \section{Síntesis: Limitaciones de la Configuración Base y Motivación de las Iteraciones Siguientes}
 \label{sec:resultados_sintesis}
 
-Las secciones anteriores (\ref{sec:resultados_sensitivity} a \ref{sec:resultados_pesos}) ofrecen, juntas, una imagen completa de la configuración base del agente sobre el universo sin sesgo de selección: cuán robusta es a la calibración, cómo se compara con las \textit{baselines} y qué hace con la cartera. Esta síntesis pone en orden lo que funciona y lo que falla, para motivar las iteraciones siguientes.
+Las secciones anteriores (\ref{sec:resultados_validacion} a \ref{sec:resultados_pesos}) ofrecen, juntas, una imagen completa de la configuración base del agente sobre el universo sin sesgo de selección: cómo se valida temporalmente, cómo se compara con las \textit{baselines} y qué hace con la cartera. Esta síntesis pone en orden lo que funciona y lo que falla, para motivar las iteraciones siguientes.
 
 \subsection{Lo que la configuración base consigue}
 
@@ -994,14 +1006,7 @@ Las dos primeras limitaciones identificadas en la sección \ref{sec:resultados_s
 
 La iteración 2 realiza una comparación de tres configuraciones mediante ablación (variación controlada de un único factor a la vez). Se compara el modelo base del universo original (recompensa \texttt{sharpe} con perfil \texttt{low\_turnover}, Sharpe 1.875) con dos variantes. En cada experimento se modifica un único factor, manteniendo el resto invariante: arquitectura de red, hiperparámetros del optimizador y los mismos 1\,500\,000 pasos de entrenamiento. Esto aísla el efecto del cambio.
 
-\textbf{Primera variante}: modifica la función de recompensa. En lugar de basarse solo en el Sharpe \textit{rolling}, incorpora un componente de retorno absoluto (el log-retorno diario). La idea es que el agente reciba una señal directa de \textit{cuánto ha ganado hoy}, no solo una versión suavizada y ajustada por riesgo. La nueva recompensa queda definida en la ecuación \eqref{eq:reward_dual}:
-
-\begin{equation}
-r_t^{\mathrm{dual}} = \mathrm{clip}\!\left(\,\alpha \cdot \mathrm{Sharpe}^{(20)}_t \;+\; \beta \cdot \widetilde{\mathrm{LR}}_t \;-\; \varphi \cdot \mathrm{MDD}_t \;-\; \gamma \cdot T_t\,,\; -1,\; 1\,\right),
-\label{eq:reward_dual}
-\end{equation}
-
-donde $\widetilde{\mathrm{LR}}_t = \mathrm{clip}(100 \cdot \log(V_t / V_{t-1}),\, -1,\, 1)$ es el log-retorno reescalado al mismo rango que el Sharpe normalizado, y $\alpha = \beta = 0.5$ reparte el peso al 50/50 entre ambos componentes.
+\textbf{Primera variante}: modifica la función de recompensa, sustituyendo la formulación base por la variante dual definida en metodología (ecuación \eqref{eq:reward_dual}, sección \ref{sec:recompensa}). En lugar de basarse solo en el Sharpe \textit{rolling}, incorpora un componente de retorno absoluto (el log-retorno diario) ponderado al 50/50, dándole al agente una señal directa de \textit{cuánto ha ganado hoy}.
 
 \textbf{Segunda variante}: deja la recompensa Sharpe del modelo base intacta, pero cambia el perfil de riesgo. Sustituye \texttt{low\_turnover} ($\varphi = 0.02$, $\gamma = 0.020$) por \texttt{aggressive} ($\varphi = 0.01$, $\gamma = 0.005$). En la práctica, esto reduce drásticamente la presión por evitar \textit{drawdowns} y rotación, dejándole al agente más libertad para concentrarse en activos volátiles si cree que merecen la pena.
 
@@ -1135,6 +1140,15 @@ SAC Aggr      & $\mathbf{1.097}$ & $0.643$ & $1.000$ & $0.798$ & $0.805$ & $0.45
 \caption{Sharpe \textit{out-of-sample} por semilla individual ($N=5$). Universo sin sesgo de selección. Negrita: mejor semilla de cada configuración. El rango (máx$-$mín) cuantifica la variabilidad intra-configuración.}
 \label{tab:resultados_iter3_seeds}
 \end{table}
+
+La figura \ref{fig:multiseed_sharpe} visualiza la distribución completa: cada barra representa una semilla individual, agrupadas por configuración algoritmo$\times$perfil. La línea discontinua marca el umbral de Random Uniform (1.157). La mejor semilla de cada grupo aparece destacada con borde grueso y etiqueta numérica; SAC LT seed 4 (Sharpe $1.280$) es la única ejecución DRL que supera el umbral, mientras que la varianza inter-semilla de A2C y SAC LT es claramente superior a la de PPO Optuna.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{multiseed_sharpe.png}
+\caption[Distribución Sharpe por semilla en la iteración 3.]{Distribución del Sharpe \textit{out-of-sample} por semilla individual ($N=5$ por configuración) en la comparativa multi-algoritmo. Universo sin sesgo de selección. Cada barra es una semilla; la mejor semilla de cada grupo aparece destacada con borde grueso. La línea discontinua marca el umbral de Random Uniform (1.157), superado únicamente por SAC LT seed 4.}
+\label{fig:multiseed_sharpe}
+\end{figure}
 
 \subsection{Hallazgo principal: SAC lidera con varianza alta}
 
@@ -1395,6 +1409,32 @@ Despliegue & No abordado de forma específica & Capa de servicios FastAPI, auten
     \item \textbf{Asimetría y colas pesadas}: la serie histórica de IBIT es aún corta (cotiza desde enero de 2024) y no permite caracterizaciones distribucionales robustas por sí sola, pero los retornos de Bitcoin —el subyacente del ETF— presentan asimetría no nula y curtosis significativamente superior a 3 (valor de la distribución normal), lo que se traduce en colas más pesadas que las gaussianas. Los eventos extremos ocurren con frecuencia mayor a la predicha por modelos basados en normalidad.
     \item \textbf{Dependencia condicional con el mercado tradicional}: las correlaciones de Bitcoin con renta variable y renta fija varían con el régimen. \citet{conlon2020safehaven} muestran que durante el mercado bajista de la COVID-19, Bitcoin no actuó como activo refugio: su correlación con la renta variable subió cuando debería haber bajado. Eso penaliza directamente a cualquier modelo estático que asuma una matriz de covarianzas constante.
 \end{itemize}
+
+\chapter{Análisis de Sensibilidad de la Función de Recompensa (universo \textit{legacy} $n=15$)}
+\label{sec:resultados_sensitivity}
+
+\noindent\textbf{Carácter metodológico de este anexo.} Esta sección documenta el análisis preliminar de sensibilidad de los hiperparámetros $\varphi$ y $\gamma$ que se ejecutó sobre el universo original ($n=15$, con sesgo de selección detectado posteriormente). Se incluye como anexo porque pertenece al proceso de calibración previo a la corrección del sesgo y no constituye un resultado cuantitativo entregable. Los números absolutos NO son comparables con los del capítulo \ref{cap:resultados} sobre universo sin sesgo de selección ($n=17$). La conclusión cualitativa ---que la política tolera variaciones de $\varphi$ y $\gamma$ dentro del rango explorado--- se considera válida como propiedad estructural del agente, independiente del universo.
+
+Para evaluar la robustez de la calibración del agente y justificar empíricamente la elección del perfil principal, se ha entrenado un agente PPO bajo cada uno de los cuatro perfiles del catálogo (sección \ref{sec:perfiles}), manteniendo idénticos el resto de hiperparámetros (200\,000 pasos por configuración). La tabla \ref{tab:resultados_sensitivity} resume las métricas \textit{out-of-sample}.
+
+\begin{table}[h]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|l|c|c|c|c|c|c|}
+\hline
+\textbf{Configuración} & $\boldsymbol{\varphi}$ & $\boldsymbol{\gamma}$ & \textbf{Sharpe} & \textbf{Retorno (\%)} & \textbf{Vol.~Anual.~(\%)} & \textbf{MDD (\%)} \\ \hline
+A: \texttt{balanced} & 0.02 & 0.010 & 1.263 & 130.0 & 28.88 & $-25.04$ \\ \hline
+B: \texttt{conservative} & 0.05 & 0.010 & 1.353 & 125.7 & 25.74 & $-33.76$ \\ \hline
+\textbf{C: \texttt{low\_turnover} (base)} & \textbf{0.02} & \textbf{0.020} & \textbf{1.358} & \textbf{120.4} & \textbf{24.69} & $-32.85$ \\ \hline
+D: \texttt{aggressive} & 0.01 & 0.005 & 1.949 & 279.9 & 30.15 & $-33.80$ \\ \hline
+\end{tabular}
+\caption{Resultados del análisis de sensibilidad sobre el periodo \textit{out-of-sample} del universo \textit{legacy} $n=15$.}
+\label{tab:resultados_sensitivity}
+\end{table}
+
+\noindent Las conclusiones operativas sobre la elección del perfil de riesgo, la calibración de $\varphi$ y $\gamma$ y la elección del algoritmo se establecen en el capítulo principal sobre el universo final (sección \ref{sec:resultados_baselines} y siguientes). Este anexo solo motiva las iteraciones experimentales posteriores.
 
 \chapter{Frontend Angular: Capa de Presentación}
 \label{anx:angular}
