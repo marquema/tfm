@@ -43,37 +43,50 @@ MEMORIA_DIR = PROJECT_ROOT / "memoria"
 
 
 def fig_a_stacked_weights(out_path: Path) -> None:
-    """Stacked area pesos PPO Optuna seed 1 sobre test."""
+    """Stacked area pesos PPO Optuna seed 1 sobre test, agrupado en 4 categorias."""
     df = pd.read_csv(WEIGHTS_CSV, parse_dates=["date"])
     df = df.set_index("date")
-    # Reordenar columnas: defensivos arriba (peso medio mayor), volatiles abajo.
-    avg_weight = df.mean().sort_values(ascending=False)
-    ordered_cols = list(avg_weight.index)
+
+    # Agrupar 17 activos en 4 categorias estructurales.
+    # Orden visual: defensivos abajo (estable), cripto arriba (volatil).
+    categories = {
+        "Defensivos / Calidad (VST, COR, RSG, LLY, COST)": ["VST", "COR", "RSG", "LLY", "COST"],
+        "Equity broad + Renta fija (IVV, BND)": ["IVV", "BND"],
+        "Tech / Growth volatil (NVDA, SMCI, APP, VRT, META, CEG, GE, PHM)": [
+            "NVDA", "SMCI", "APP", "VRT", "META", "CEG", "GE", "PHM",
+        ],
+        "Cripto (IBIT, ETHA)": ["IBIT", "ETHA"],
+    }
+    cat_colors = {
+        "Defensivos / Calidad (VST, COR, RSG, LLY, COST)": "#2c7a2c",
+        "Equity broad + Renta fija (IVV, BND)": "#4477aa",
+        "Tech / Growth volatil (NVDA, SMCI, APP, VRT, META, CEG, GE, PHM)": "#cc5511",
+        "Cripto (IBIT, ETHA)": "#aa5599",
+    }
+
+    grouped = pd.DataFrame({label: df[tickers].sum(axis=1) for label, tickers in categories.items()})
 
     fig, ax = plt.subplots(figsize=(11, 6))
-    colors = [ASSET_COLORS.get(c, "#999999") for c in ordered_cols]
     ax.stackplot(
-        df.index,
-        df[ordered_cols].T.values,
-        labels=ordered_cols,
-        colors=colors,
-        alpha=0.92,
+        grouped.index,
+        grouped.T.values,
+        labels=list(categories.keys()),
+        colors=[cat_colors[k] for k in categories.keys()],
+        alpha=0.88,
         edgecolor="white",
-        linewidth=0.15,
+        linewidth=0.4,
     )
 
     ax.set_xlabel("Fecha", fontsize=11)
     ax.set_ylabel("Peso de la cartera", fontsize=11)
     ax.set_ylim(0, 1.0)
-    ax.set_xlim(df.index.min(), df.index.max())
+    ax.set_xlim(grouped.index.min(), grouped.index.max())
     ax.grid(axis="y", linestyle=":", linewidth=0.4, alpha=0.5)
     ax.set_axisbelow(True)
-
-    # Leyenda fuera del area, 2 columnas para 17 items.
-    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8, ncol=1, frameon=False)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.10), fontsize=9, ncol=2, frameon=False)
 
     fig.suptitle(
-        "Evolucion diaria de los pesos de cartera ---PPO Optuna seed 1",
+        "Evolucion diaria de los pesos de cartera por categoria ---PPO Optuna seed 1",
         fontsize=12,
         y=0.995,
     )
@@ -81,6 +94,87 @@ def fig_a_stacked_weights(out_path: Path) -> None:
     fig.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     print(f"Generated A: {out_path.name}")
+
+
+def fig_a_heatmap_weights(out_path: Path) -> None:
+    """Heatmap pesos activo x tiempo, agrupado por categoria estructural."""
+    df = pd.read_csv(WEIGHTS_CSV, parse_dates=["date"])
+    df = df.set_index("date")
+
+    # Resample a frecuencia mensual (mean) para legibilidad. 579 dias -> ~25-27 meses.
+    monthly = df.resample("ME").mean()
+
+    # Orden filas por categoria + peso medio dentro de cada categoria.
+    categories = [
+        ("Defensivos /\nCalidad", ["VST", "COR", "RSG", "LLY", "COST"]),
+        ("Equity broad +\nRenta fija", ["IVV", "BND"]),
+        ("Tech / Growth\nvolatil", ["NVDA", "SMCI", "APP", "VRT", "META", "CEG", "GE", "PHM"]),
+        ("Cripto", ["IBIT", "ETHA"]),
+    ]
+    ordered_assets = []
+    category_borders = []  # indices donde cambia categoria, para lineas separadoras
+    for label, tickers in categories:
+        category_borders.append(len(ordered_assets))
+        # Dentro de cada categoria, ordenar por peso medio descendente.
+        sorted_tickers = sorted(tickers, key=lambda t: -df[t].mean())
+        ordered_assets.extend(sorted_tickers)
+    category_borders.append(len(ordered_assets))  # final
+
+    matrix = monthly[ordered_assets].T.values * 100  # a porcentajes
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    im = ax.imshow(
+        matrix,
+        aspect="auto",
+        cmap="YlOrRd",
+        vmin=0,
+        vmax=20,
+        interpolation="nearest",
+    )
+
+    # Eje X: meses como labels.
+    n_cols = matrix.shape[1]
+    tick_step = max(1, n_cols // 12)
+    tick_positions = np.arange(0, n_cols, tick_step)
+    tick_labels = [monthly.index[i].strftime("%Y-%m") for i in tick_positions]
+    ax.set_xticks(tick_positions)
+    ax.set_xticklabels(tick_labels, rotation=45, ha="right", fontsize=9)
+
+    # Eje Y: tickers.
+    ax.set_yticks(np.arange(len(ordered_assets)))
+    ax.set_yticklabels(ordered_assets, fontsize=9)
+
+    # Lineas horizontales separando categorias.
+    for border in category_borders[1:-1]:
+        ax.axhline(border - 0.5, color="black", linewidth=1.4)
+
+    # Etiquetas categoria a la derecha del heatmap.
+    for i, (label, _) in enumerate(categories):
+        mid = (category_borders[i] + category_borders[i + 1] - 1) / 2
+        ax.text(
+            n_cols + 0.5,
+            mid,
+            label,
+            va="center",
+            ha="left",
+            fontsize=9,
+            fontweight="bold",
+        )
+
+    # Colorbar.
+    cbar = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.12)
+    cbar.set_label("Peso medio mensual (\\%)", fontsize=10)
+
+    ax.set_xlabel("Mes", fontsize=11)
+    fig.suptitle(
+        "Heatmap mensual de pesos por activo ---PPO Optuna seed 1",
+        fontsize=12,
+        y=0.995,
+    )
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Generated A1 heatmap: {out_path.name}")
 
 
 def fig_b_multiseed_sharpe(out_path: Path) -> None:
@@ -212,5 +306,6 @@ def fig_c_cripto_exposure(out_path: Path) -> None:
 if __name__ == "__main__":
     MEMORIA_DIR.mkdir(parents=True, exist_ok=True)
     fig_a_stacked_weights(MEMORIA_DIR / "ppo_weights_stacked.png")
+    fig_a_heatmap_weights(MEMORIA_DIR / "ppo_weights_heatmap.png")
     fig_b_multiseed_sharpe(MEMORIA_DIR / "multiseed_sharpe.png")
     fig_c_cripto_exposure(MEMORIA_DIR / "ppo_cripto_exposure.png")

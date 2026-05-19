@@ -923,13 +923,22 @@ IBIT  & $3.61$ & $5.55$ & $0.00$  & $18.96$ \\ \hline
 \label{tab:pesos_ppo}
 \end{table}
 
-La figura \ref{fig:ppo_weights_stacked} traduce la tabla \ref{tab:pesos_ppo} a un gráfico de área apilada que muestra cómo varía la composición de la cartera día a día. La estabilidad de los bloques inferiores ---activos defensivos como VST, COR, RSG, LLY y COST--- contrasta con la mayor variabilidad de los activos volátiles (NVDA, SMCI, APP, META) y de los criptoactivos (IBIT, ETHA) en la parte superior, que reflejan la naturaleza reactiva de la asignación de la política a estas clases de riesgo más elevado.
+La figura \ref{fig:ppo_weights_stacked} traduce la tabla \ref{tab:pesos_ppo} a un gráfico de área apilada agrupando los 17 activos en cuatro categorías estructurales para que el patrón temporal sea legible: \textbf{defensivos / calidad} (VST, COR, RSG, LLY, COST), \textbf{equity \textit{broad} más renta fija} (IVV, BND), \textbf{tech / growth volátil} (NVDA, SMCI, APP, VRT, META, CEG, GE, PHM) y \textbf{cripto} (IBIT, ETHA). El bloque defensivo se mantiene estable en torno al $37$--$40$\,\% de la cartera durante todo el periodo, mientras que la asignación a la franja tech / growth fluctúa más en respuesta a cambios de régimen y la exposición cripto queda en una banda baja con picos puntuales.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\textwidth]{ppo_weights_stacked.png}
-\caption[Evolución diaria de los pesos de cartera de PPO Optuna seed 1.]{Evolución diaria de los pesos de cartera del agente PPO Optuna mejor semilla (seed 1) sobre el periodo de test (579 días, universo sin sesgo de selección $n=17$). Los activos se ordenan de mayor a menor peso medio para facilitar la lectura del núcleo defensivo en la parte inferior y la rotación de los activos volátiles arriba.}
+\caption[Evolución diaria de los pesos de cartera por categoría ---PPO Optuna seed 1.]{Evolución diaria de los pesos de cartera del agente PPO Optuna mejor semilla (seed 1) sobre el periodo de test (579 días, universo sin sesgo de selección $n=17$), agrupados en cuatro categorías estructurales. Los activos defensivos / calidad ocupan el bloque inferior estable, mientras que la franja tech / growth volátil y la exposición cripto reflejan rotación más activa.}
 \label{fig:ppo_weights_stacked}
+\end{figure}
+
+Una lectura complementaria por activo individual aparece en la figura \ref{fig:ppo_weights_heatmap}, que presenta el mismo periodo en formato \textit{heatmap} mensual: cada celda muestra el peso medio de un activo durante un mes concreto, con escala de color de claro (peso bajo) a oscuro (peso alto). Las filas se agrupan por categoría para facilitar la comparación entre activos del mismo bloque estructural.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{ppo_weights_heatmap.png}
+\caption[\textit{Heatmap} mensual de pesos por activo ---PPO Optuna seed 1.]{\textit{Heatmap} de pesos medios mensuales por activo del agente PPO Optuna mejor semilla (seed 1) sobre el periodo de test. Los 17 activos se agrupan en cuatro categorías estructurales (defensivos, equity \textit{broad} + renta fija, tech / growth volátil y cripto), separadas por líneas horizontales. Color claro indica peso bajo, color oscuro peso alto. Permite identificar qué activos concretos sostiene la política frente a cuáles trata de forma reactiva.}
+\label{fig:ppo_weights_heatmap}
 \end{figure}
 
 \subsection{Lectura del comportamiento}
