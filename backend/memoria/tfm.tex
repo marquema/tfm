@@ -101,6 +101,15 @@ The results quantify to what extent a DRL agent delivers a reproducible improvem
 \begin{document}
 \estructura
 
+\cleardoublepage
+\thispagestyle{empty}
+\vspace*{\fill}
+\begin{flushright}
+\textit{A mi mujer, mis padres, mis hermanos.}
+\end{flushright}
+\vspace*{\fill}
+\clearpage
+
 \tableofcontents
 
 \listoffigures
@@ -674,7 +683,7 @@ Los hiperparámetros del mejor ensayo son: \texttt{learning\_rate}$=8.47\!\times
 
 Con estos parámetros se entrena el modelo final: 5 semillas distintas, $1\,500\,000$ pasos cada una (el mismo presupuesto que el modelo base). Los resultados \textit{out-of-sample} se reportan en la sección \ref{sec:resultados_baselines} junto con las \textit{baselines} del estudio.
 
-En resumen: la calibración manual ya estaba bien. Optuna no encuentra una configuración mejor con los recursos disponibles. Las causas son varias: el espacio de búsqueda es amplio (10 dimensiones), 51 ensayos son pocos para explorar bien, el podador es severo con ensayos ruidosos, y el problema mismo tiene una relación señal-ruido muy baja. Estos límites prácticos se documentan para que próximos trabajos sepan dónde invertir el esfuerzo computacional.
+En resumen: la calibración manual ya estaba bien. Optuna no encuentra una configuración mejor con los recursos disponibles. Las causas son varias: el espacio de búsqueda es amplio (10 dimensiones), 51 ensayos son pocos para explorar bien, el prunner es severo con ensayos ruidosos, y el problema mismo tiene una relación señal-ruido muy baja. Estos límites prácticos se documentan para que próximos trabajos sepan dónde invertir el esfuerzo computacional.
 
 \subsection{Modo de Inferencia: Determinismo en el Backtest}
 \label{sec:inferencia_determinista}
@@ -763,7 +772,7 @@ El periodo de test ($\approx 2.3$ años, marzo 2024 a abril 2026) cubre un régi
 
 El protocolo de validación temporal descrito en la sección \ref{sec:validacion} se ejecuta sobre el dataset sin sesgo de selección del universo de $n=17$ activos. El esquema \textit{walk-forward} cubre el periodo 2017-11-09 a 2025-11-04 (9 ventanas de 504 días de entrenamiento y 252 días de test cada una). El esquema \textit{expanding window} cubre hasta 2026-04-30 (37 ventanas de 63 días de test con entrenamiento acumulativo desde 2017-11-09).
 
-Antes de leer la tabla, hay que explicar un detalle que se repite en este tipo de validaciones temporales. Cuando el agente se entrena con poco histórico —solo 504 días, sin haber visto regímenes de alta volatilidad— tiende a mantenerse casi todo el tiempo en posiciones cercanas a la liquidez. Los retornos diarios entonces son prácticamente cero, lo que distorsiona la ratio de Sharpe: dividir un retorno cercano a cero por una desviación cercana a cero arroja valores absolutos enormes (positivos o negativos) que no reflejan rendimiento económico real, solo ruido numérico. Estas ventanas se identifican por su volatilidad anualizada inferior al $1$\,\% y se excluyen del cálculo del Sharpe agregado. Es un filtro metodológicamente necesario, no oportunista: las ventanas filtradas miden el efecto de la inactividad del agente, no su desempeño ante el mercado.
+Antes de leer la tabla, hay que explicar un detalle que se repite en este tipo de validaciones temporales. Cuando el agente se entrena con poco histórico —solo 504 días, sin haber visto regímenes de alta volatilidad— tiende a mantenerse casi todo el tiempo en posiciones cercanas a la liquidez. Los retornos diarios entonces son prácticamente cero, lo que distorsiona la ratio de Sharpe: dividir un retorno cercano a cero por una desviación cercana a cero arroja valores absolutos enormes (positivos o negativos) que no reflejan rendimiento económico real, solo ruido numérico. Estas ventanas se identifican por su volatilidad anualizada inferior al $1$\,\% y se excluyen del cálculo del Sharpe agregado. Es un filtro metodológicamente necesario: las ventanas filtradas miden el efecto de la inactividad del agente, no su desempeño ante el mercado.
 
 La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos esquemas bajo este filtro. La tabla \ref{tab:wf_por_ventana} detalla las 7 ventanas con volatilidad significativa del walk-forward. Las figuras \ref{fig:wf_analysis} y \ref{fig:ew_analysis} muestran las curvas de equidad por ventana y el resumen visual de cada esquema.
 
@@ -797,7 +806,7 @@ Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$
 8 & 2024-01-25 → 2024-10-31 & $+1.655$ & $+62.06$ & $-20.13$ & 29.52 \\ \hline
 9 & 2024-11-01 → 2025-11-04 & $+1.178$ & $+44.92$ & $-22.29$ & 32.79 \\ \hline
 \end{tabular}
-\caption{Walk-forward rolling: detalle de las 7 ventanas con volatilidad superior al $1$\,\%. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen por artifact de Sharpe. La ventana 7 es la de mejor rendimiento. La ventana 5 (crash cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
+\caption{Walk-forward rolling: detalle de las 7 ventanas con volatilidad superior al $1$\,\%. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen. La ventana 7 es la de mejor rendimiento. La ventana 5 (crash cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
 \label{tab:wf_por_ventana}
 \end{table}
 
@@ -829,7 +838,7 @@ Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$
 
 Esta sección constituye el núcleo del capítulo. Los apartados anteriores han descrito el agente y validado su capacidad de aprendizaje; a continuación se compara con las estrategias que cualquier inversor podría aplicar sin necesidad de \textit{Deep Reinforcement Learning}. La tabla \ref{tab:resultados_baselines} pone cara a cara los agentes DRL con las seis \textit{baselines} clásicas y el agente especulativo basado en GMM+K-Means. Todas las estrategias compiten en igualdad de condiciones: el mismo periodo de test (2024-03-09 a 2026-04-30), las mismas comisiones, el mismo capital inicial, el mismo universo de 17 activos seleccionados con el \textit{screener} temporal estricto (cutoff 2024-03-08): APP, BND, CEG, COR, COST, GE, IVV, LLY, META, NVDA, PHM, RSG, SMCI, VRT, VST, IBIT y ETHA. La sección \ref{sec:conclusiones_limitaciones} explica con detalle por qué este universo, y no el original, es el correcto.
 
-Para los agentes DRL se reporta tanto el resultado de la mejor semilla (mejor semilla) como la media sobre $N=5$ semillas, lo que permite apreciar tanto el potencial máximo alcanzable como la robustez real de cada algoritmo.
+Para los agentes DRL se reporta tanto el resultado de la mejor semilla como la media sobre $N=5$ semillas, lo que permite apreciar tanto el potencial máximo alcanzable como la robustez real de cada algoritmo.
 
 \begin{table}[h]
 \centering
