@@ -237,7 +237,7 @@ La figura \ref{fig:gantt_tfm} presenta la planificación temporal del proyecto, 
     \ganttlink{f3}{f4}
 \end{ganttchart}%
 }
-\caption{Cronograma detallado del proyecto por semanas.}
+\caption[Cronograma del proyecto por semanas.]{Cronograma detallado del proyecto por semanas.}
 \label{fig:gantt_tfm}
 \end{figure}
 
@@ -683,13 +683,13 @@ Cada ensayo evalúa la configuración propuesta sobre una validación cruzada \t
 
 \subsubsection*{Resultado: un hallazgo honestamente negativo}
 
-La búsqueda completó 51 ensayos. El mejor Sharpe de validación fue $1.32$, correspondiente al \textbf{ensayo \#0}: la primera configuración evaluada, generada por muestreo aleatorio antes de que TPE tuviera suficiente información para construir su modelo previo. El \textit{sampler} TPE no logró consolidar ninguna región del espacio de búsqueda con mejora consistente sobre ese punto de partida: 39 de los 51 ensayos fueron eliminados por \texttt{MedianPruner} antes de completar su evaluación, y de los 12 restantes ninguno superó al ensayo inicial.
+La búsqueda completó $51$ ensayos. El mejor Sharpe de validación fue $1.32$, correspondiente al \textbf{ensayo \#0}: la primera configuración evaluada, generada por muestreo aleatorio antes de que TPE tuviera suficiente información para construir su modelo previo. El \textit{sampler} TPE no logró consolidar ninguna región del espacio de búsqueda con mejora consistente sobre ese punto de partida: 39 de los 51 ensayos fueron eliminados por \texttt{MedianPruner} antes de completar su evaluación, y de los 12 restantes ninguno superó al ensayo inicial.
 
 Los hiperparámetros del mejor ensayo son: \texttt{learning\_rate}$=8.47\!\times\!10^{-5}$, \texttt{n\_steps}$=512$, \texttt{batch\_size}$=256$, \texttt{clip\_range}$=0.200$, \texttt{ent\_coef}$=0.013$, \texttt{gae\_lambda}$=0.902$, \texttt{vf\_coef}$=0.979$, \texttt{max\_grad\_norm}$=0.883$, $\varphi=0.0094$, $\gamma=0.0020$.
 
 Con estos parámetros se entrena el modelo final: 5 semillas distintas, $1\,500\,000$ pasos cada una (el mismo presupuesto que el modelo base). Los resultados \textit{out-of-sample} se reportan en la sección \ref{sec:resultados_baselines} junto con las \textit{baselines} del estudio.
 
-En resumen: la calibración manual ya estaba bien. Optuna no encuentra una configuración mejor con los recursos disponibles. Las causas son varias: el espacio de búsqueda es amplio (10 dimensiones), 51 ensayos son pocos para explorar bien, el prunner es severo con ensayos ruidosos, y el problema mismo tiene una relación señal-ruido muy baja. Estos límites prácticos se documentan para que próximos trabajos sepan dónde invertir el esfuerzo computacional.
+En resumen: la calibración manual ya estaba bien. Optuna no encuentra una configuración mejor con los recursos disponibles. Las causas son varias: el espacio de búsqueda es amplio (10 dimensiones), $51$ ensayos son pocos para explorar bien, el prunner es severo con ensayos ruidosos, y el problema mismo tiene una relación señal-ruido muy baja. Estos límites prácticos se documentan para que próximos trabajos sepan dónde invertir el esfuerzo computacional.
 
 \subsection{Modo de Inferencia: Determinismo en el Backtest}
 \label{sec:inferencia_determinista}
@@ -796,7 +796,7 @@ La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos
 Walk-forward (rolling) & 9  & 7  & $+0.349 \pm 1.904$ & $-4.377 \pm 9.735$  & $+22.18$ & $-14.99$ \\ \hline
 Expanding window        & 37 & 26 & $+0.654 \pm 2.399$ & $-6.358 \pm 12.414$ & $+3.11$  & $-7.30$  \\ \hline
 \end{tabular}}
-\caption{Resumen de la validación temporal con ambas versiones de Sharpe: \textit{Sharpe robusto} se calcula solo sobre ventanas con volatilidad anualizada $>1$\,\%; \textit{Sharpe sin filtro} agrega todas las ventanas (incluyendo las próximas a la liquidez con Sharpe distorsionado, véase sección \ref{sec:validacion}). Las medianas asociadas son $1.178$ (WF filtrado) frente a $0.598$ (WF sin filtro) y $1.066$ (EW filtrado) frente a $-1.166$ (EW sin filtro), lo que ilustra cuánto pesa el ruido de las ventanas de baja volatilidad sobre el agregado.}
+\caption[Resumen de la validación temporal: \textit{walk-forward} y \textit{expanding window}.]{Resumen de la validación temporal con ambas versiones de Sharpe: \textit{Sharpe robusto} se calcula solo sobre ventanas con volatilidad anualizada $>1$\,\%; \textit{Sharpe sin filtro} agrega todas las ventanas (incluyendo las próximas a la liquidez con Sharpe distorsionado, véase sección \ref{sec:validacion}). Las medianas asociadas son $1.178$ (WF filtrado) frente a $0.598$ (WF sin filtro) y $1.066$ (EW filtrado) frente a $-1.166$ (EW sin filtro), lo que ilustra cuánto pesa el ruido de las ventanas de baja volatilidad sobre el agregado.}
 \label{tab:resultados_validacion}
 \end{table}
 
@@ -808,15 +808,15 @@ Expanding window        & 37 & 26 & $+0.654 \pm 2.399$ & $-6.358 \pm 12.414$ & $
 \begin{tabular}{|c|l|r|r|r|r|}
 \hline
 \textbf{Ventana} & \textbf{Periodo test} & \textbf{Sharpe} & \textbf{Retorno (\%)} & \textbf{MDD (\%)} & \textbf{Vol (\%)} \\ \hline
-3 & 2020-08-13 → 2021-04-21 & $-3.160$ & $-6.59$  & $-8.07$  & 3.41  \\ \hline
-4 & 2021-04-22 → 2021-12-29 & $+0.598$ & $+13.05$ & $-12.83$ & 16.06 \\ \hline
-5 & 2021-12-30 → 2022-09-07 & $-1.273$ & $-31.26$ & $-35.06$ & 29.30 \\ \hline
-6 & 2022-09-08 → 2023-05-17 & $+1.188$ & $+40.85$ & $-19.17$ & 29.10 \\ \hline
-7 & 2023-05-18 → 2024-01-24 & $\mathbf{+2.258}$ & $+78.01$ & $-15.97$ & 25.31 \\ \hline
-8 & 2024-01-25 → 2024-10-31 & $+1.655$ & $+62.06$ & $-20.13$ & 29.52 \\ \hline
-9 & 2024-11-01 → 2025-11-04 & $+1.178$ & $+44.92$ & $-22.29$ & 32.79 \\ \hline
+3 & 2020-08-13 --2021-04-21 & $-3.160$ & $-6.59$  & $-8.07$  & 3.41  \\ \hline
+4 & 2021-04-22 --2021-12-29 & $+0.598$ & $+13.05$ & $-12.83$ & 16.06 \\ \hline
+5 & 2021-12-30 --2022-09-07 & $-1.273$ & $-31.26$ & $-35.06$ & 29.30 \\ \hline
+6 & 2022-09-08 --2023-05-17 & $+1.188$ & $+40.85$ & $-19.17$ & 29.10 \\ \hline
+7 & 2023-05-18 --2024-01-24 & $\mathbf{+2.258}$ & $+78.01$ & $-15.97$ & 25.31 \\ \hline
+8 & 2024-01-25 --2024-10-31 & $+1.655$ & $+62.06$ & $-20.13$ & 29.52 \\ \hline
+9 & 2024-11-01 --2025-11-04 & $+1.178$ & $+44.92$ & $-22.29$ & 32.79 \\ \hline
 \end{tabular}
-\caption{Walk-forward rolling: detalle de las 7 ventanas con volatilidad superior al $1$\,\%. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen. La ventana 7 es la de mejor rendimiento. La ventana 5 (crash cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
+\caption[Walk-forward rolling: detalle de las 7 ventanas significativas.]{Walk-forward rolling: detalle de las 7 ventanas con volatilidad superior al $1$\,\%. Las ventanas 1 y 2 (vol 0.17\,\% y 0.30\,\%) se excluyen. La ventana 7 es la de mejor rendimiento. La ventana 5 (\textit{crash} cripto 2022) es la única significativa con Sharpe negativo superior a $-1$.}
 \label{tab:wf_por_ventana}
 \end{table}
 
@@ -839,7 +839,7 @@ Expanding window        & 37 & 26 & $+0.654 \pm 2.399$ & $-6.358 \pm 12.414$ & $
 \begin{itemize}
     \item \textbf{El filtro de volatilidad es necesario para una lectura correcta.} Las ventanas con volatilidad anualizada inferior al 1\,\% producen un Sharpe distorsionado: el agente está esencialmente inactivo y la métrica amplifica ruido numérico. Excluir estas ventanas (2 en walk-forward, 11 en expanding) es un requisito metodológico, no una elección oportunista.
     \item \textbf{Sharpe positivo en la mayoría de ventanas significativas.} De las 7 ventanas walk-forward con volatilidad real, 5 presentan Sharpe positivo (tabla \ref{tab:wf_por_ventana}). En el esquema expanding, 16 de las 26 ventanas significativas (62\,\%) tienen Sharpe positivo. El Sharpe robusto medio es $+0.35$ en walk-forward y $+0.65$ en expanding.
-    \item \textbf{La ventana 7 del walk-forward (Sharpe 2.258) es el mejor régimen observado.} El test cubre mayo 2023 a enero 2024, una fase de recuperación tras el crash cripto y revalorización tecnológica. El retorno de la ventana es del 78\,\%. La única ventana significativa con Sharpe claramente negativo es la 5 (diciembre 2021 a septiembre 2022, Sharpe $-1.273$, retorno $-31.26$\,\%), que coincide con el colapso de Terra-Luna y el inicio de la crisis cripto de 2022.
+    \item \textbf{Caso de mejor régimen: ventana 7 del \textit{walk-forward}.} El test de la ventana 7 cubre el periodo \textbf{mayo de 2023 a enero de 2024}, una fase de recuperación tras el \textit{crash} cripto de 2022 y de fuerte revalorización tecnológica (NVDA, despegue de la narrativa de IA). En ese contexto el agente alcanza \textbf{Sharpe $+2.258$ con retorno $+78$\,\% y MDD $-15.97$\,\%}: tres veces el Sharpe medio robusto del esquema. La lectura es importante: cuando el régimen de mercado coincide con activos al alza diversificados y volatilidad moderada-alta, el agente DRL sí captura la señal de forma clara. La limitación no es de aprendizaje, sino de generalización a regímenes adversos o de transición. La única ventana significativa con Sharpe claramente negativo es la 5 (diciembre 2021 a septiembre 2022, Sharpe $-1.273$, retorno $-31.26$\,\%), que coincide con el colapso de Terra-Luna y el inicio de la crisis cripto de 2022.
     \item \textbf{El esquema \textit{expanding window} muestra una mejora sostenida conforme el agente acumula histórico de entrenamiento.} En las primeras 13 ventanas (test hasta mediados de 2021), el agente todavía no tiene suficiente diversidad de regímenes y aprende un comportamiento próximo a la liquidez; el Sharpe queda distorsionado o resulta negativo. A partir de la ventana 14 —cuando el entrenamiento acumula más de $1\,300$ días— la curva de Sharpe por ventana se vuelve mayoritariamente positiva. Esta dependencia del histórico es relevante: cualquier sistema DRL desplegado en producción debe ser reentrenado periódicamente para incorporar nuevos regímenes, no basta con un único entrenamiento inicial.
 \end{itemize}
 
@@ -859,13 +859,13 @@ Para los agentes DRL se reporta tanto el resultado de la mejor semilla como la m
 \begin{tabular}{|l|c|c|c|c|c|c|}
 \hline
 \textbf{Estrategia} & \textbf{Retorno (\%)} & \textbf{CAGR (\%)} & \textbf{Vol. (\%)} & \textbf{Sharpe} & \textbf{Sortino} & \textbf{MDD (\%)} \\ \hline
-Cartera 60/40                     & $+28.82$  & $12.0$  & ---    & $0.785$ & ---   & $-11.25$ \\ \hline
-Markowitz MV                      & $+41.60$  & ---     & ---    & $0.723$ & ---   & $-20.62$ \\ \hline
-Equal-Weight                      & $+73.74$  & ---     & ---    & $0.926$ & ---   & $-26.91$ \\ \hline
-Buy \& Hold                       & $+80.51$  & ---     & ---    & $0.994$ & ---   & $-25.27$ \\ \hline
+Cartera 60/40                     & $+28.82$  & $11.67$ & $9.55$  & $0.785$ & $1.037$ & $-11.25$ \\ \hline
+Markowitz MV                      & $+41.60$  & $16.38$ & $17.58$ & $0.723$ & $0.966$ & $-20.62$ \\ \hline
+Equal-Weight                      & $+73.74$  & $27.23$ & $25.09$ & $0.926$ & $1.234$ & $-26.91$ \\ \hline
+Buy \& Hold                       & $+80.51$  & $29.37$ & $25.05$ & $0.994$ & $1.345$ & $-25.27$ \\ \hline
 Especulativo GMM+KMeans           & $+81.97$  & $29.77$ & $30.93$ & $0.868$ & $1.163$ & $-31.74$ \\ \hline
-Momentum Top-3 (60d)              & $+105.89$ & ---     & ---    & $0.942$ & ---   & $-33.30$ \\ \hline
-\textbf{Random Uniform}           & $\mathbf{+120.05}$ & --- & --- & $\mathbf{1.157}$ & --- & $-30.13$ \\ \hline
+Momentum Top-3 (60d)              & $+105.89$ & $37.01$ & $36.00$ & $0.942$ & $1.428$ & $-33.30$ \\ \hline
+\textbf{Random Uniform}           & $\mathbf{+120.05}$ & $\mathbf{41.04}$ & $\mathbf{30.19}$ & $\mathbf{1.157}$ & $\mathbf{1.578}$ & $-30.13$ \\ \hline
 \hline
 PPO Optuna LT (media $N=5$)       & ---       & ---     & ---    & $0.474 \pm 0.103$ & --- & --- \\ \hline
 PPO Optuna LT (mejor semilla) & $+45.58$  & $17.79$ & $25.97$ & $0.607$ & $0.796$ & $-32.70$ \\ \hline
@@ -874,7 +874,7 @@ SAC LT (media $N=5$)              & ---       & ---     & ---    & $0.883 \pm 0.
 SAC LT (mejor semilla)        & $+119.93$ & $41.00$ & $26.46$ & $\mathbf{1.280}$ & $1.903$ & $-22.59$ \\ \hline
 \end{tabular}%
 }
-\caption[Comparativa entre los agentes DRL y las estrategias de referencia sobre el universo sin sesgo de selección $n=17$.]{Comparativa entre los agentes DRL y las siete estrategias de referencia. Universo sin sesgo de selección (cutoff screener 2024-03-08, $n=17$ activos). Periodo de test: 2024-03-09 a 2026-04-30. Para DRL se reportan la media sobre $N=5$ semillas (con desviación estándar) y la mejor ejecución individual. Celdas `---' indican métrica no calculada en el \textit{script} de \textit{baseline}.}
+\caption[Comparativa entre los agentes DRL y las estrategias de referencia sobre el universo sin sesgo de selección $n=17$.]{Comparativa entre los agentes DRL y las siete estrategias de referencia. Universo sin sesgo de selección (cutoff screener 2024-03-08, $n=17$ activos). Periodo de test: 2024-03-09 a 2026-04-30. Para DRL se reportan la media sobre $N=5$ semillas (con desviación estándar) y la mejor ejecución individual. Celdas `---' aplicables solo a estadísticos derivados de las cinco semillas (media DRL).}
 \label{tab:resultados_baselines}
 \end{table}
 
@@ -938,7 +938,7 @@ CEG   & $4.41$ & $6.12$ & $0.00$  & $25.92$ \\ \hline
 ETHA  & $4.27$ & $5.73$ & $0.00$  & $31.63$ \\ \hline
 IBIT  & $3.61$ & $5.55$ & $0.00$  & $18.96$ \\ \hline
 \end{tabular}
-\caption{Estadísticos de los pesos asignados por la política PPO Optuna (seed 1, \textit{top}, Sharpe 0.607, retorno $+45.58$\,\%) sobre el periodo de test (579 días), universo sin sesgo de selección $n=17$ activos. Activos ordenados por peso medio descendente. Datos: \texttt{src/reports/diagnose\_ppo\_weights.csv}.}
+\caption[Estadísticos de los pesos asignados por la política PPO Optuna (seed 1).]{Estadísticos de los pesos asignados por la política PPO Optuna (seed 1, \textit{top}, Sharpe 0.607, retorno $+45.58$\,\%) sobre el periodo de test (579 días), universo sin sesgo de selección $n=17$ activos. Activos ordenados por peso medio descendente. Datos: \texttt{src/reports/diagnose\_ppo\_weights.csv}.}
 \label{tab:pesos_ppo}
 \end{table}
 
@@ -1055,7 +1055,7 @@ Sharpe Ratio              & $\mathbf{1.875}$  & $1.624$  & $1.650$  \\ \hline
 Sortino Ratio             & $\mathbf{2.832}$  & $2.197$  & $2.243$  \\ \hline
 Max Drawdown (\%)         & $\mathbf{-26.99}$ & $-32.71$ & $-37.49$ \\ \hline
 \end{tabular}
-\caption{Comparación controlada entre la configuración base (recompensa Sharpe + perfil \texttt{low\_turnover}) y dos variantes: recompensa dual + perfil \texttt{low\_turnover}, y recompensa Sharpe + perfil \texttt{aggressive}. Todas entrenan con el mismo presupuesto de 1\,500\,000 pasos.}
+\caption[Ablación iteración 2: base vs. dual vs. agresiva (universo \textit{legacy} $n=15$).]{Comparación controlada entre la configuración base (recompensa Sharpe + perfil \texttt{low\_turnover}) y dos variantes: recompensa dual + perfil \texttt{low\_turnover}, y recompensa Sharpe + perfil \texttt{aggressive}. Todas entrenan con el mismo presupuesto de $1\,500\,000$ pasos.}
 \label{tab:resultados_iter2}
 \end{table}
 
@@ -1089,7 +1089,7 @@ IBIT  & $+5$      & $4.07$  & $4.13$  & $10.96$ \\ \hline
 BK    & ---       & $6.65$  & ---     & $2.69$  \\ \hline
 ETHA  & $-45$     & $6.03$  & $7.88$  & $10.90$ \\ \hline
 \end{tabular}
-\caption{Pesos medios por activo en las tres configuraciones de la ablación. Activos ordenados por retorno test descendente.}
+\caption[Pesos medios por activo en la ablación iteración 2.]{Pesos medios por activo en las tres configuraciones de la ablación. Activos ordenados por retorno test descendente.}
 \label{tab:pesos_iter2}
 \end{table}
 
@@ -1142,7 +1142,7 @@ A2C & \texttt{aggressive}    & $0.476 \pm 0.153$ & $0.650$ & $+51.56$ & $-26.77$
 SAC & \texttt{low\_turnover} & $\mathbf{0.883} \pm 0.296$ & $\mathbf{1.280}$ & $+119.93$ & $-22.59$ \\ \hline
 SAC & \texttt{aggressive}    & $0.869 \pm 0.161$ & $1.097$ & $+95.69$ & $-27.23$ \\ \hline
 \end{tabular}
-\caption{Comparativa de los algoritmos DRL sobre el universo sin sesgo de selección ($n=17$ activos), $N=5$ semillas por configuración. Sharpe medio $\pm$ desviación estándar. \textit{Top}: mejor semilla individual. PPO Optuna usa hiperparámetros de la búsqueda Optuna (sección \ref{sec:optuna_ppo}). A2C entrena $1\,500\,000$ pasos; SAC, $500\,000$ pasos. A2C sin \textit{VecEnv} (salvedad en sección \ref{sec:resultados_iter3}).}
+\caption[Comparativa multi-algoritmo DRL (PPO/A2C/SAC) sobre universo HONEST $n=17$.]{Comparativa de los algoritmos DRL sobre el universo sin sesgo de selección ($n=17$ activos), $N=5$ semillas por configuración. Sharpe medio $\pm$ desviación estándar. \textit{Top}: mejor semilla individual. PPO Optuna usa hiperparámetros de la búsqueda Optuna (sección \ref{sec:optuna_ppo}). A2C entrena $1\,500\,000$ pasos; SAC, $500\,000$ pasos. A2C sin \textit{VecEnv} (salvedad en sección \ref{sec:resultados_iter3}).}
 \label{tab:resultados_iter3}
 \end{table}
 
@@ -1165,7 +1165,7 @@ A2C Aggr      & $0.504$ & $\mathbf{0.650}$ & $0.374$ & $0.615$ & $0.239$ & $0.41
 SAC LT        & $0.532$ & $1.191$ & $0.712$ & $0.701$ & $\mathbf{1.280}$ & $0.748$ \\ \hline
 SAC Aggr      & $\mathbf{1.097}$ & $0.643$ & $1.000$ & $0.798$ & $0.805$ & $0.454$ \\ \hline
 \end{tabular}
-\caption{Sharpe \textit{out-of-sample} por semilla individual ($N=5$). Universo sin sesgo de selección. Negrita: mejor semilla de cada configuración. El rango (máx$-$mín) cuantifica la variabilidad intra-configuración.}
+\caption[Sharpe \textit{out-of-sample} por semilla individual ($N=5$) en la iteración 3.]{Sharpe \textit{out-of-sample} por semilla individual ($N=5$). Universo sin sesgo de selección. Negrita: mejor semilla de cada configuración. El rango (máx$-$mín) cuantifica la variabilidad intra-configuración.}
 \label{tab:resultados_iter3_seeds}
 \end{table}
 
@@ -1203,7 +1203,7 @@ La SAC mejor semilla (1.280) supera a Random Uniform (1.157) y es el único agen
 \begin{enumerate}
     \item \textbf{$N=5$ semillas mejora la evaluación pero no la hace concluyente.} Con $N=5$, los intervalos de confianza al 95\,\% se solapan entre SAC y A2C. Una comparativa estadísticamente sólida requeriría $N \geq 10$ y pruebas de hipótesis apropiadas. Los datos aquí presentados permiten ordenar los algoritmos por media, pero no afirmar dominación estocástica.
 
-    \item \textbf{Calibración asimétrica.} PPO usa hiperparámetros de Optuna (51 trials). A2C y SAC usan hiperparámetros calibrados manualmente desde los \textit{defaults} de SB3. Una búsqueda Optuna igualmente exhaustiva para A2C y SAC podría alterar el ranking.
+    \item \textbf{Calibración asimétrica.} PPO usa hiperparámetros de Optuna ($51$ ensayos). A2C y SAC usan hiperparámetros calibrados manualmente desde los \textit{defaults} de SB3. Una búsqueda Optuna igualmente exhaustiva para A2C y SAC podría alterar el ranking.
 
     \item \textbf{A2C sin entornos vectorizados.} La implementación entrena A2C sobre un único entorno secuencial. La literatura asume habitualmente entornos paralelos (8--16 envs) que reducen la varianza del gradiente. Una comparativa justa de A2C requeriría \textit{VecEnv} adaptado a los \textit{callbacks} del proyecto.
 
@@ -1229,7 +1229,7 @@ El problema de fondo del trabajo es concreto: cómo gestionar dinámicamente una
 
     \item \textbf{SAC captura mejor la señal disponible que PPO y A2C.} SAC LT obtiene el Sharpe medio más alto ($0.883 \pm 0.296$) y el mejor MDD individual ($-22.59$\,\%). La naturaleza \textit{off-policy} de SAC —que reutiliza experiencias pasadas del \textit{replay buffer}— parece más adecuada para este entorno que los algoritmos \textit{on-policy}. La diferencia SAC$-$PPO en media es $+0.41$ puntos de Sharpe.
 
-    \item \textbf{La varianza inter-semilla es alta y confirma Henderson (2018).} El rango de SAC LT es de $0.748$ puntos de Sharpe (de $0.532$ a $1.280$). El de A2C LT es $0.706$. Esta variabilidad supera en magnitud a las diferencias entre algoritmos, lo que impide afirmar dominación algorítmica con los datos disponibles. El protocolo multi-semilla ($N=5$) adoptado en este trabajo es necesario pero no suficiente para conclusiones estadísticamente sólidas.
+    \item \textbf{La varianza inter-semilla es alta y confirma el aviso de \citet{henderson2018deeprl}.} El rango de SAC LT es de $0.748$ puntos de Sharpe (de $0.532$ a $1.280$). El de A2C LT es $0.706$. Esta variabilidad supera en magnitud a las diferencias entre algoritmos, lo que impide afirmar dominación algorítmica con los datos disponibles. El protocolo multi-semilla ($N=5$) adoptado en este trabajo es necesario pero no suficiente para conclusiones estadísticamente sólidas.
 
     \item \textbf{La optimización automática de hiperparámetros (Optuna) no mejora sobre la calibración manual.} Tras 51 ensayos de búsqueda TPE+MedianPruner, el mejor resultado corresponde al ensayo inicial (muestreo aleatorio, Sharpe validación 1.32). El reentrenamiento con los mejores parámetros produce Sharpe $0.474 \pm 0.103$ en test: prácticamente igual a la calibración manual. Este resultado negativo honesto delimita las expectativas de lo que la búsqueda automática de hiperparámetros aporta en dominios con baja relación señal-ruido y presupuesto computacional limitado.
 \end{enumerate}
@@ -1286,7 +1286,7 @@ El trabajo presenta siete limitaciones que conviene reconocer abiertamente para 
 Más allá de su contribución técnica, el trabajo se conecta con cuatro objetivos de la Agenda 2030. Lo que en el capítulo introductorio era una aspiración, los resultados experimentales permiten ahora interpretarlo en concreto:
 
 \begin{itemize}
-    \item \textbf{ODS 7 — Energía asequible y no contaminante.} El trabajo es transparente respecto a su propia huella computacional. El entrenamiento final de los modelos canónicos (PPO Optuna $\times$ 5 semillas $\times$ 1.5M pasos; A2C $\times$ 10 ejecuciones $\times$ 1.5M; SAC $\times$ 10 ejecuciones $\times$ 500k; más la variante dual y la búsqueda Optuna previa de 51 ensayos) suma aproximadamente \textbf{28 horas de cómputo CPU efectivo} sobre un \textit{laptop} estándar (Intel i7 portátil, sin GPU dedicada para la familia MLP utilizada). Asumiendo un consumo promedio de unos $75$\,W por el sistema durante el entrenamiento, esto equivale a unos $2.1$\,kWh de energía eléctrica. Con el factor de mix eléctrico medio español de $2024$ ($\approx 0.15$\,kgCO$_2$/kWh, fuente: \textit{Red Eléctrica de España}), la huella de carbono asociada al entrenamiento final es del orden de $0.3$\,kgCO$_2$, equivalente a unos $1.5$\,km de coche convencional. Una búsqueda de hiperparámetros más exhaustiva (Optuna sobre A2C y SAC, multiplicada por $N \geq 10$ semillas) implicaría un orden de magnitud adicional. La transparencia sobre estos costes computacionales se considera un requisito metodológico básico en investigación de DRL responsable.
+    \item \textbf{ODS 7 — Energía asequible y no contaminante.} El trabajo es transparente respecto a su propia huella computacional. El entrenamiento final de los modelos canónicos (PPO Optuna $\times$ 5 semillas $\times$ $1\,500\,000$ pasos; A2C $\times$ 10 ejecuciones $\times$ $1\,500\,000$; SAC $\times$ 10 ejecuciones $\times$ $500\,000$; más la variante dual y la búsqueda Optuna previa de $51$ ensayos) suma aproximadamente \textbf{28 horas de cómputo CPU efectivo} sobre un \textit{laptop} estándar (Intel i7 portátil, sin GPU dedicada para la familia MLP utilizada). Asumiendo un consumo promedio de unos $75$\,W por el sistema durante el entrenamiento, esto equivale a unos $2.1$\,kWh de energía eléctrica. Con el factor de mix eléctrico medio español de $2024$ ($\approx 0.15$\,kgCO$_2$/kWh, fuente: \textit{Red Eléctrica de España}), la huella de carbono asociada al entrenamiento final es del orden de $0.3$\,kgCO$_2$, equivalente a unos $1.5$\,km de coche convencional. Una búsqueda de hiperparámetros más exhaustiva (Optuna sobre A2C y SAC, multiplicada por $N \geq 10$ semillas) implicaría un orden de magnitud adicional. La transparencia sobre estos costes computacionales se considera un requisito metodológico básico en investigación de DRL responsable.
 
     \item \textbf{ODS 8 — Trabajo decente y crecimiento económico.} El agente integra el riesgo (\textit{Maximum Drawdown}, volatilidad anualizada) directamente en la función objetivo, no como filtro \textit{a posteriori}. Una gestión patrimonial que pondera retorno y riesgo desde el primer momento es más resistente ante eventos adversos y reduce la dependencia de la intuición del gestor humano. Es una pieza pequeña, pero apunta en la dirección de un sistema financiero más estable.
 
@@ -1328,13 +1328,6 @@ A partir de las limitaciones identificadas y de las observaciones del proceso ex
 
     Durante el trabajo se realizó una prueba exploratoria con \texttt{DummyVecEnv} ($n_{\mathrm{envs}}=4$, $1\,500\,000$ pasos, perfil \texttt{low\_turnover}, recompensa \texttt{sharpe}) que ayudó a entender el alcance real del cambio. Los \textit{callbacks} académicos del proyecto, diseñados originalmente para un único entorno, no están aún preparados para agregar las métricas \textit{train reward} y \textit{gap} provenientes de varios entornos en paralelo: en la prueba devolvieron valores \texttt{NaN} que el mecanismo de \textit{early stopping} interpretó como degradación, deteniendo el entrenamiento en torno a 509\,k pasos. El modelo resultante obtuvo Sharpe $1.502$ frente a $1.875$ del modelo monoentorno. La conclusión es constructiva: antes de aprovechar los entornos paralelos, conviene adaptar los \textit{callbacks} a la agregación multi-entorno. Es un trabajo acotado y bien delimitado, perfecto para una línea futura de mejora del \textit{pipeline} de entrenamiento.
 \end{enumerate}
-
-\section{Cierre}
-\label{sec:conclusiones_cierre}
-
-Más allá de los hallazgos concretos, lo que queda de este trabajo es un sistema entregado: una infraestructura reproducible, un código abierto que documenta cada decisión metodológica y un \textit{pipeline} de experimentación trazable de principio a fin. La honestidad metodológica ---la corrección del \textit{data leakage} en el universo, el protocolo multi-semilla y la publicación de resultados negativos cuando los datos así lo dictan--- ha sido, en muchos momentos, una decisión más costosa que reportar métricas infladas, pero es la única forma de que un próximo trabajo pueda construir sobre lo aquí hecho sin heredar sus sesgos. La pregunta de fondo, en cambio, sigue abierta: cómo lograr que el DRL capture de forma estable la señal débil que sí existe en un universo financiero limpio.
-
-La integración de criptoactivos institucionales en carteras tradicionales no es una posibilidad teórica: es una realidad operativa desde 2024. La pregunta abierta no es si gestionarlos, sino con qué marco metodológico hacerlo de forma rigurosa. Este trabajo aporta una respuesta parcial y honesta sin presentarla como definitiva. La conversación queda abierta y, ojalá, mejor planteada.
 
 \chapter{Glosario}
 
@@ -1458,7 +1451,7 @@ B: \texttt{conservative} & 0.05 & 0.010 & 1.353 & 125.7 & 25.74 & $-33.76$ \\ \h
 \textbf{C: \texttt{low\_turnover} (base)} & \textbf{0.02} & \textbf{0.020} & \textbf{1.358} & \textbf{120.4} & \textbf{24.69} & $-32.85$ \\ \hline
 D: \texttt{aggressive} & 0.01 & 0.005 & 1.949 & 279.9 & 30.15 & $-33.80$ \\ \hline
 \end{tabular}
-\caption{Resultados del análisis de sensibilidad sobre el periodo \textit{out-of-sample} del universo \textit{legacy} $n=15$.}
+\caption[Análisis de sensibilidad por perfil de riesgo (universo \textit{legacy} $n=15$).]{Resultados del análisis de sensibilidad sobre el periodo \textit{out-of-sample} del universo \textit{legacy} $n=15$.}
 \label{tab:resultados_sensitivity}
 \end{table}
 
