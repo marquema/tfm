@@ -84,16 +84,16 @@
 \abstractidioma{
 Este TFM diseña e implementa un sistema de gestión dinámica de carteras híbridas con \textit{Deep Reinforcement Learning} (DRL). El sistema combina activos tradicionales (renta variable y renta fija) con ETFs regulados sobre criptoactivos (IBIT y ETHA), lo que permite evaluar cómo se integra esta nueva clase de activos digitales en la inversión institucional.
 
-La política de asignación se aprende con un agente \textit{Proximal Policy Optimization} (PPO) sobre un entorno Gymnasium personalizado. El espacio de estados combina indicadores técnicos y métricas de riesgo; la recompensa penaliza explícitamente el \textit{Maximum Drawdown} y el \textit{turnover}. Para validar la política se aplica un protocolo \textit{out-of-sample} estricto con esquemas \textit{walk-forward} y \textit{expanding window}, y se compara el desempeño del agente con un catálogo amplio de seis \textit{baselines} —Cartera 60/40, \textit{Equal-Weight}, \textit{Buy \& Hold}, Markowitz Media-Varianza, \textit{Random Uniform} y \textit{Momentum Top-3}— al que se añade un agente especulativo basado en GMM+K-Means.
+La política de asignación se aprende con un agente \textit{Proximal Policy Optimization} (PPO) ---algoritmo principal de diseño y desarrollo del sistema--- sobre un entorno Gymnasium personalizado. El espacio de estados combina indicadores técnicos y métricas de riesgo; la recompensa penaliza explícitamente el \textit{Maximum Drawdown} y el \textit{turnover}. Para validar la política se aplica un protocolo \textit{out-of-sample} estricto con esquemas \textit{walk-forward} y \textit{expanding window}, y se compara el desempeño del agente con un catálogo amplio de seis \textit{baselines} —Cartera 60/40, \textit{Equal-Weight}, \textit{Buy \& Hold}, Markowitz Media-Varianza, \textit{Random Uniform} y \textit{Momentum Top-3}— al que se añade un agente especulativo basado en GMM+K-Means. Como análisis de robustez algorítmica posterior, se contrasta empíricamente PPO frente a A2C y SAC con $N=5$ semillas por configuración; esta comparativa funciona como verificación experimental de la elección teórica de PPO, no como cambio de objetivo.
 
-Los resultados cuantifican en qué medida un agente DRL aporta una mejora reproducible en rentabilidad ajustada al riesgo frente a las estrategias estáticas de referencia.
+Los resultados evalúan en qué medida un agente DRL puede mejorar la rentabilidad ajustada al riesgo frente a las estrategias estáticas de referencia. Los datos muestran potencial ---la mejor semilla de SAC supera a la \textit{baseline} \textit{Random Uniform}--- pero no evidencia concluyente de superioridad robusta en media: la varianza inter-semilla con $N=5$ semillas impide afirmar dominancia estadística, lo que se documenta como hallazgo honesto del trabajo.
 }
 
 % Resumen en inglés.
 \abstractenglish{
 This Master's Thesis designs and implements a dynamic hybrid portfolio management system using \textit{Deep Reinforcement Learning} (DRL). The system combines traditional assets (equities and fixed income) with regulated crypto-asset ETFs (IBIT and ETHA), enabling evaluation of how this new asset class integrates into institutional investment.
 
-The allocation policy is learned with a \textit{Proximal Policy Optimization} (PPO) agent over a custom Gymnasium environment. The state space combines technical indicators and risk metrics; the reward explicitly penalises \textit{Maximum Drawdown} and \textit{turnover}. To validate the policy, a strict \textit{out-of-sample} protocol with \textit{walk-forward} and \textit{expanding window} schemes is applied, and the agent's performance is compared against a broad catalogue of six \textit{baselines} ---60/40 Portfolio, \textit{Equal-Weight}, \textit{Buy \& Hold}, Mean-Variance Markowitz, \textit{Random Uniform} and \textit{Momentum Top-3}--- complemented by a speculative agent based on GMM+K-Means.
+The allocation policy is learned with a \textit{Proximal Policy Optimization} (PPO) agent ---the main algorithm used in the system's design and development--- over a custom Gymnasium environment. The state space combines technical indicators and risk metrics; the reward explicitly penalises \textit{Maximum Drawdown} and \textit{turnover}. To validate the policy, a strict \textit{out-of-sample} protocol with \textit{walk-forward} and \textit{expanding window} schemes is applied, and the agent's performance is compared against a broad catalogue of six \textit{baselines} ---60/40 Portfolio, \textit{Equal-Weight}, \textit{Buy \& Hold}, Mean-Variance Markowitz, \textit{Random Uniform} and \textit{Momentum Top-3}--- complemented by a speculative agent based on GMM+K-Means. As a posterior algorithmic robustness analysis, PPO is empirically contrasted against A2C and SAC with $N=5$ seeds per configuration; this comparison acts as an experimental verification of the theoretical choice of PPO, not as a change of objective.
 
 The results quantify to what extent a DRL agent delivers a reproducible improvement in risk-adjusted return over static reference strategies.
 }
@@ -110,13 +110,16 @@ The results quantify to what extent a DRL agent delivers a reproducible improvem
 \vspace*{\fill}
 \clearpage
 
+\pagenumbering{roman}
 \tableofcontents
 
 \listoffigures
 
 \listoftables
 
-
+\cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
 
 \chapter{Introducción}
 
@@ -129,7 +132,7 @@ El problema es que los marcos clásicos de optimización —la teoría moderna d
 \section{Definición de los objetivos}
 \subsection{Objetivo Principal}
 \begin{itemize}
-    \item Desarrollar un agente de DRL que optimice la asignación de capital en una cartera híbrida de ETFs, buscando mejorar el Ratio de Sharpe/Sortino frente a estrategias de referencia, incorporando el control de \textit{drawdown} y los costes operativos. Por control de \textit{drawdown} se entiende limitar la mayor caída acumulada de la cartera desde un máximo previo: si la cartera alcanza un pico de \$15\,000 y cae después a \$12\,000, el \textit{drawdown} es del 20\,\%. Controlar esta magnitud importa porque las caídas profundas tardan en recuperarse y, en muchos casos, llevan al inversor a deshacer posiciones en el peor momento. El agente recibe una penalización explícita por permitir caídas profundas dentro de la función de recompensa (sección \ref{sec:recompensa}), lo que le obliga a aprender una política que prefiere trayectorias más estables aunque sacrifique parte del retorno absoluto.
+    \item Desarrollar un agente de DRL basado en \textit{Proximal Policy Optimization} (PPO) ---el algoritmo principal de diseño del sistema, elegido por argumentos teóricos justificados en el capítulo \ref{cap:estado_del_arte}--- que optimice la asignación de capital en una cartera híbrida de ETFs, buscando mejorar el Ratio de Sharpe/Sortino frente a estrategias de referencia, incorporando el control de \textit{drawdown} y los costes operativos. Por control de \textit{drawdown} se entiende limitar la mayor caída acumulada de la cartera desde un máximo previo: si la cartera alcanza un pico de \$15\,000 y cae después a \$12\,000, el \textit{drawdown} es del 20\,\%. Controlar esta magnitud importa porque las caídas profundas tardan en recuperarse y, en muchos casos, llevan al inversor a deshacer posiciones en el peor momento. El agente recibe una penalización explícita por permitir caídas profundas dentro de la función de recompensa (sección \ref{sec:recompensa}), lo que le obliga a aprender una política que prefiere trayectorias más estables aunque sacrifique parte del retorno absoluto.
 \end{itemize}
 
 
@@ -138,6 +141,7 @@ El problema es que los marcos clásicos de optimización —la teoría moderna d
     \item \textbf{Comparar contra estrategias de referencia.} Medir el rendimiento del agente frente a un catálogo amplio de seis \textit{baselines}: cartera \textit{Equal-Weight} con rebalanceo mensual, cartera 60/40 (acciones/bonos), \textit{Buy \& Hold} (compra inicial sin rebalanceo), modelo de media-varianza de Markowitz con ventana de estimación de 252 días, \textit{Random Uniform} (\textit{baseline} aleatoria que descarta el azar como explicación) y \textit{Momentum Top-3} (factor competitivo del sector cuantitativo). Se añade un agente especulativo basado en GMM+K-Means, totalizando siete estrategias comparativas. Sin esta comparación, las métricas absolutas del agente no serían interpretables.
     \item \textbf{Diseñar una función de recompensa que controle el riesgo.} La recompensa debe ir más allá del retorno bruto: tiene que penalizar explícitamente el \textit{Maximum Drawdown} (la mayor caída acumulada), los costes de transacción (comisiones, \textit{slippage}) y el \textit{turnover} (rotación de cartera). El objetivo es obtener una estrategia que no solo gane, sino que lo haga de forma estable y operativamente realista.
     \item \textbf{Analizar preliminarmente la estabilidad temporal del agente.} Aplicar un protocolo \textit{out-of-sample} estricto mediante esquemas \textit{walk-forward} y \textit{expanding window} para evaluar la consistencia del desempeño entre ventanas. La validación frente a crisis históricas específicas y cambios de régimen estructural amplio queda como línea futura, dado que el periodo de test cubre un único régimen continuo.
+    \item \textbf{Verificar empíricamente la elección de PPO mediante un análisis de robustez algorítmica.} Contrastar el algoritmo principal (PPO) frente a A2C y SAC con $N=5$ semillas por configuración, sobre el mismo universo y la misma función de recompensa. Esta comparativa multi-algoritmo no es un objetivo independiente ni un cambio de rumbo: funciona como verificación experimental \textit{a posteriori} de la decisión teórica de utilizar PPO como núcleo del sistema, permitiendo cuantificar cuánto del resultado depende del algoritmo concreto y cuánto del diseño del entorno y de la recompensa.
 \end{itemize}
 
 % --- SECCIÓN DE METODOLOGÍA ---
@@ -556,6 +560,8 @@ donde $\bar{r}_{20}$ y $\sigma_{20}$ son la media y la desviación típica de lo
 
 \paragraph{Penalización por \textit{drawdown} ($\varphi \cdot \mathrm{MDD}_t$) — \textit{¿estoy cayendo?}} El \textit{Maximum Drawdown} mide cuánto ha caído la cartera desde su último pico. Si el valor máximo histórico fue de \$15\,000 y ahora vale \$12\,000, el MDD es del 20\%. El término $\mathrm{MDD}_t \in [0,1]$ se descuenta de la recompensa multiplicado por $\varphi$ (un peso entre $0.01$ y $0.05$ según el perfil). Cuanto mayor sea $\varphi$, más castigo recibe el agente por permitir caídas profundas y más conservador se vuelve.
 
+\paragraph{Convención de signo del MDD.} En la función de recompensa, $\mathrm{MDD}_t \in [0, 1]$ es positivo por construcción (una caída del 20\,\% se representa como $\mathrm{MDD}_t = 0.20$); por eso entra restando en la recompensa y penaliza al agente cuanto mayor sea su valor. En las tablas de resultados (capítulo \ref{cap:resultados}), el mismo \textit{Maximum Drawdown} se reporta con signo negativo siguiendo la convención financiera habitual de expresar la pérdida porcentual con su signo (por ejemplo, $-20.00$\,\%). Ambas representaciones son consistentes entre sí: solo cambia el signo según el contexto (entrada a la recompensa frente a métrica financiera reportada).
+
 \paragraph{Penalización por rotación ($\gamma \cdot T_t$) — \textit{¿estoy operando demasiado?}} El \textit{turnover} $T_t = \sum_i |w_{i,t} - w_{i,t-1}|$ mide cuánto cambia la cartera de un día al siguiente. Un $T_t = 0.5$ significa que el agente ha reasignado la mitad de la cartera. Cada operación cuesta comisiones reales, así que esta penalización empuja al agente a operar solo cuando la mejora esperada compensa el coste. El peso $\gamma$ (entre $0.005$ y $0.02$) define cuán cara es la rotación según el perfil.
 
 \paragraph{¿Por qué \textit{clip} a $[-1, 1]$?} Las redes neuronales se entrenan con gradientes: si la recompensa puede tomar valores extremos (por ejemplo, un Sharpe de $-15$ en un día catastrófico), el gradiente crece desmesuradamente y desestabiliza la política. Acotar la señal evita ese problema. Conviene ser consciente, no obstante, del coste del recorte: limitar la recompensa por arriba a $+1$ también impide que el agente reciba un refuerzo proporcional a los días excepcionalmente buenos, lo que puede atenuar la motivación por aprovechar al máximo los mejores regímenes. El compromiso aquí es deliberado: se prefiere estabilidad del entrenamiento a expresividad de la señal en la cola positiva, asumiendo que la información discriminativa entre días buenos y muy buenos se mantiene a través del MDD y el \textit{turnover}.
@@ -732,6 +738,10 @@ La validación del agente sigue dos esquemas complementarios habituales en la li
 
 En ambos esquemas, los hiperparámetros del entrenamiento son idénticos a los de la configuración de producción (tabla \ref{tab:ppo_params}). Esa coherencia es importante: si la validación se hiciera con una versión más ligera del modelo, las métricas no serían representativas del desempeño real del sistema desplegado. Los resultados de cada ventana se agregan calculando media y desviación estándar, y se reportan junto a las curvas de \textit{equity} comparadas con las seis \textit{baselines} descritas en \ref{sec:baselines}.
 
+\paragraph{Filtro de robustez sobre ventanas con volatilidad casi nula.} En esquemas con bloques de entrenamiento cortos, el agente puede aprender un comportamiento próximo a la liquidez: cartera prácticamente constante, retornos diarios cercanos a cero y volatilidad realizada muy baja. En esas condiciones, el ratio de Sharpe ---definido como cociente $\bar{r}/\sigma$--- se distorsiona porque tanto numerador como denominador tienden a cero. El cociente resultante amplifica el ruido numérico y arroja valores absolutos enormes (positivos o negativos) que no reflejan rendimiento económico real.
+
+Por ello, en el cálculo del Sharpe agregado se aplica un filtro \textit{a priori}: se excluyen las ventanas con volatilidad anualizada inferior al $1$\,\%. El umbral se fija antes de inspeccionar los resultados y es independiente de la magnitud del Sharpe en cada ventana, por lo que no introduce sesgo \textit{post-hoc} sobre la selección. Por transparencia, los resultados del capítulo \ref{cap:resultados} se reportan en su forma filtrada (Sharpe robusto) y, en paralelo, también sin filtro, para que el lector pueda valorar el efecto de la decisión.
+
 \chapter{Resultados Experimentales}
 \label{cap:resultados}
 
@@ -774,7 +784,7 @@ El protocolo de validación temporal descrito en la sección \ref{sec:validacion
 
 Antes de leer la tabla, hay que explicar un detalle que se repite en este tipo de validaciones temporales. Cuando el agente se entrena con poco histórico —solo 504 días, sin haber visto regímenes de alta volatilidad— tiende a mantenerse casi todo el tiempo en posiciones cercanas a la liquidez. Los retornos diarios entonces son prácticamente cero, lo que distorsiona la ratio de Sharpe: dividir un retorno cercano a cero por una desviación cercana a cero arroja valores absolutos enormes (positivos o negativos) que no reflejan rendimiento económico real, solo ruido numérico. Estas ventanas se identifican por su volatilidad anualizada inferior al $1$\,\% y se excluyen del cálculo del Sharpe agregado. Es un filtro metodológicamente necesario: las ventanas filtradas miden el efecto de la inactividad del agente, no su desempeño ante el mercado.
 
-La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos esquemas bajo este filtro. La tabla \ref{tab:wf_por_ventana} detalla las 7 ventanas con volatilidad significativa del walk-forward. Las figuras \ref{fig:wf_analysis} y \ref{fig:ew_analysis} muestran las curvas de equidad por ventana y el resumen visual de cada esquema.
+La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos esquemas, mostrando en paralelo el Sharpe \emph{con filtro} (forma robusta) y el Sharpe \emph{sin filtro} (todas las ventanas, contaminado por las de baja volatilidad). La diferencia entre ambas columnas permite cuantificar el efecto del filtro definido \textit{a priori} en la sección \ref{sec:validacion}: las ventanas de volatilidad casi nula no aportan información sobre el desempeño del agente, pero arrastran el promedio hacia valores absolutos enormes y de signo arbitrario. La tabla \ref{tab:wf_por_ventana} detalla las 7 ventanas con volatilidad significativa del walk-forward. Las figuras \ref{fig:wf_analysis} y \ref{fig:ew_analysis} muestran las curvas de equidad por ventana y el resumen visual de cada esquema.
 
 \begin{table}[h]
 \centering
@@ -782,11 +792,11 @@ La tabla \ref{tab:resultados_validacion} resume las métricas agregadas de ambos
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{|l|c|c|c|c|c|c|}
 \hline
-\textbf{Esquema} & \textbf{N total} & \textbf{N significativas} & \textbf{Sharpe robusto} & \textbf{Sharpe mediana} & \textbf{Retorno medio (\%)} & \textbf{MDD medio (\%)} \\ \hline
-Walk-forward (rolling) & 9  & 7 (vol $>$ 1\,\%) & $+0.349 \pm 1.904$ & $1.178$ & $+22.18$ & $-14.99$ \\ \hline
-Expanding window        & 37 & 26 (vol $>$ 1\,\%) & $+0.654 \pm 2.399$ & $1.281$ & $+3.11$  & $-7.30$  \\ \hline
+\textbf{Esquema} & \textbf{N total} & \textbf{N significativas} & \textbf{Sharpe robusto (vol $>$ 1\,\%)} & \textbf{Sharpe sin filtro (todas)} & \textbf{Retorno medio (\%)} & \textbf{MDD medio (\%)} \\ \hline
+Walk-forward (rolling) & 9  & 7  & $+0.349 \pm 1.904$ & $-4.377 \pm 9.735$  & $+22.18$ & $-14.99$ \\ \hline
+Expanding window        & 37 & 26 & $+0.654 \pm 2.399$ & $-6.358 \pm 12.414$ & $+3.11$  & $-7.30$  \\ \hline
 \end{tabular}}
-\caption{Resumen de la validación temporal. \textit{Sharpe robusto}: media $\pm$ desviación estándar calculadas únicamente sobre ventanas con volatilidad anualizada superior al $1$\,\%; las ventanas con volatilidad inferior se excluyen por producir Sharpe distorsionado (véase texto).}
+\caption{Resumen de la validación temporal con ambas versiones de Sharpe: \textit{Sharpe robusto} se calcula solo sobre ventanas con volatilidad anualizada $>1$\,\%; \textit{Sharpe sin filtro} agrega todas las ventanas (incluyendo las próximas a la liquidez con Sharpe distorsionado, véase sección \ref{sec:validacion}). Las medianas asociadas son $1.178$ (WF filtrado) frente a $0.598$ (WF sin filtro) y $1.066$ (EW filtrado) frente a $-1.166$ (EW sin filtro), lo que ilustra cuánto pesa el ruido de las ventanas de baja volatilidad sobre el agregado.}
 \label{tab:resultados_validacion}
 \end{table}
 
@@ -868,7 +878,7 @@ SAC LT (mejor semilla)        & $+119.93$ & $41.00$ & $26.46$ & $\mathbf{1.280}$
 \label{tab:resultados_baselines}
 \end{table}
 
-\noindent\textit{Nota sobre la convención del MDD:} en las tablas se reporta el \textit{Maximum Drawdown} como pérdida porcentual con signo negativo. En la función de recompensa (sección \ref{sec:recompensa}), $\mathrm{MDD}_t \in [0,1]$ es positivo por construcción y entra restando.
+\noindent\textit{Nota sobre la convención del MDD:} en las tablas el \textit{Maximum Drawdown} se reporta con signo negativo (convención financiera). En la función de recompensa entra como magnitud positiva. La equivalencia entre ambas representaciones se detalla en el apartado de convención de signo del MDD de la sección \ref{sec:recompensa}.
 
 \noindent\textit{Salvedad sobre la frecuencia de rebalanceo:} las \textit{baselines} \textit{Equal-Weight} y 60/40 rebalancean mensualmente, Markowitz reestima con ventana de 252 días, \textit{Momentum Top-3} actualiza con ventana de 60 días y \textit{Buy \& Hold} no rebalancea. Los agentes DRL, en cambio, pueden ajustar la cartera diariamente. Esta asimetría favorece al agente en términos de capacidad de adaptación, pero le penaliza en costes acumulados de transacción: la función de recompensa internaliza explícitamente el coste por \textit{turnover}. La comparación es legítima dentro de este marco, pero conviene tenerla presente al interpretar las diferencias entre estrategias.
 
@@ -1009,7 +1019,7 @@ La limitación de inestabilidad entre regímenes no se aborda con una iteración
 \section{Iteración 2: Ablación de Configuraciones (Recompensa y Perfil de Riesgo)}
 \label{sec:resultados_iter2}
 
-\noindent\textbf{ATENCIÓN --- Universo \textit{legacy} de esta sección.} Esta iteración 2 (ablación recompensa y perfil) se realizó ANTES de detectar el sesgo de selección en el \textit{screener} original (sección \ref{sec:conclusiones_limitaciones}). Por tanto, las tablas \ref{tab:resultados_iter2} y \ref{tab:pesos_iter2} contienen activos del universo viejo ($n=15$) que NO forman parte del universo final del TFM. Las MANTENEMOS aquí únicamente para documentar el proceso experimental y motivar la iteración 3, no como resultado entregable. Los valores absolutos (Sharpe 1.875, 1.624, 1.650) NO son directamente comparables con los del capítulo principal (tabla \ref{tab:resultados_baselines}). Las conclusiones \textbf{cualitativas} ---recompensa dual añade ruido, perfil agresivo concentra en cripto--- se consideran propiedades estructurales del agente y se conservan como hipótesis cualitativas.
+\noindent\textit{Nota sobre el universo de esta sección.} Esta iteración 2 (ablación de recompensa y perfil de riesgo) se realizó antes de detectar el sesgo de selección en el \textit{screener} original (sección \ref{sec:conclusiones_limitaciones}). Por tanto, las tablas \ref{tab:resultados_iter2} y \ref{tab:pesos_iter2} contienen activos del universo \textit{legacy} ($n=15$) que no forman parte del universo final del TFM. Se mantienen aquí únicamente para documentar el proceso experimental y motivar la iteración 3, no como resultado entregable. Los valores absolutos (Sharpe 1.875, 1.624, 1.650) no son directamente comparables con los del capítulo principal (tabla \ref{tab:resultados_baselines}). Las conclusiones \textit{cualitativas} ---la recompensa dual añade ruido y el perfil agresivo concentra la cartera en cripto--- se consideran propiedades estructurales del agente y se conservan como hipótesis cualitativas.
 
 Antes de leer los resultados de esta ablación, conviene tener presente qué pregunta responde y cuál no responde. Las tres configuraciones se comparan \emph{entre sí} sobre el mismo universo viejo: la ablación revela qué efecto tiene cambiar la recompensa o el perfil de riesgo cuando el agente base ya funciona bien. La conclusión cualitativa —que la configuración base supera a las dos variantes— es útil como propiedad del agente independiente del universo. Lo que la ablación no permite es comparar la magnitud exacta de la mejora con los resultados del capítulo principal sobre universo final.
 
@@ -1270,6 +1280,21 @@ El trabajo presenta siete limitaciones que conviene reconocer abiertamente para 
     Documentar este resultado, en lugar de presentarlo como un éxito parcial o silenciarlo, aporta información útil: define las condiciones en las que la búsqueda automática de hiperparámetros no produce mejora apreciable. Eso ayuda a próximos trabajos a calibrar mejor el presupuesto computacional de Optuna en problemas financieros con baja relación señal-ruido \citep{akiba2019optuna}.
 \end{enumerate}
 
+\section{Vinculación con los Objetivos de Desarrollo Sostenible}
+\label{sec:conclusiones_ods}
+
+Más allá de su contribución técnica, el trabajo se conecta con cuatro objetivos de la Agenda 2030. Lo que en el capítulo introductorio era una aspiración, los resultados experimentales permiten ahora interpretarlo en concreto:
+
+\begin{itemize}
+    \item \textbf{ODS 7 — Energía asequible y no contaminante.} El trabajo es transparente respecto a su propia huella computacional. El entrenamiento final de los modelos canónicos (PPO Optuna $\times$ 5 semillas $\times$ 1.5M pasos; A2C $\times$ 10 ejecuciones $\times$ 1.5M; SAC $\times$ 10 ejecuciones $\times$ 500k; más la variante dual y la búsqueda Optuna previa de 51 ensayos) suma aproximadamente \textbf{28 horas de cómputo CPU efectivo} sobre un \textit{laptop} estándar (Intel i7 portátil, sin GPU dedicada para la familia MLP utilizada). Asumiendo un consumo promedio de unos $75$\,W por el sistema durante el entrenamiento, esto equivale a unos $2.1$\,kWh de energía eléctrica. Con el factor de mix eléctrico medio español de $2024$ ($\approx 0.15$\,kgCO$_2$/kWh, fuente: \textit{Red Eléctrica de España}), la huella de carbono asociada al entrenamiento final es del orden de $0.3$\,kgCO$_2$, equivalente a unos $1.5$\,km de coche convencional. Una búsqueda de hiperparámetros más exhaustiva (Optuna sobre A2C y SAC, multiplicada por $N \geq 10$ semillas) implicaría un orden de magnitud adicional. La transparencia sobre estos costes computacionales se considera un requisito metodológico básico en investigación de DRL responsable.
+
+    \item \textbf{ODS 8 — Trabajo decente y crecimiento económico.} El agente integra el riesgo (\textit{Maximum Drawdown}, volatilidad anualizada) directamente en la función objetivo, no como filtro \textit{a posteriori}. Una gestión patrimonial que pondera retorno y riesgo desde el primer momento es más resistente ante eventos adversos y reduce la dependencia de la intuición del gestor humano. Es una pieza pequeña, pero apunta en la dirección de un sistema financiero más estable.
+
+    \item \textbf{ODS 9 — Industria, innovación e infraestructura.} El trabajo aplica aprendizaje por refuerzo profundo —técnica de la frontera del \textit{machine learning}— a un problema clásico de finanzas. Y, sobre todo, lo hace con una arquitectura de microservicios pensada para reproducir cada experimento y trazar cada modelo entrenado. Esa infraestructura es lo que hoy distingue a un prototipo académico de una solución productiva.
+
+    \item \textbf{ODS 12 — Producción y consumo responsables.} Una asignación de capital basada en evidencia cuantificable y trazable, en lugar de en el juicio puntual de un asesor, contribuye a un uso más eficiente del ahorro invertido. El sistema permite simular antes de invertir, comparar contra estrategias de referencia y persistir cada decisión con sus métricas asociadas.
+\end{itemize}
+
 \section{Líneas Futuras de Investigación}
 \label{sec:conclusiones_futuras}
 
@@ -1304,27 +1329,12 @@ A partir de las limitaciones identificadas y de las observaciones del proceso ex
     Durante el trabajo se realizó una prueba exploratoria con \texttt{DummyVecEnv} ($n_{\mathrm{envs}}=4$, $1\,500\,000$ pasos, perfil \texttt{low\_turnover}, recompensa \texttt{sharpe}) que ayudó a entender el alcance real del cambio. Los \textit{callbacks} académicos del proyecto, diseñados originalmente para un único entorno, no están aún preparados para agregar las métricas \textit{train reward} y \textit{gap} provenientes de varios entornos en paralelo: en la prueba devolvieron valores \texttt{NaN} que el mecanismo de \textit{early stopping} interpretó como degradación, deteniendo el entrenamiento en torno a 509\,k pasos. El modelo resultante obtuvo Sharpe $1.502$ frente a $1.875$ del modelo monoentorno. La conclusión es constructiva: antes de aprovechar los entornos paralelos, conviene adaptar los \textit{callbacks} a la agregación multi-entorno. Es un trabajo acotado y bien delimitado, perfecto para una línea futura de mejora del \textit{pipeline} de entrenamiento.
 \end{enumerate}
 
-\section{Vinculación con los Objetivos de Desarrollo Sostenible}
-\label{sec:conclusiones_ods}
-
-Más allá de su contribución técnica, el trabajo se conecta con tres objetivos de la Agenda 2030. Lo que en el capítulo introductorio era una aspiración, los resultados experimentales permiten ahora interpretarlo en concreto:
-
-\begin{itemize}
-    \item \textbf{ODS 8 — Trabajo decente y crecimiento económico.} El agente integra el riesgo (\textit{Maximum Drawdown}, volatilidad anualizada) directamente en la función objetivo, no como filtro \textit{a posteriori}. Una gestión patrimonial que pondera retorno y riesgo desde el primer momento es más resistente ante eventos adversos y reduce la dependencia de la intuición del gestor humano. Es una pieza pequeña, pero apunta en la dirección de un sistema financiero más estable.
-
-    \item \textbf{ODS 9 — Industria, innovación e infraestructura.} El trabajo aplica aprendizaje por refuerzo profundo —técnica de la frontera del \textit{machine learning}— a un problema clásico de finanzas. Y, sobre todo, lo hace con una arquitectura de microservicios pensada para reproducir cada experimento y trazar cada modelo entrenado. Esa infraestructura es lo que hoy distingue a un prototipo académico de una solución productiva.
-
-    \item \textbf{ODS 12 — Producción y consumo responsables.} Una asignación de capital basada en evidencia cuantificable y trazable, en lugar de en el juicio puntual de un asesor, contribuye a un uso más eficiente del ahorro invertido. El sistema permite simular antes de invertir, comparar contra estrategias de referencia y persistir cada decisión con sus métricas asociadas.
-\end{itemize}
-
 \section{Cierre}
 \label{sec:conclusiones_cierre}
 
-Este trabajo demuestra cuatro cosas concretas. Primero, que hay señal aprendible en un universo de activos híbridos sin \textit{data leakage}: la mejor ejecución de SAC supera a Random Uniform en Sharpe. Segundo, que esa señal es débil —ningún algoritmo la captura de forma consistente en media— y que su captura sistemática depende fuertemente de la semilla de inicialización. Tercero, que SAC, como algoritmo \textit{off-policy}, extrae más valor de esa señal que PPO o A2C con el presupuesto de pasos disponible. Cuarto, que la optimización automática de hiperparámetros no invierte la desventaja: el problema financiero con baja relación señal-ruido plantea un límite empírico a lo que cualquier método de calibración puede lograr con presupuesto computacional limitado.
+Más allá de los hallazgos concretos, lo que queda de este trabajo es un sistema entregado: una infraestructura reproducible, un código abierto que documenta cada decisión metodológica y un \textit{pipeline} de experimentación trazable de principio a fin. La honestidad metodológica ---la corrección del \textit{data leakage} en el universo, el protocolo multi-semilla y la publicación de resultados negativos cuando los datos así lo dictan--- ha sido, en muchos momentos, una decisión más costosa que reportar métricas infladas, pero es la única forma de que un próximo trabajo pueda construir sobre lo aquí hecho sin heredar sus sesgos. La pregunta de fondo, en cambio, sigue abierta: cómo lograr que el DRL capture de forma estable la señal débil que sí existe en un universo financiero limpio.
 
-Las limitaciones que el trabajo reconoce no invalidan estos hallazgos: los acotan. La corrección del \textit{data leakage} reduce las métricas absolutas, pero lo hace de forma transparente y metodológicamente correcta. Documentar los resultados tal y como se han producido, incluyendo los negativos, aporta más al lector y al campo que reportar métricas infladas por un sesgo no declarado.
-
-La integración de criptoactivos institucionales en carteras tradicionales no es una posibilidad teórica: es una realidad operativa desde 2024. La pregunta abierta no es si gestionarlos, sino con qué marco metodológico hacerlo de forma rigurosa. Este trabajo aporta una respuesta parcial y honesta —el aprendizaje por refuerzo profundo puede aprender algo, pero aún no supera al azar en media sobre un universo limpio— sin presentarla como definitiva. La conversación queda abierta y, ojalá, mejor planteada.
+La integración de criptoactivos institucionales en carteras tradicionales no es una posibilidad teórica: es una realidad operativa desde 2024. La pregunta abierta no es si gestionarlos, sino con qué marco metodológico hacerlo de forma rigurosa. Este trabajo aporta una respuesta parcial y honesta sin presentarla como definitiva. La conversación queda abierta y, ojalá, mejor planteada.
 
 \chapter{Glosario}
 
@@ -1431,7 +1441,7 @@ Despliegue & No abordado de forma específica & Capa de servicios FastAPI, auten
 \chapter{Análisis de Sensibilidad de la Función de Recompensa (universo \textit{legacy} $n=15$)}
 \label{sec:resultados_sensitivity}
 
-\noindent\textbf{Carácter metodológico de este anexo.} Esta sección documenta el análisis preliminar de sensibilidad de los hiperparámetros $\varphi$ y $\gamma$ que se ejecutó sobre el universo original ($n=15$, con sesgo de selección detectado posteriormente). Se incluye como anexo porque pertenece al proceso de calibración previo a la corrección del sesgo y no constituye un resultado cuantitativo entregable. Los números absolutos NO son comparables con los del capítulo \ref{cap:resultados} sobre universo sin sesgo de selección ($n=17$). La conclusión cualitativa ---que la política tolera variaciones de $\varphi$ y $\gamma$ dentro del rango explorado--- se considera válida como propiedad estructural del agente, independiente del universo.
+\noindent\textit{Carácter metodológico de este anexo.} Esta sección documenta el análisis preliminar de sensibilidad de los hiperparámetros $\varphi$ y $\gamma$ que se ejecutó sobre el universo original ($n=15$, con sesgo de selección detectado posteriormente). Se incluye como anexo porque pertenece al proceso de calibración previo a la corrección del sesgo y no constituye un resultado cuantitativo entregable. Los números absolutos no son directamente comparables con los del capítulo \ref{cap:resultados} sobre el universo sin sesgo de selección ($n=17$). La conclusión cualitativa ---que la política tolera variaciones de $\varphi$ y $\gamma$ dentro del rango explorado--- se considera válida como propiedad estructural del agente, independiente del universo.
 
 Para evaluar la robustez de la calibración del agente y justificar empíricamente la elección del perfil principal, se ha entrenado un agente PPO bajo cada uno de los cuatro perfiles del catálogo (sección \ref{sec:perfiles}), manteniendo idénticos el resto de hiperparámetros (200\,000 pasos por configuración). La tabla \ref{tab:resultados_sensitivity} resume las métricas \textit{out-of-sample}.
 
